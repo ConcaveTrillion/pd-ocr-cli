@@ -1,4 +1,4 @@
-.PHONY: setup install reset remove-venv lint format pre-commit-check build clean ci upgrade-pd-book-tools help
+.PHONY: setup install reset remove-venv lint format pre-commit-check build clean ci upgrade-pd-book-tools release-patch release-minor release-major _do-release help
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -68,3 +68,28 @@ clean: ## Clean up cache and build artifacts
 	@echo "🧹 Cleaning build artifacts..."
 	rm -rf dist/ 2>/dev/null || true
 	@echo "✅ Cleanup complete!"
+
+release-patch: ## Bump patch version and create a git tag (e.g. v0.3 → v0.3.1)
+	@$(MAKE) --no-print-directory _do-release BUMP=patch
+
+release-minor: ## Bump minor version and create a git tag (e.g. v0.3 → v0.4)
+	@$(MAKE) --no-print-directory _do-release BUMP=minor
+
+release-major: ## Bump major version and create a git tag (e.g. v0.3 → v1.0)
+	@$(MAKE) --no-print-directory _do-release BUMP=major
+
+_do-release:
+	@BUMP=$(or $(BUMP),minor); \
+	LATEST=$$(git tag --list 'v*' --sort=-version:refname | head -1); \
+	if [ -z "$$LATEST" ]; then LATEST="v0.0"; fi; \
+	MAJOR=$$(echo "$$LATEST" | sed 's/v\([0-9]*\)\..*/\1/'); \
+	MINOR=$$(echo "$$LATEST" | sed 's/v[0-9]*\.\([0-9]*\).*/\1/'); \
+	PATCH=$$(echo "$$LATEST" | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\).*/\1/'); \
+	if [ "$$PATCH" = "$$LATEST" ]; then PATCH=0; fi; \
+	if [ "$$BUMP" = "major" ]; then MAJOR=$$((MAJOR+1)); MINOR=0; PATCH=0; \
+	elif [ "$$BUMP" = "minor" ]; then MINOR=$$((MINOR+1)); PATCH=0; \
+	else PATCH=$$((PATCH+1)); fi; \
+	VERSION="v$$MAJOR.$$MINOR"; \
+	if [ "$$BUMP" = "patch" ]; then VERSION="v$$MAJOR.$$MINOR.$$PATCH"; fi; \
+	git tag "$$VERSION"; \
+	echo "🏷️  Tagged $$VERSION — push with: git push && git push --tags"
