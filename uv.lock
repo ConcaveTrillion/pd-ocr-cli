@@ -1877,8 +1877,8 @@ wheels = [
 
 [[package]]
 name = "pd-book-tools"
-version = "0.6.1"
-source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.6.1#f55d03d0551f73fdb6a0d185a7a2341464fdc167" }
+version = "0.6.2"
+source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.6.2#e0b405a3c05fa7ec9b78c436842aba5334372928" }
 dependencies = [
     { name = "cupy-cuda12x" },
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1891,7 +1891,6 @@ dependencies = [
     { name = "opencv-contrib-python" },
     { name = "opencv-cuda" },
     { name = "opencv-python" },
-    { name = "packaging" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytesseract" },
@@ -1922,7 +1921,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.6.1" },
+    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.6.2" },
 ]
 
 [package.metadata.requires-dev]

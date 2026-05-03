@@ -32,7 +32,7 @@ dev = [
 ]
 
 [tool.uv.sources]
-pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.6.1" }
+pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.6.2" }
 
 [tool.hatch.version]
 source = "vcs"
