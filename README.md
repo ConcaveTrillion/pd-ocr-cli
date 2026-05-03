@@ -110,6 +110,18 @@ pd-ocr -o output/ page.png
 # Also save the reorganized OCR document as JSON
 pd-ocr --save-json page.png
 
+# Convert curly quotes to straight ASCII quotes in OCR output
+pd-ocr --straight-quotes page.png
+
+# Short flag for straight-quote normalization
+pd-ocr -sq page.png
+
+# Convert em dash to double hyphen in OCR output
+pd-ocr --em-dash-to-double-hyphen page.png
+
+# Short flag for em-dash conversion
+pd-ocr -ed page.png
+
 # Check the installed version
 pd-ocr --version
 
@@ -180,6 +192,8 @@ rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
 - Models are downloaded from [CT2534/pd-ocr-models](https://huggingface.co/CT2534/pd-ocr-models) on first run and cached locally (default: `~/.cache/huggingface/hub`, or the path in `$HF_HOME` if set).
 - No Hugging Face account required.
 - Subsequent runs use the cached models with no download (they still need to be loaded in to memory).
+- `--straight-quotes` / `-sq` converts common curly quote characters to straight ASCII quotes (`'` and `"`) in `.txt` output; prime symbols (for example `′` and `″`) are not converted.
+- `--em-dash-to-double-hyphen` / `-ed` converts em dashes (`—`) to ASCII `--` in `.txt` output.
 - OCR powered by [DocTR](https://github.com/mindee/doctr) with fine-tuned detection and recognition models.
 
 ---

@@ -30,6 +30,8 @@ Options
 --hf-repo REPO_ID            Use a different Hugging Face repo.
 --detection / --recognition  Use local .pt files instead of downloading.
 --recursive / -r / -R        Recurse into subdirectories.
+--straight-quotes            Convert curly quotes to straight ASCII quotes.
+--em-dash-to-double-hyphen   Convert em dash to double hyphen (--).
 
 Downloaded models are cached in ~/.cache/huggingface/hub and reused on
 subsequent runs.
@@ -131,6 +133,28 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 DEFAULT_HF_REPO = "CT2534/pd-ocr-models"
 DEFAULT_DET_FILENAME = "detection/pd-all-detection-model-finetuned.pt"
 DEFAULT_RECO_FILENAME = "recognition/pd-all-recognition-model-finetuned.pt"
+_CURLY_TO_STRAIGHT_TRANSLATION = str.maketrans(
+    {
+        "\u2018": "'",  # left single quote
+        "\u2019": "'",  # right single quote / apostrophe
+        "\u201a": "'",  # single low-9 quote
+        "\u201b": "'",  # single high-reversed-9 quote
+        "\u201c": '"',  # left double quote
+        "\u201d": '"',  # right double quote
+        "\u201e": '"',  # double low-9 quote
+        "\u201f": '"',  # double high-reversed-9 quote
+    }
+)
+
+
+def _normalize_curly_quotes(text: str) -> str:
+    """Convert common curly quote variants to straight ASCII quotes."""
+    return text.translate(_CURLY_TO_STRAIGHT_TRANSLATION)
+
+
+def _normalize_em_dash(text: str) -> str:
+    """Convert em dash to ASCII double hyphen."""
+    return text.replace("\u2014", "--")
 
 
 @contextlib.contextmanager
@@ -201,7 +225,7 @@ def _hf_download(repo_id: str, filename: str, revision: str | None) -> Path:
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="OCR images to .txt using fine-tuned detection + recognition models."
+        description="OCR images toh .txt using fine-tuned detection + recognition models."
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {_VERSION}")
 
@@ -265,6 +289,20 @@ def parse_args():
         action="store_true",
         default=False,
         help="Recurse into subdirectories when a directory is given as input.",
+    )
+    p.add_argument(
+        "--straight-quotes",
+        "-sq",
+        action="store_true",
+        default=False,
+        help="Convert curly quotes in OCR text output to straight ASCII quotes.",
+    )
+    p.add_argument(
+        "--em-dash-to-double-hyphen",
+        "-ed",
+        action="store_true",
+        default=False,
+        help="Convert em dash in OCR text output to double hyphen (--).",
     )
     p.add_argument(
         "inputs",
@@ -403,6 +441,10 @@ def main():
             if callable(getattr(page, "reorganize_page", None)):
                 page.reorganize_page()
             text = page.text
+            if args.straight_quotes and text:
+                text = _normalize_curly_quotes(text)
+            if args.em_dash_to_double_hyphen and text:
+                text = _normalize_em_dash(text)
             if not text:
                 print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
             out_path.write_text(text or "", encoding="utf-8")
