@@ -27,10 +27,8 @@ The output should show your GPU and a `CUDA Version` in the top-right corner. Th
 
 If `nvidia-smi` is missing, or no CUDA version is shown, install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) for your OS/driver and run `nvidia-smi` again.
 
-`cuXXX` cheat sheet for install commands:
+`cuXXX` cheat sheet for install commands (CUDA 12.4 or later required):
 
-- `cu118` = CUDA 11.8
-- `cu121` = CUDA 12.1
 - `cu124` = CUDA 12.4
 - `cu130` = CUDA 13.0
 
@@ -49,13 +47,6 @@ NVIDIA GPU dependency size estimate:
 
 - CUDA Toolkit itself is typically a multi-GB install (roughly 2-4 GB download, often 5-12 GB on disk, depending on OS/components).
 - CUDA-enabled PyTorch wheels are also large: expect roughly 1-3 GB of downloads for a fresh GPU install, plus additional disk space after installation.
-
-Manual NVIDIA GPU install with `uv` (replace `cuXXX` with your CUDA version, for example `cu118`, `cu121`, or `cu124`):
-
-```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
-    --extra-index-url https://download.pytorch.org/whl/cu124
-```
 
 Use `nvidia-smi` for your CUDA version, or the [PyTorch install selector](https://pytorch.org/get-started/locally/).
 
@@ -154,7 +145,7 @@ CPU install:
 uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
 ```
 
-NVIDIA GPU install (replace `cuXXX` with your CUDA version, for example `cu118`, `cu121`, or `cu124`):
+NVIDIA GPU install (replace `cuXXX` with your CUDA version, for example `cu124` or `cu130`; **CUDA 12.4 or later required**):
 
 ```sh
 uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
