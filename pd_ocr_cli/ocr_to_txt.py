@@ -36,7 +36,10 @@ subsequent runs.
 """
 
 import argparse
+import contextlib
+import logging
 import os
+import re
 import sys
 import threading
 from importlib.metadata import PackageNotFoundError
@@ -50,6 +53,37 @@ except PackageNotFoundError:
 
 _GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
 _INSTALL_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/install.sh"
+_STABLE_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
+_RELEASE_PREFIX_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+
+
+def _parse_stable_tag(version: str) -> tuple[int, int, int] | None:
+    """Parse strict stable tags like v1.2.3 or 1.2.3."""
+    match = _STABLE_TAG_RE.match(version.strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _parse_release_prefix(version: str) -> tuple[int, int, int] | None:
+    """Parse release prefix from versions like 1.2.3.dev1+abc."""
+    match = _RELEASE_PREFIX_RE.match(version.strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _latest_stable_tag(tags: list[dict]) -> tuple[str, tuple[int, int, int]] | None:
+    """Return (tag_name, parsed_version) for the highest stable semver tag."""
+    best: tuple[str, tuple[int, int, int]] | None = None
+    for tag in tags:
+        name = tag.get("name", "")
+        parsed = _parse_stable_tag(name)
+        if parsed is None:
+            continue
+        if best is None or parsed > best[1]:
+            best = (name, parsed)
+    return best
 
 
 def _check_for_update() -> None:
@@ -70,11 +104,18 @@ def _check_for_update() -> None:
             tags = json.loads(resp.read())
         if not tags:
             return
-        latest = tags[0]["name"].lstrip("v")
-        current = _VERSION.lstrip("v")
-        if latest != current:
+        latest_stable = _latest_stable_tag(tags)
+        if latest_stable is None:
+            return
+
+        current = _parse_release_prefix(_VERSION)
+        if current is None:
+            return
+
+        latest_tag_name, latest = latest_stable
+        if latest > current:
             print(
-                f"\nNOTICE: A newer version of pd-ocr is available ({tags[0]['name']}, "
+                f"\nNOTICE: A newer version of pd-ocr is available ({latest_tag_name}, "
                 f"you have {_VERSION}).\n"
                 f"  To upgrade, run:\n"
                 f"    curl -sSL {_INSTALL_URL} | sh\n",
@@ -90,6 +131,28 @@ IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 DEFAULT_HF_REPO = "CT2534/pd-ocr-models"
 DEFAULT_DET_FILENAME = "detection/pd-all-detection-model-finetuned.pt"
 DEFAULT_RECO_FILENAME = "recognition/pd-all-recognition-model-finetuned.pt"
+
+
+@contextlib.contextmanager
+def _suppress_hf_unauth_warning():
+    """Suppress only HF Hub's unauthenticated advisory warning.
+
+    Public model downloads intentionally support anonymous access, so this
+    warning is noisy for normal users. Other HF warnings should still surface.
+    """
+
+    class _HFUnauthWarningFilter(logging.Filter):
+        def filter(self, record: logging.LogRecord) -> bool:
+            msg = record.getMessage().lower()
+            return not ("unauthenticated requests" in msg and "hf hub" in msg and "hf_token" in msg)
+
+    logger = logging.getLogger("huggingface_hub.utils._http")
+    filt = _HFUnauthWarningFilter()
+    logger.addFilter(filt)
+    try:
+        yield
+    finally:
+        logger.removeFilter(filt)
 
 
 def _hf_download(repo_id: str, filename: str, revision: str | None) -> Path:
@@ -114,11 +177,12 @@ def _hf_download(repo_id: str, filename: str, revision: str | None) -> Path:
     if not already_cached:
         print(f"Downloading {filename} from {repo_id} (revision={revision or 'latest'})...")
 
-    local_path = hf_hub_download(
-        repo_id=repo_id,
-        filename=filename,
-        revision=revision,
-    )
+    with _suppress_hf_unauth_warning():
+        local_path = hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            revision=revision,
+        )
     # Also download sidecar files if they exist; only swallow 404 errors
     try:
         from huggingface_hub.utils import EntryNotFoundError as _HFNotFound
@@ -128,7 +192,8 @@ def _hf_download(repo_id: str, filename: str, revision: str | None) -> Path:
     for ext in (".arch", ".vocab"):
         sidecar = filename.rsplit(".", 1)[0] + ext
         try:
-            hf_hub_download(repo_id=repo_id, filename=sidecar, revision=revision)
+            with _suppress_hf_unauth_warning():
+                hf_hub_download(repo_id=repo_id, filename=sidecar, revision=revision)
         except _HFNotFound:
             pass  # Sidecar not present in repo
     return Path(local_path)
