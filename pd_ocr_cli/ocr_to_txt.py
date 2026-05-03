@@ -2,33 +2,89 @@
 
 Usage
 -----
-Install as a uv tool (adds 'pd-ocr' to your PATH):
+Install and run (models download automatically):
     uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
-    pd-ocr --hf-repo CT2534/pd-ocr-models page.png
+    pd-ocr page.png
 
 Run directly without installing:
-    uvx --from git+https://github.com/ConcaveTrillion/pd-ocr-cli pd-ocr \\
-        --hf-repo CT2534/pd-ocr-models page.png
+    uvx --from git+https://github.com/ConcaveTrillion/pd-ocr-cli pd-ocr page.png
 
-With local model files:
-    pd-ocr --detection model-det.pt --recognition model-reco.pt image.png
+Multiple images:
+    pd-ocr page1.png page2.png page3.png
 
-Model source (pick one)
------------------------
---hf-repo REPO_ID           Download latest models from Hugging Face Hub.
-                             e.g. --hf-repo CT2534/pd-ocr-models
---hf-repo REPO_ID \\
-  --model-version TAG        Pin to a specific HF tag/revision.
-                             e.g. --model-version v1.0
---detection / --recognition  Use local .pt files directly.
+Process a whole directory:
+    pd-ocr images/
+
+Process a directory tree recursively:
+    pd-ocr --recursive images/ -o output/
+
+Write output to a specific directory (mirrors input structure for directories):
+    pd-ocr -o output/ page.png
+
+Also save the reorganized OCR document as JSON alongside the .txt:
+    pd-ocr --save-json page.png
+
+Options
+-------
+--model-version TAG          Pin to a specific model version/tag.
+--hf-repo REPO_ID            Use a different Hugging Face repo.
+--detection / --recognition  Use local .pt files instead of downloading.
+--recursive / -r / -R        Recurse into subdirectories.
 
 Downloaded models are cached in ~/.cache/huggingface/hub and reused on
 subsequent runs.
 """
 
 import argparse
+import os
 import sys
+import threading
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
+
+try:
+    _VERSION = _pkg_version("pd-ocr-cli")
+except PackageNotFoundError:
+    _VERSION = "unknown"
+
+_GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
+_INSTALL_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/install.sh"
+
+
+def _check_for_update() -> None:
+    """Print a notice (to stderr) if a newer release tag is available on GitHub.
+
+    Runs in a background thread — never blocks startup.
+    Silently suppressed on any network or parse error.
+    """
+    if _VERSION == "unknown":
+        return
+    try:
+        import json
+        import urllib.request
+
+        url = f"https://api.github.com/repos/{_GITHUB_REPO}/tags"
+        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            tags = json.loads(resp.read())
+        if not tags:
+            return
+        latest = tags[0]["name"].lstrip("v")
+        current = _VERSION.lstrip("v")
+        if latest != current:
+            print(
+                f"\nNOTICE: A newer version of pd-ocr is available ({tags[0]['name']}, "
+                f"you have {_VERSION}).\n"
+                f"  To upgrade, run:\n"
+                f"    curl -sSL {_INSTALL_URL} | sh\n",
+                file=sys.stderr,
+            )
+    except Exception:
+        pass  # Version check is best-effort
+
+
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 
 DEFAULT_HF_REPO = "CT2534/pd-ocr-models"
@@ -47,19 +103,34 @@ def _hf_download(repo_id: str, filename: str, revision: str | None) -> Path:
         )
         sys.exit(1)
 
-    print(f"Downloading {filename} from {repo_id} (revision={revision or 'latest'})...")
+    try:
+        from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
+
+        cached = try_to_load_from_cache(repo_id=repo_id, filename=filename, revision=revision)
+        already_cached = cached is not None and cached is not _CACHED_NO_EXIST
+    except Exception:
+        already_cached = False
+
+    if not already_cached:
+        print(f"Downloading {filename} from {repo_id} (revision={revision or 'latest'})...")
+
     local_path = hf_hub_download(
         repo_id=repo_id,
         filename=filename,
         revision=revision,
     )
-    # Also download sidecar files if they exist
+    # Also download sidecar files if they exist; only swallow 404 errors
+    try:
+        from huggingface_hub.utils import EntryNotFoundError as _HFNotFound
+    except ImportError:
+        _HFNotFound = Exception  # older hub versions: treat all as optional
+
     for ext in (".arch", ".vocab"):
         sidecar = filename.rsplit(".", 1)[0] + ext
         try:
             hf_hub_download(repo_id=repo_id, filename=sidecar, revision=revision)
-        except Exception:
-            pass  # Sidecars are optional
+        except _HFNotFound:
+            pass  # Sidecar not present in repo
     return Path(local_path)
 
 
@@ -67,50 +138,87 @@ def parse_args():
     p = argparse.ArgumentParser(
         description="OCR images to .txt using fine-tuned detection + recognition models."
     )
+    p.add_argument("--version", action="version", version=f"%(prog)s {_VERSION}")
 
     src = p.add_argument_group("model source (use --hf-repo OR --detection/--recognition)")
     src.add_argument(
-        "--hf-repo", metavar="REPO_ID", default=None,
-        help=f"Hugging Face repo to download models from (e.g. {DEFAULT_HF_REPO})."
+        "--hf-repo",
+        metavar="REPO_ID",
+        default=DEFAULT_HF_REPO,
+        help=f"Hugging Face repo to download models from (default: {DEFAULT_HF_REPO}).",
     )
     src.add_argument(
-        "--model-version", metavar="TAG", default=None,
-        help="HF repo revision/tag to use (default: latest). Requires --hf-repo."
+        "--model-version",
+        metavar="TAG",
+        default=None,
+        help="HF repo revision/tag to use (default: latest). Requires --hf-repo.",
     )
     src.add_argument(
-        "--det-filename", metavar="PATH", default=DEFAULT_DET_FILENAME,
-        help=f"Filename within the HF repo for the detection model (default: {DEFAULT_DET_FILENAME})."
+        "--det-filename",
+        metavar="PATH",
+        default=DEFAULT_DET_FILENAME,
+        help=f"Filename within the HF repo for the detection model (default: {DEFAULT_DET_FILENAME}).",
     )
     src.add_argument(
-        "--reco-filename", metavar="PATH", default=DEFAULT_RECO_FILENAME,
-        help=f"Filename within the HF repo for the recognition model (default: {DEFAULT_RECO_FILENAME})."
+        "--reco-filename",
+        metavar="PATH",
+        default=DEFAULT_RECO_FILENAME,
+        help=f"Filename within the HF repo for the recognition model (default: {DEFAULT_RECO_FILENAME}).",
     )
     src.add_argument(
-        "--detection", "-d", metavar="PT_FILE", default=None,
-        help="Path to a local detection .pt model file."
+        "--detection",
+        "-d",
+        metavar="PT_FILE",
+        default=None,
+        help="Path to a local detection .pt model file.",
     )
     src.add_argument(
-        "--recognition", "-r", metavar="PT_FILE", default=None,
-        help="Path to a local recognition .pt model file."
+        "--recognition",
+        "-g",
+        metavar="PT_FILE",
+        default=None,
+        help="Path to a local recognition .pt model file.",
     )
 
     p.add_argument(
-        "--output-dir", "-o", metavar="DIR", default=None,
-        help="Directory to write .txt files into (default: same directory as each image)."
+        "--output-dir",
+        "-o",
+        metavar="DIR",
+        default=None,
+        help="Directory to write .txt files into (default: same directory as each image).",
     )
     p.add_argument(
-        "images", nargs="+", metavar="IMAGE",
-        help="One or more image files to process."
+        "--save-json",
+        action="store_true",
+        default=False,
+        help="Also save the reorganized OCR document as a .json file alongside the .txt.",
+    )
+    p.add_argument(
+        "--recursive",
+        "-r",
+        "-R",
+        action="store_true",
+        default=False,
+        help="Recurse into subdirectories when a directory is given as input.",
+    )
+    p.add_argument(
+        "inputs",
+        nargs="+",
+        metavar="IMAGE_OR_DIR",
+        help="One or more image files or directories to process.",
     )
     return p.parse_args()
 
 
 def resolve_model_paths(args) -> tuple[Path, Path]:
-    """Return (det_path, reco_path) from either HF Hub or local args."""
-    if args.hf_repo:
-        det_path = _hf_download(args.hf_repo, args.det_filename, args.model_version)
-        reco_path = _hf_download(args.hf_repo, args.reco_filename, args.model_version)
-        return det_path, reco_path
+    """Return (det_path, reco_path) from either local args or HF Hub."""
+    if bool(args.detection) != bool(args.recognition):
+        which = "--detection" if args.detection else "--recognition"
+        print(
+            f"ERROR: {which} requires its counterpart. Provide both --detection and --recognition.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if args.detection and args.recognition:
         det_path = Path(args.detection)
@@ -123,21 +231,55 @@ def resolve_model_paths(args) -> tuple[Path, Path]:
             sys.exit(1)
         return det_path, reco_path
 
-    print(
-        "ERROR: provide either --hf-repo or both --detection and --recognition.",
-        file=sys.stderr,
+    det_path = _hf_download(args.hf_repo, args.det_filename, args.model_version)
+    reco_path = _hf_download(args.hf_repo, args.reco_filename, args.model_version)
+    return det_path, reco_path
+
+
+def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
+    """Expand files and directories into a flat list of image paths."""
+    images = []
+    for inp in inputs:
+        p = Path(inp)
+        if p.is_file():
+            if p.suffix.lower() in IMAGE_SUFFIXES:
+                images.append(p)
+            else:
+                print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)
+        elif p.is_dir():
+            pattern = "**/*" if recursive else "*"
+            for child in sorted(p.glob(pattern)):
+                if child.is_file() and child.suffix.lower() in IMAGE_SUFFIXES:
+                    images.append(child)
+        else:
+            print(f"WARNING: skipping missing path: {p}", file=sys.stderr)
+    return images
+
+
+def describe_model_selection(args, det_path: Path, reco_path: Path) -> str:
+    """Return a human-readable description of the model artifacts in use."""
+    if args.detection and args.recognition:
+        return f"Using local models:\n  detection: {det_path}\n  recognition: {reco_path}"
+
+    revision = args.model_version or "latest"
+    return (
+        f"Using models from {args.hf_repo} (revision={revision}):\n"
+        f"  detection: {args.det_filename}\n"
+        f"  recognition: {args.reco_filename}"
     )
-    sys.exit(1)
 
 
 def main():
     args = parse_args()
 
+    # Fire version check in background — result printed before first blocking work
+    _update_thread = threading.Thread(target=_check_for_update, daemon=True)
+    _update_thread.start()
+
     det_path, reco_path = resolve_model_paths(args)
+    print(describe_model_selection(args, det_path, reco_path))
 
     output_dir = Path(args.output_dir) if args.output_dir else None
-    if output_dir:
-        output_dir.mkdir(parents=True, exist_ok=True)
 
     try:
         from pd_book_tools.ocr.doctr_support import get_finetuned_torch_doctr_predictor
@@ -154,26 +296,65 @@ def main():
 
     from pd_book_tools.ocr.document import Document
 
-    for img_arg in args.images:
-        img_path = Path(img_arg)
-        if not img_path.is_file():
-            print(f"WARNING: skipping missing file: {img_path}", file=sys.stderr)
-            continue
+    images = collect_images(args.inputs, args.recursive)
+    if not images:
+        print("ERROR: no valid image files found.", file=sys.stderr)
+        sys.exit(1)
 
-        dest_dir = output_dir if output_dir else img_path.parent
+    # Determine a common input root for directory mirroring (only when inputs
+    # include at least one directory and an output_dir is set).
+    input_dirs = [Path(i) for i in args.inputs if Path(i).is_dir()]
+    if input_dirs and output_dir:
+        mirror_root = Path(os.path.commonpath([d.resolve() for d in input_dirs]))
+    else:
+        mirror_root = None
+
+    errors = 0
+    for img_path in images:
+        if output_dir and mirror_root:
+            try:
+                rel = img_path.resolve().relative_to(mirror_root)
+                dest_dir = output_dir / rel.parent
+            except ValueError:
+                dest_dir = output_dir
+        elif output_dir:
+            dest_dir = output_dir
+        else:
+            dest_dir = img_path.parent
+        dest_dir.mkdir(parents=True, exist_ok=True)
+
         out_path = dest_dir / img_path.with_suffix(".txt").name
+        json_path = dest_dir / img_path.with_suffix(".json").name
 
         print(f"Processing {img_path} ...", end=" ", flush=True)
         try:
             doc = Document.from_image_ocr_via_doctr(
                 img_path, source_identifier=img_path.name, predictor=predictor
             )
-            text = doc.pages[0].text if doc.pages else ""
-            out_path.write_text(text, encoding="utf-8")
-            print(f"-> {out_path}")
+            page = doc.pages[0] if doc.pages else None
+            if page is None:
+                print("WARNING: no pages in result", file=sys.stderr)
+                continue
+            if callable(getattr(page, "reorganize_page", None)):
+                page.reorganize_page()
+            text = page.text
+            if not text:
+                print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
+            out_path.write_text(text or "", encoding="utf-8")
+            if args.save_json:
+                doc.to_json_file(json_path)
+                print(f"-> {out_path}, {json_path}")
+            else:
+                print(f"-> {out_path}")
         except Exception as e:
-            print(f"ERROR: {e}", file=sys.stderr)
+            print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
+            errors += 1
 
+    if errors:
+        print(f"Done ({errors} error(s)).")
+        _update_thread.join(timeout=3)
+        sys.exit(1)
+    _update_thread.join(timeout=3)
     print("Done.")
 
 
