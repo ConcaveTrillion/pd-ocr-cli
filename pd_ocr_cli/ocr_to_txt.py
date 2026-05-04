@@ -32,200 +32,73 @@ Options
 --recursive / -r / -R        Recurse into subdirectories.
 --straight-quotes            Convert curly quotes to straight ASCII quotes.
 --em-dash-to-double-hyphen   Convert em dash to double hyphen (--).
+--no-update-check            Skip the background GitHub-tag upgrade-notice request.
+                             Also: PD_OCR_NO_UPDATE_CHECK=1 env var.
+--no-reorg                   Skip Page.reorganize_page() (raw OCR output).
+--save-pre-reorg-json        With --save-json: also write *.pre-reorg.json.
+--validate-reorg             Warn if reorganize_page drops any OCR words.
+--layout-model {none,contour,pp-doclayout-plus-l}
+                             Layout detector backend (default pp-doclayout-plus-l).
+--layout-checkpoint PATH     Fine-tuned PP-DocLayout checkpoint (path or HF repo).
+--layout-confidence THRESH   Region confidence threshold (default 0.5).
+--extract-illustrations      Crop figure/decoration/table regions to i_<stem>_<n>.jpg.
+--layout-debug[-dir]         Write layout debug text alongside outputs.
 
 Downloaded models are cached in ~/.cache/huggingface/hub and reused on
 subsequent runs.
 """
 
 import argparse
-import contextlib
-import logging
 import os
-import re
 import sys
 import threading
-from importlib.metadata import PackageNotFoundError
-from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-try:
-    _VERSION = _pkg_version("pd-ocr-cli")
-except PackageNotFoundError:
-    _VERSION = "unknown"
-
-_GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
-_INSTALL_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/install.sh"
-_STABLE_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
-_RELEASE_PREFIX_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
-
-
-def _parse_stable_tag(version: str) -> tuple[int, int, int] | None:
-    """Parse strict stable tags like v1.2.3 or 1.2.3."""
-    match = _STABLE_TAG_RE.match(version.strip())
-    if not match:
-        return None
-    return tuple(int(part) for part in match.groups())
-
-
-def _parse_release_prefix(version: str) -> tuple[int, int, int] | None:
-    """Parse release prefix from versions like 1.2.3.dev1+abc."""
-    match = _RELEASE_PREFIX_RE.match(version.strip())
-    if not match:
-        return None
-    return tuple(int(part) for part in match.groups())
-
-
-def _latest_stable_tag(tags: list[dict]) -> tuple[str, tuple[int, int, int]] | None:
-    """Return (tag_name, parsed_version) for the highest stable semver tag."""
-    best: tuple[str, tuple[int, int, int]] | None = None
-    for tag in tags:
-        name = tag.get("name", "")
-        parsed = _parse_stable_tag(name)
-        if parsed is None:
-            continue
-        if best is None or parsed > best[1]:
-            best = (name, parsed)
-    return best
-
-
-def _check_for_update() -> None:
-    """Print a notice (to stderr) if a newer release tag is available on GitHub.
-
-    Runs in a background thread — never blocks startup.
-    Silently suppressed on any network or parse error.
-    """
-    if _VERSION == "unknown":
-        return
-    try:
-        import json
-        import urllib.request
-
-        url = f"https://api.github.com/repos/{_GITHUB_REPO}/tags"
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
-        with urllib.request.urlopen(req, timeout=3) as resp:
-            tags = json.loads(resp.read())
-        if not tags:
-            return
-        latest_stable = _latest_stable_tag(tags)
-        if latest_stable is None:
-            return
-
-        current = _parse_release_prefix(_VERSION)
-        if current is None:
-            return
-
-        latest_tag_name, latest = latest_stable
-        if latest > current:
-            print(
-                f"\nNOTICE: A newer version of pd-ocr is available ({latest_tag_name}, "
-                f"you have {_VERSION}).\n"
-                f"  To upgrade, run:\n"
-                f"    curl -sSL {_INSTALL_URL} | sh\n",
-                file=sys.stderr,
-            )
-    except Exception:
-        pass  # Version check is best-effort
-
+from pd_ocr_cli._hf_models import (
+    DEFAULT_DET_FILENAME,
+    DEFAULT_HF_REPO,
+    DEFAULT_RECO_FILENAME,
+    det_source_descriptor,
+    prefetch_layout_files,
+    reco_source_descriptor,
+    resolve_layout_source,
+    resolve_ocr_models,
+    silence_transformers_load_chatter,
+)
+from pd_ocr_cli._text_normalize import (
+    normalize_curly_quotes as _normalize_curly_quotes,
+)
+from pd_ocr_cli._text_normalize import (
+    normalize_em_dash as _normalize_em_dash,
+)
+from pd_ocr_cli._update_check import VERSION as _VERSION
+from pd_ocr_cli._update_check import check_for_update as _check_for_update
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 
-DEFAULT_HF_REPO = "CT2534/pd-ocr-models"
-DEFAULT_DET_FILENAME = "detection/pd-all-detection-model-finetuned.pt"
-DEFAULT_RECO_FILENAME = "recognition/pd-all-recognition-model-finetuned.pt"
-_CURLY_TO_STRAIGHT_TRANSLATION = str.maketrans(
-    {
-        "\u2018": "'",  # left single quote
-        "\u2019": "'",  # right single quote / apostrophe
-        "\u201a": "'",  # single low-9 quote
-        "\u201b": "'",  # single high-reversed-9 quote
-        "\u201c": '"',  # left double quote
-        "\u201d": '"',  # right double quote
-        "\u201e": '"',  # double low-9 quote
-        "\u201f": '"',  # double high-reversed-9 quote
-    }
-)
-
-
-def _normalize_curly_quotes(text: str) -> str:
-    """Convert common curly quote variants to straight ASCII quotes."""
-    return text.translate(_CURLY_TO_STRAIGHT_TRANSLATION)
-
-
-def _normalize_em_dash(text: str) -> str:
-    """Convert em dash to ASCII double hyphen."""
-    return text.replace("\u2014", "--")
-
-
-@contextlib.contextmanager
-def _suppress_hf_unauth_warning():
-    """Suppress only HF Hub's unauthenticated advisory warning.
-
-    Public model downloads intentionally support anonymous access, so this
-    warning is noisy for normal users. Other HF warnings should still surface.
-    """
-
-    class _HFUnauthWarningFilter(logging.Filter):
-        def filter(self, record: logging.LogRecord) -> bool:
-            msg = record.getMessage().lower()
-            return not ("unauthenticated requests" in msg and "hf hub" in msg and "hf_token" in msg)
-
-    logger = logging.getLogger("huggingface_hub.utils._http")
-    filt = _HFUnauthWarningFilter()
-    logger.addFilter(filt)
+def _detect_torch_device() -> str:
+    """Pick the best available torch device for the layout model."""
     try:
-        yield
-    finally:
-        logger.removeFilter(filt)
-
-
-def _hf_download(repo_id: str, filename: str, revision: str | None) -> Path:
-    try:
-        from huggingface_hub import hf_hub_download
+        import torch
     except ImportError:
-        print(
-            "ERROR: huggingface_hub is required for --hf-repo. "
-            "Install it with: pip install huggingface_hub",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+        return "cpu"
+    if torch.cuda.is_available():
+        return "cuda"
+    mps = getattr(torch.backends, "mps", None)
+    if mps is not None and getattr(mps, "is_available", lambda: False)():
+        return "mps"
+    return "cpu"
 
-    try:
-        from huggingface_hub import _CACHED_NO_EXIST, try_to_load_from_cache
 
-        cached = try_to_load_from_cache(repo_id=repo_id, filename=filename, revision=revision)
-        already_cached = cached is not None and cached is not _CACHED_NO_EXIST
-    except Exception:
-        already_cached = False
-
-    if not already_cached:
-        print(f"Downloading {filename} from {repo_id} (revision={revision or 'latest'})...")
-
-    with _suppress_hf_unauth_warning():
-        local_path = hf_hub_download(
-            repo_id=repo_id,
-            filename=filename,
-            revision=revision,
-        )
-    # Also download sidecar files if they exist; only swallow 404 errors
-    try:
-        from huggingface_hub.utils import EntryNotFoundError as _HFNotFound
-    except ImportError:
-        _HFNotFound = Exception  # older hub versions: treat all as optional
-
-    for ext in (".arch", ".vocab"):
-        sidecar = filename.rsplit(".", 1)[0] + ext
-        try:
-            with _suppress_hf_unauth_warning():
-                hf_hub_download(repo_id=repo_id, filename=sidecar, revision=revision)
-        except _HFNotFound:
-            pass  # Sidecar not present in repo
-    return Path(local_path)
+def _env_truthy(name: str) -> bool:
+    """True if the env var is set to a truthy value (1/true/yes/on, case-insensitive)."""
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
 
 
 def parse_args():
     p = argparse.ArgumentParser(
-        description="OCR images toh .txt using fine-tuned detection + recognition models."
+        description="OCR images to .txt using fine-tuned detection + recognition models."
     )
     p.add_argument("--version", action="version", version=f"%(prog)s {_VERSION}")
 
@@ -283,6 +156,37 @@ def parse_args():
         help="Also save the reorganized OCR document as a .json file alongside the .txt.",
     )
     p.add_argument(
+        "--no-reorg",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip Page.reorganize_page(). Emits raw OCR output (the .txt and "
+            ".json reflect the OCR engine's structure with no header/footer "
+            "extraction, column splitting, or paragraph reordering)."
+        ),
+    )
+    p.add_argument(
+        "--save-pre-reorg-json",
+        action="store_true",
+        default=False,
+        help=(
+            "When --save-json is set and reorganize is enabled, also write a "
+            "<image>.pre-reorg.json snapshot of the page before "
+            "reorganize_page() runs. Useful when comparing pipeline output "
+            "against raw OCR."
+        ),
+    )
+    p.add_argument(
+        "--validate-reorg",
+        action="store_true",
+        default=False,
+        help=(
+            "After reorganize_page(), assert that every OCR word present "
+            "before reorganize is still present after (by text + bbox). "
+            "Mismatches print a WARNING; the .txt/.json are still written."
+        ),
+    )
+    p.add_argument(
         "--recursive",
         "-r",
         "-R",
@@ -305,38 +209,79 @@ def parse_args():
         help="Convert em dash in OCR text output to double hyphen (--).",
     )
     p.add_argument(
+        "--no-update-check",
+        action="store_true",
+        default=False,
+        help=(
+            "Skip the background GitHub-tag check that prints an upgrade "
+            "notice when a newer release is available. Use to avoid the "
+            "outbound api.github.com request entirely (e.g. offline runs). "
+            "Can also be set via the PD_OCR_NO_UPDATE_CHECK=1 env var."
+        ),
+    )
+    p.add_argument(
+        "--layout-model",
+        default="pp-doclayout-plus-l",
+        choices=["none", "contour", "pp-doclayout-plus-l"],
+        help=(
+            "Layout-detector backend. Layout detection always runs (its "
+            "output is fed into Page.reorganize_page() as a hint so captions "
+            "get wrapped, high-confidence headers/footers get stripped, "
+            "and tables/figures get tagged). Pass `--layout-model none` to "
+            "skip layout detection. Default: pp-doclayout-plus-l."
+        ),
+    )
+    p.add_argument(
+        "--layout-checkpoint",
+        default=None,
+        metavar="PATH_OR_REPO",
+        help=(
+            "Path or HF repo for a fine-tuned layout checkpoint. Overrides "
+            "the default PP-DocLayout_plus-L weights."
+        ),
+    )
+    p.add_argument(
+        "--layout-confidence",
+        type=float,
+        default=0.5,
+        metavar="THRESHOLD",
+        help="Confidence threshold for layout detections (0..1). Default 0.5.",
+    )
+    p.add_argument(
+        "--extract-illustrations",
+        action="store_true",
+        default=False,
+        help=(
+            "Write i_<stem>_<n>.jpg crops for figure / decoration / table "
+            "regions alongside the .txt. Requires a layout model "
+            "(error if combined with --layout-model none)."
+        ),
+    )
+    p.add_argument(
+        "--layout-debug",
+        action="store_true",
+        default=False,
+        help=(
+            "Write step-by-step layout debug text files (X-axis 3-group lines, "
+            "squeezed side-flow diagnostics)."
+        ),
+    )
+    p.add_argument(
+        "--layout-debug-dir",
+        metavar="DIR",
+        default=None,
+        help=(
+            "Directory for layout debug text files. "
+            "Defaults to each image output directory when --layout-debug is enabled."
+        ),
+    )
+    p.add_argument(
         "inputs",
         nargs="+",
         metavar="IMAGE_OR_DIR",
         help="One or more image files or directories to process.",
     )
     return p.parse_args()
-
-
-def resolve_model_paths(args) -> tuple[Path, Path]:
-    """Return (det_path, reco_path) from either local args or HF Hub."""
-    if bool(args.detection) != bool(args.recognition):
-        which = "--detection" if args.detection else "--recognition"
-        print(
-            f"ERROR: {which} requires its counterpart. Provide both --detection and --recognition.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    if args.detection and args.recognition:
-        det_path = Path(args.detection)
-        reco_path = Path(args.recognition)
-        if not det_path.is_file():
-            print(f"ERROR: detection model not found: {det_path}", file=sys.stderr)
-            sys.exit(1)
-        if not reco_path.is_file():
-            print(f"ERROR: recognition model not found: {reco_path}", file=sys.stderr)
-            sys.exit(1)
-        return det_path, reco_path
-
-    det_path = _hf_download(args.hf_repo, args.det_filename, args.model_version)
-    reco_path = _hf_download(args.hf_repo, args.reco_filename, args.model_version)
-    return det_path, reco_path
 
 
 def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
@@ -359,28 +304,38 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
     return images
 
 
-def describe_model_selection(args, det_path: Path, reco_path: Path) -> str:
-    """Return a human-readable description of the model artifacts in use."""
-    if args.detection and args.recognition:
-        return f"Using local models:\n  detection: {det_path}\n  recognition: {reco_path}"
-
-    revision = args.model_version or "latest"
-    return (
-        f"Using models from {args.hf_repo} (revision={revision}):\n"
-        f"  detection: {args.det_filename}\n"
-        f"  recognition: {args.reco_filename}"
-    )
-
-
 def main():
     args = parse_args()
 
-    # Fire version check in background — result printed before first blocking work
-    _update_thread = threading.Thread(target=_check_for_update, daemon=True)
-    _update_thread.start()
+    # Layout detection is always-on unless the user explicitly opts out
+    # with `--layout-model none`. Cropping illustration regions needs a
+    # real model — refuse the combination rather than silently producing
+    # zero crops.
+    layout_enabled = args.layout_model != "none"
+    if args.extract_illustrations and not layout_enabled:
+        print(
+            "ERROR: --extract-illustrations requires a layout model; drop --layout-model none.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
-    det_path, reco_path = resolve_model_paths(args)
-    print(describe_model_selection(args, det_path, reco_path))
+    # Fire version check in background — result printed before first blocking work.
+    # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
+    _update_thread: threading.Thread | None = None
+    update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")
+    if not update_check_disabled:
+        _update_thread = threading.Thread(target=_check_for_update, daemon=True)
+        _update_thread.start()
+
+    det_path, reco_path = resolve_ocr_models(args)
+
+    layout_repo: str | None = None
+    layout_revision: str | None = None
+    layout_descriptor = ""
+    if layout_enabled:
+        layout_repo, layout_revision, layout_descriptor = resolve_layout_source(args)
+        if layout_repo is not None:
+            prefetch_layout_files(layout_repo, layout_revision)
 
     output_dir = Path(args.output_dir) if args.output_dir else None
 
@@ -390,12 +345,42 @@ def main():
         print(f"ERROR: pd_book_tools not importable: {e}", file=sys.stderr)
         sys.exit(1)
 
-    print("Loading models...")
+    device = _detect_torch_device()
+
     predictor = get_finetuned_torch_doctr_predictor(det_path, reco_path)
     if predictor is None:
         print("ERROR: failed to load models.", file=sys.stderr)
         sys.exit(1)
-    print("Models loaded.")
+    print(f"Detection model loaded:   {det_source_descriptor(args, det_path)} (device={device})")
+    print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")
+
+    layout_detector = None
+    if layout_enabled:
+        silence_transformers_load_chatter()
+        try:
+            from pd_book_tools.layout import get_detector
+
+            layout_detector = get_detector(
+                args.layout_model,
+                device=device,
+                confidence=args.layout_confidence,
+                checkpoint_path=args.layout_checkpoint,
+            )
+        except (ImportError, ValueError) as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Layout model loaded:      {layout_descriptor} (device={device})")
+    else:
+        print("Layout detection disabled (--layout-model none).")
+
+    cv2 = None
+    crop_types: set = set()
+    if args.extract_illustrations:
+        import cv2 as _cv2
+        from pd_book_tools.layout.types import RegionType
+
+        cv2 = _cv2
+        crop_types = {RegionType.figure, RegionType.decoration, RegionType.table}
 
     from pd_book_tools.ocr.document import Document
 
@@ -430,6 +415,14 @@ def main():
         json_path = dest_dir / img_path.with_suffix(".json").name
 
         print(f"Processing {img_path} ...", end=" ", flush=True)
+        debug_file: Path | None = None
+        if args.layout_debug:
+            debug_dir = Path(args.layout_debug_dir) if args.layout_debug_dir else dest_dir
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            debug_file = debug_dir / f"{img_path.stem}.layout-debug.txt"
+            os.environ["PD_OCR_LAYOUT_DEBUG"] = "1"
+            os.environ["PD_OCR_LAYOUT_DEBUG_FILE"] = str(debug_file)
+
         try:
             doc = Document.from_image_ocr_via_doctr(
                 img_path, source_identifier=img_path.name, predictor=predictor
@@ -438,8 +431,53 @@ def main():
             if page is None:
                 print("WARNING: no pages in result", file=sys.stderr)
                 continue
-            if callable(getattr(page, "reorganize_page", None)):
-                page.reorganize_page()
+
+            page_layout = None
+            if layout_detector is not None:
+                page_layout = layout_detector.detect(img_path)
+                print(
+                    f"  layout: {len(page_layout.regions)} regions ({page_layout.inference_ms} ms)",
+                    flush=True,
+                )
+
+            pre_reorg_json_path = json_path.with_suffix(".pre-reorg.json")
+
+            # Snapshot pre-reorg state when validating or saving the pre-reorg
+            # JSON. Capturing the word list now (before reorganize_page mutates
+            # the block tree) is the only way to diff against the post state.
+            do_reorg = not args.no_reorg and callable(getattr(page, "reorganize_page", None))
+            want_pre_reorg_json = do_reorg and args.save_json and args.save_pre_reorg_json
+            pre_reorg_words: list = []
+            if do_reorg and (args.validate_reorg or want_pre_reorg_json):
+                pre_reorg_words = list(page.words)
+                if want_pre_reorg_json:
+                    doc.to_json_file(pre_reorg_json_path)
+
+            if do_reorg:
+                if page_layout is not None:
+                    page.reorganize_page(layout=page_layout)
+                else:
+                    page.reorganize_page()
+
+                if args.validate_reorg:
+                    from pd_book_tools.ocr.reorganize_page_utils import (
+                        validate_word_preservation,
+                    )
+
+                    drops = validate_word_preservation(pre_reorg_words, list(page.words))
+                    if drops:
+                        print(
+                            f"WARNING: reorganize dropped {len(drops)} word(s) in {img_path.name}:",
+                            file=sys.stderr,
+                        )
+                        for line in drops[:20]:
+                            print(f"  {line}", file=sys.stderr)
+                        if len(drops) > 20:
+                            print(
+                                f"  ... ({len(drops) - 20} more)",
+                                file=sys.stderr,
+                            )
+
             text = page.text
             if args.straight_quotes and text:
                 text = _normalize_curly_quotes(text)
@@ -448,20 +486,58 @@ def main():
             if not text:
                 print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
             out_path.write_text(text or "", encoding="utf-8")
+
+            extra_paths: list[str] = []
+            if want_pre_reorg_json:
+                extra_paths.append(str(pre_reorg_json_path))
             if args.save_json:
                 doc.to_json_file(json_path)
-                print(f"-> {out_path}, {json_path}")
+                extra_paths.append(str(json_path))
+            if args.layout_debug and debug_file is not None:
+                extra_paths.append(f"layout-debug: {debug_file}")
+
+            if args.extract_illustrations and page_layout is not None and cv2 is not None:
+                source_img = cv2.imread(str(img_path))
+                if source_img is None:
+                    print(
+                        f"WARNING: could not re-read {img_path} for illustration crops",
+                        file=sys.stderr,
+                    )
+                else:
+                    crop_idx = 0
+                    for region in page_layout.regions:
+                        if region.type not in crop_types:
+                            continue
+                        if region.confidence < args.layout_confidence:
+                            continue
+                        crop_idx += 1
+                        crop = source_img[
+                            max(0, region.T) : max(0, region.B),
+                            max(0, region.L) : max(0, region.R),
+                        ]
+                        if crop.size == 0:
+                            continue
+                        crop_path = dest_dir / f"i_{img_path.stem}_{crop_idx:02d}.jpg"
+                        cv2.imwrite(str(crop_path), crop)
+                        extra_paths.append(str(crop_path))
+
+            tag = " (no-reorg)" if args.no_reorg else ""
+            if extra_paths:
+                print(f"-> {out_path}, {', '.join(extra_paths)}{tag}")
             else:
-                print(f"-> {out_path}")
+                print(f"-> {out_path}{tag}")
         except Exception as e:
             print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
             errors += 1
+        finally:
+            os.environ.pop("PD_OCR_LAYOUT_DEBUG", None)
+            os.environ.pop("PD_OCR_LAYOUT_DEBUG_FILE", None)
 
+    if _update_thread is not None:
+        _update_thread.join(timeout=3)
     if errors:
         print(f"Done ({errors} error(s)).")
-        _update_thread.join(timeout=3)
         sys.exit(1)
-    _update_thread.join(timeout=3)
     print("Done.")
 
 

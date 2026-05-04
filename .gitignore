@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 dist/
 *.egg-info/
+
+# Local uv source overrides (e.g. pointing pd-book-tools at a local path)
+uv.toml
+Makefile.local

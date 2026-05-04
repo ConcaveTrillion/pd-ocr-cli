@@ -1,61 +1,78 @@
 # pd-ocr-cli
 
-OCR public domain book images to `.txt` files using fine-tuned DocTR detection and recognition models.
-Models are downloaded automatically on first run — no setup required.
+Turn scanned book pages into clean `.txt` files. No setup required —
+just install and point it at an image.
 
-## GPU Setup (Optional — Recommended)
+## What pd-ocr does
 
-GPU acceleration is detected automatically — NVIDIA CUDA and Apple Silicon (MPS) are both supported. Without a GPU, OCR should still work but will be significantly slower on large batches.
+Point it at a page scan (or a folder of them) and it writes a `.txt`
+file next to each image. Two things make the output more useful than
+plain OCR:
 
-**Apple Silicon (M1/M2/M3/M4, macOS only):** No extra setup needed — MPS acceleration should be used automatically. This path is only useful on macOS Apple Silicon systems. *(Note: this has not been tested.)*
+- **Layout-aware reorganization.** Before reading the words, `pd-ocr`
+  looks at the whole page and figures out what each part is — the body
+  text, the figures, the captions underneath them, the running title at
+  the top, the page number at the bottom, any sidenotes in the margin.
+  It uses that map to put the text together in the right order:
+  captions stay with their figures, page numbers and running titles are
+  stripped out, and sidenotes don't get mashed into the paragraphs they
+  sit next to. More in
+  [docs/layout-aware-ocr.md](docs/layout-aware-ocr.md).
+- **Auto-rotation.** If a page was scanned sideways or upside down,
+  `pd-ocr` re-runs the OCR at 90° / 180° / 270° and keeps the
+  orientation that reads best.
 
-Important: NVIDIA CUDA acceleration only works if your computer has an NVIDIA GPU. Installing CUDA alone does not add GPU support on systems without NVIDIA hardware. In practice, this path is mainly useful on Windows/Linux machines with NVIDIA GPUs.
+The first time you run it, it downloads the models it needs
+(roughly 150 MB total). After that it works offline — no account or
+sign-up. For specifics on what the tool downloads and from where, see
+[Technical details](#technical-details) at the bottom.
 
-What GPU acceleration changes in practice:
+---
 
-- Best gains are on large/high-resolution page batches.
-- Small one-off pages may feel similar on CPU because startup/load overhead dominates.
-- GPU mostly speeds up model inference (the expensive OCR step), not file I/O.
+## GPU acceleration (optional)
 
-**NVIDIA GPUs:** First check whether CUDA is already available:
+`pd-ocr` works fine on CPU. Add a GPU and it goes faster — useful
+when you're running through a whole book rather than one page.
 
-```sh
-nvidia-smi
-```
+> ⚠️ **Heads up — disk space.** The NVIDIA path pulls in the CUDA
+> Toolkit and CUDA-flavored PyTorch wheels. Plan on roughly 10 GB of
+> disk between the two. If that's a lot for your machine, CPU mode is
+> a fine starting point. Apple Silicon and CPU users skip all of
+> this. Full numbers are in
+> [Technical details](#gpu-acceleration-mechanics).
 
-The output should show your GPU and a `CUDA Version` in the top-right corner. The install script reads this version to select the correct PyTorch build automatically.
+- **NVIDIA card on Linux or Windows.** Run `nvidia-smi` first; if it
+  shows your GPU and a CUDA version (12.4 or newer), you're set —
+  the install script handles the rest. If `nvidia-smi` shows
+  nothing, install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+  for your OS/driver and try again.
+- **Apple Silicon Mac (M1/M2/M3/M4).** GPU acceleration kicks in
+  automatically. Nothing to install.
+  *(Note: this path is unverified — feedback welcome.)*
+- **No GPU.** Nothing to do. CPU is the default and the tool just
+  works.
 
-If `nvidia-smi` is missing, or no CUDA version is shown, install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) for your OS/driver and run `nvidia-smi` again.
+### When a GPU isn't worth it
 
-`cuXXX` cheat sheet for install commands (CUDA 12.4 or later required):
+For one-off pages, most of the time goes into loading the models, not
+reading the words — CPU feels about the same. The GPU pays off when
+you're processing tens or hundreds of pages in a single run.
 
-- `cu124` = CUDA 12.4
-- `cu130` = CUDA 13.0
+### Troubleshooting
 
-Example: if `nvidia-smi` reports CUDA 12.4, use `cu124`.
+- **`nvidia-smi` not found** — NVIDIA driver / toolkit isn't
+  available in your environment.
+- **Running in Docker / devcontainer** — make sure the container
+  was started with `--gpus all` and the NVIDIA Container Toolkit is
+  configured on the host.
+- **Very slow first run** — that's the one-time model download +
+  init. Later runs use the cache.
+- **GPU still not used** — reinstall and retry; the install script
+  re-detects on each run.
 
-ELI5: what all this installing is for
-
-- `pd-ocr-cli` is the app itself.
-- `CUDA Toolkit` is the NVIDIA "bridge" that lets programs talk to your GPU.
-- CUDA-enabled `PyTorch` wheels are the OCR engine parts compiled to run on that GPU.
-- OCR models are the learned data files downloaded on first run.
-
-If you skip GPU setup, `pd-ocr-cli` still works on CPU; GPU setup is mainly for speed.
-
-NVIDIA GPU dependency size estimate:
-
-- CUDA Toolkit itself is typically a multi-GB install (roughly 2-4 GB download, often 5-12 GB on disk, depending on OS/components).
-- CUDA-enabled PyTorch wheels are also large: expect roughly 1-3 GB of downloads for a fresh GPU install, plus additional disk space after installation.
-
-Use `nvidia-smi` for your CUDA version, or the [PyTorch install selector](https://pytorch.org/get-started/locally/).
-
-Quick troubleshooting:
-
-- `nvidia-smi` not found: NVIDIA driver/toolkit is not available in your current environment.
-- Running in Docker/devcontainer: confirm the container was started with GPU access (`--gpus all`) and NVIDIA Container Toolkit is configured on the host.
-- Very slow first run: model download and initialization happen once; later runs use cache.
-- GPU still not used: reinstall with the matching `cuXXX` extra index and retry.
+For specifics — disk / VRAM budgets, the `cuXXX` PyTorch wheels, what
+the install script actually fetches — see
+[Technical details](#technical-details).
 
 ---
 
@@ -80,7 +97,7 @@ Both scripts detect NVIDIA CUDA automatically and select the correct PyTorch bui
 ## Usage
 
 ```sh
-# OCR a single image (output written alongside the image as .txt)
+# OCR a single image (output written alongside as page.txt)
 pd-ocr page.png
 
 # Multiple images
@@ -90,69 +107,26 @@ pd-ocr page1.png page2.png page3.png
 pd-ocr images/
 
 # Process a directory tree recursively, mirroring structure into output/
-pd-ocr --recursive images/ -o output/
-
-# Short recursive flags are also supported
 pd-ocr -r images/ -o output/
-
-# Write output to a specific directory
-pd-ocr -o output/ page.png
 
 # Also save the reorganized OCR document as JSON
 pd-ocr --save-json page.png
 
-# Convert curly quotes to straight ASCII quotes in OCR output
-pd-ocr --straight-quotes page.png
-
-# Short flag for straight-quote normalization
-pd-ocr -sq page.png
-
-# Convert em dash to double hyphen in OCR output
-pd-ocr --em-dash-to-double-hyphen page.png
-
-# Short flag for em-dash conversion
-pd-ocr -ed page.png
-
-# Check the installed version
+# Print the installed version
 pd-ocr --version
-
-# Pin to a specific model version from Hugging Face
-pd-ocr --model-version v1.2.0 page.png
-
-# Use a custom Hugging Face model repo
-pd-ocr --hf-repo myorg/my-ocr-models page.png
 ```
+
+Full flag reference — quote / em-dash normalization, model pinning,
+layout-detector options, illustration extraction, debug output — in
+[docs/usage.md](docs/usage.md). `pd-ocr --help` lists everything
+authoritatively.
 
 ---
 
-## Manual Install
+## Notes
 
-Requires [uv](https://docs.astral.sh/uv/). To install uv:
-
-```sh
-# Linux / macOS
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-```powershell
-# Windows (PowerShell)
-irm https://astral.sh/uv/install.ps1 | iex
-```
-
-CPU install:
-
-```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
-```
-
-NVIDIA GPU install (replace `cuXXX` with your CUDA version, for example `cu124` or `cu130`; **CUDA 12.4 or later required**):
-
-```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
-    --extra-index-url https://download.pytorch.org/whl/cuXXX
-```
-
-Use `nvidia-smi` for your CUDA version, or the [PyTorch install selector](https://pytorch.org/get-started/locally/). Size estimates are listed in **GPU Setup (Optional — Recommended)** above.
+- `--straight-quotes` / `-sq` converts common curly quote characters to straight ASCII quotes (`'` and `"`) in `.txt` output; prime symbols (for example `′` and `″`) are not converted.
+- `--em-dash-to-double-hyphen` / `-ed` converts em dashes (`—`) to ASCII `--` in `.txt` output.
 
 ---
 
@@ -178,52 +152,140 @@ rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
 
 ---
 
-## Notes
+## Technical details
 
-- Models are downloaded from [CT2534/pd-ocr-models](https://huggingface.co/CT2534/pd-ocr-models) on first run and cached locally (default: `~/.cache/huggingface/hub`, or the path in `$HF_HOME` if set).
-- No Hugging Face account required.
-- Subsequent runs use the cached models with no download (they still need to be loaded in to memory).
-- `--straight-quotes` / `-sq` converts common curly quote characters to straight ASCII quotes (`'` and `"`) in `.txt` output; prime symbols (for example `′` and `″`) are not converted.
-- `--em-dash-to-double-hyphen` / `-ed` converts em dashes (`—`) to ASCII `--` in `.txt` output.
-- OCR powered by [DocTR](https://github.com/mindee/doctr) with fine-tuned detection and recognition models.
+### What's under the hood
+
+- **Text recognition:** [DocTR](https://github.com/mindee/doctr)
+  (detection + recognition), with weights fine-tuned on
+  public-domain book scans.
+- **Layout detection:** [PP-DocLayout_plus-L](https://github.com/PaddlePaddle/PaddleOCR)
+  (RT-DETR-based), Apache-2.0 licensed.
+- **Pipeline glue:** [pd-book-tools](https://github.com/ConcaveTrillion/pd-book-tools)
+  — owns the OCR predictor wrapper, layout adapter, and the
+  `reorganize_page()` step that turns OCR output into reading-order
+  text.
+
+### Network calls the tool makes
+
+`pd-ocr` does not collect telemetry or call home with usage data. It
+makes exactly these outbound requests:
+
+1. **Model downloads** (first run only, then cached):
+   - OCR weights from
+     [`CT2534/pd-ocr-models`](https://huggingface.co/CT2534/pd-ocr-models)
+     on `huggingface.co`.
+   - Layout weights from
+     [`CT2534/PP-DocLayout_plus-L`](https://huggingface.co/CT2534/PP-DocLayout_plus-L)
+     on `huggingface.co`.
+   - No Hugging Face account required.
+   - Cached at `~/.cache/huggingface/hub` by default; override with
+     `$HF_HOME` or `$HF_HUB_CACHE`.
+2. **Version check** (every run, in the background):
+   - `GET https://api.github.com/repos/ConcaveTrillion/pd-ocr-cli/tags`
+   - 3-second timeout; if a newer release tag exists, prints a one-line
+     upgrade notice to stderr.
+   - Best-effort — silently suppressed on any network or parse error,
+     and never blocks startup.
+   - Bypass entirely with `--no-update-check`, or persistently via
+     the `PD_OCR_NO_UPDATE_CHECK=1` env var (e.g. offline runs or
+     locked-down networks).
+
+If you need to run fully offline after the first install, both of
+these are cache-friendly: once models are cached and the update check
+is suppressed (`--no-update-check` or `PD_OCR_NO_UPDATE_CHECK=1`), no
+further network access is required.
+
+### The install script
+
+`install.sh` / `install.ps1` are one-time bootstrap helpers. They run:
+
+- A GitHub API call to resolve the latest release tag.
+- `uv tool install git+...` to fetch the published source from GitHub.
+- PyTorch wheels from `https://download.pytorch.org/whl/...` (with the
+  matching `cuXXX` index when CUDA is detected).
+
+Once installed, `pd-ocr` itself only does the two outbound requests
+listed above.
+
+### Manual install
+
+If you'd rather not pipe `curl | sh`, you can run the install steps
+yourself with [uv](https://docs.astral.sh/uv/).
+
+Install uv first:
+
+```sh
+# Linux / macOS
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://astral.sh/uv/install.ps1 | iex
+```
+
+CPU install:
+
+```sh
+uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
+```
+
+NVIDIA GPU install — replace `cuXXX` with your CUDA version (e.g.
+`cu124`, `cu130`; **CUDA 12.4 or later required**):
+
+```sh
+uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
+    --extra-index-url https://download.pytorch.org/whl/cuXXX
+```
+
+Use `nvidia-smi` for your CUDA version, or the
+[PyTorch install selector](https://pytorch.org/get-started/locally/).
+Disk / VRAM budgets are below in
+[GPU acceleration mechanics](#gpu-acceleration-mechanics).
+
+### GPU acceleration mechanics
+
+How the pieces fit together when you opt in:
+
+- **`pd-ocr-cli`** — the app.
+- **CUDA Toolkit** — NVIDIA's runtime that lets programs talk to
+  your GPU. Required on Linux / Windows for the CUDA path; the
+  Apple Silicon path uses Metal via PyTorch's MPS backend instead.
+- **CUDA-enabled PyTorch wheels** — the same PyTorch you'd install
+  on CPU, compiled to call into CUDA. The install script chooses
+  the wheel matching your installed CUDA: `cu124` for CUDA 12.4,
+  `cu130` for 13.0, etc. (CUDA 12.4 or newer required.)
+- **OCR / layout model weights** — downloaded on first run; not
+  GPU-specific.
+
+If you'd rather pick the PyTorch wheel manually, the
+[PyTorch install selector](https://pytorch.org/get-started/locally/)
+walks you through it.
+
+Rough disk + memory budget for the NVIDIA path:
+
+- CUDA Toolkit: ~2–4 GB download, ~5–12 GB installed (depends on
+  the components you select).
+- CUDA-enabled PyTorch wheels: ~1–3 GB on top.
+- Runtime VRAM with both OCR + layout models loaded: a few GB —
+  fits comfortably on any modern dedicated NVIDIA card.
 
 ---
 
-## Appendix: Development Setup (from cloned repo)
+## Development
 
-If you've cloned this repository and want to run or develop the tool locally:
+Working on `pd-ocr-cli` itself? See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
+developer guide — covers `make setup`, the editable side-by-side workflow with
+`pd-book-tools` (`make local-setup`, `make run-local ARGS="…"`), the project
+layout, and the release process.
 
-**Prerequisites:** [uv](https://docs.astral.sh/uv/) must be installed.
+Quick start:
 
 ```sh
 git clone https://github.com/ConcaveTrillion/pd-ocr-cli
 cd pd-ocr-cli
-make setup
-```
-
-This installs the dev dependencies and sets up pre-commit hooks.
-
-To run the CLI directly from the local source (without installing as a tool):
-
-```sh
-uv run pd-ocr page.png
-```
-
-To install it as a local tool (picks up changes after each reinstall):
-
-```sh
-uv tool install --editable .
-```
-
-To run linting and formatting checks:
-
-```sh
-make lint      # ruff check + import sort
-make format    # ruff format + lint
-```
-
-To run the full CI pipeline (setup + pre-commit + build):
-
-```sh
-make ci
+make setup            # regular dev setup against the pinned pd-book-tools tag
+# — or —
+make local-setup      # also clones ../pd-book-tools and links it editable
 ```
