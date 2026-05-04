@@ -123,13 +123,6 @@ authoritatively.
 
 ---
 
-## Notes
-
-- `--straight-quotes` / `-sq` converts common curly quote characters to straight ASCII quotes (`'` and `"`) in `.txt` output; prime symbols (for example `′` and `″`) are not converted.
-- `--em-dash-to-double-hyphen` / `-ed` converts em dashes (`—`) to ASCII `--` in `.txt` output.
-
----
-
 ## Running in a Container with NVIDIA GPU
 
 You'll need the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) configured on your host and the container run with `--gpus all`. Then install as normal inside the container.
