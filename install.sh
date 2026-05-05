@@ -35,7 +35,7 @@ fi
 # Resolve latest git tag from GitHub
 REPO="ConcaveTrillion/pd-ocr-cli"
 LATEST_TAG=$(curl -sSf "https://api.github.com/repos/${REPO}/tags" 2>/dev/null \
-    | grep -o '"name": "[^"]*"' | head -1 | grep -o '[^"]*$') || true
+    | grep '"name"' | head -1 | sed 's/.*"name": "\([^"]*\)".*/\1/') || true
 
 if [ -n "$LATEST_TAG" ]; then
     INSTALL_REF="git+https://github.com/${REPO}@${LATEST_TAG}"
