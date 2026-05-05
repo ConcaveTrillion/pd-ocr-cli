@@ -48,28 +48,7 @@ refresh-version: ## Force hatch-vcs to re-derive `pd-ocr --version` from current
 	@uv run pd-ocr --version
 
 install: ## Install pd-ocr as a uv tool from the local source (auto-detects CUDA)
-	@EXTRA_INDEX=""; \
-	if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then \
-		CUDA_VER=$$(nvidia-smi 2>/dev/null | sed -n 's/.*CUDA Version: \([0-9]*\.[0-9]*\).*/\1/p' | head -1); \
-		if [ -n "$$CUDA_VER" ]; then \
-			CUDA_TAG="cu$$(echo "$$CUDA_VER" | tr -d '.')"; \
-			EXTRA_INDEX="https://download.pytorch.org/whl/$$CUDA_TAG"; \
-			echo "🟢 Detected CUDA $$CUDA_VER — installing PyTorch with $$CUDA_TAG support."; \
-		else \
-			echo "⚠️  nvidia-smi found but could not detect CUDA version — falling back to CPU."; \
-		fi; \
-	elif [ "$$(uname)" = "Darwin" ] && [ "$$(uname -m)" = "arm64" ]; then \
-		echo "🍎 Detected Apple Silicon — MPS acceleration will be used automatically."; \
-	else \
-		echo "💻 No GPU detected — installing CPU-only PyTorch."; \
-	fi; \
-	echo "📦 Installing pd-ocr from local source..."; \
-	if [ -n "$$EXTRA_INDEX" ]; then \
-		uv tool install --reinstall . --extra-index-url "$$EXTRA_INDEX"; \
-	else \
-		uv tool install --reinstall .; \
-	fi; \
-	echo "✅ pd-ocr installed. Run: pd-ocr --version"
+	@./scripts/install-uv-tool.sh
 
 uninstall: ## Remove the installed pd-ocr uv tool
 	@echo "🗑️  Uninstalling pd-ocr..."
@@ -88,14 +67,7 @@ reset: ## Rebuild virtual environment (keeps UV cache)
 	@echo "✅ Environment Reset!"
 
 upgrade-pd-book-tools: ## Upgrade pd-book-tools pin to latest GitHub tag
-	@echo "🔍 Fetching latest pd-book-tools tag..."
-	$(eval LATEST_TAG := $(shell curl -sSf "https://api.github.com/repos/ConcaveTrillion/pd-book-tools/tags" | grep '"name"' | head -1 | sed 's/.*"name": "\(.*\)".*/\1/'))
-	@if [ -z "$(LATEST_TAG)" ]; then echo "❌ Could not fetch latest tag." && exit 1; fi
-	@echo "📌 Pinning to $(LATEST_TAG)..."
-	@sed -i 's|pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = ".*" }|pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "$(LATEST_TAG)" }|' pyproject.toml
-	@echo "📦 Syncing..."
-	uv sync --group dev
-	@echo "✅ pd-book-tools upgraded to $(LATEST_TAG)!"
+	@./scripts/upgrade-pd-book-tools.sh
 
 lint: ## Run ruff linting and import sorting
 	@echo "🔍 Running linting checks..."
@@ -172,20 +144,7 @@ release-major: ## Bump major version and create a git tag (e.g. v0.3 → v1.0)
 	@$(MAKE) --no-print-directory _do-release BUMP=major
 
 _do-release:
-	@BUMP=$(or $(BUMP),minor); \
-	LATEST=$$(git tag --list 'v*' --sort=-version:refname | head -1); \
-	if [ -z "$$LATEST" ]; then LATEST="v0.0"; fi; \
-	MAJOR=$$(echo "$$LATEST" | sed 's/v\([0-9]*\)\..*/\1/'); \
-	MINOR=$$(echo "$$LATEST" | sed 's/v[0-9]*\.\([0-9]*\).*/\1/'); \
-	PATCH=$$(echo "$$LATEST" | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\).*/\1/'); \
-	if [ "$$PATCH" = "$$LATEST" ]; then PATCH=0; fi; \
-	if [ "$$BUMP" = "major" ]; then MAJOR=$$((MAJOR+1)); MINOR=0; PATCH=0; \
-	elif [ "$$BUMP" = "minor" ]; then MINOR=$$((MINOR+1)); PATCH=0; \
-	else PATCH=$$((PATCH+1)); fi; \
-	VERSION="v$$MAJOR.$$MINOR"; \
-	if [ "$$BUMP" = "patch" ]; then VERSION="v$$MAJOR.$$MINOR.$$PATCH"; fi; \
-	git tag "$$VERSION"; \
-	echo "🏷️  Tagged $$VERSION — push with: git push && git push --tags"
+	@BUMP=$(or $(BUMP),minor) ./scripts/do-release.sh
 
 # ---------------------------------------------------------------------------
 # Local editable workflow (requires ../pd-book-tools sibling checkout)
@@ -227,14 +186,7 @@ uninstall-local: ## [local-dev] Uninstall the locally-installed pd-ocr uv tool
 
 check-local-editable: ## [local-dev] Verify pd-book-tools resolves to ../pd-book-tools (not the pinned tag)
 	$(call _require_peer_book_tools)
-	@env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run python -c "import inspect, os, sys, importlib.metadata as md, pd_book_tools; \
-module_file = os.path.realpath(inspect.getfile(pd_book_tools)); \
-peer = os.path.realpath('$(PEER_BOOK_TOOLS)'); \
-is_local = module_file.startswith(peer + os.sep) or module_file == peer; \
-print('module_file=', module_file); \
-print('expected_peer=', peer); \
-print('dist_version=', md.version('pd-book-tools')); \
-sys.exit(0 if is_local else 1)" || (echo "❌ pd-book-tools is not local/editable. Run: make dev-local" >&2; exit 1)
+	@env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run python scripts/check-editable.py "$(PEER_BOOK_TOOLS)" || (echo "❌ pd-book-tools is not local/editable. Run: make dev-local" >&2; exit 1)
 	@echo "✅ pd-book-tools resolves to local editable copy."
 
 run-local: check-local-editable ## [local-dev] Run pd-ocr against the local editable workspace; pass ARGS="..."
