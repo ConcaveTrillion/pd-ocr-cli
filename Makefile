@@ -1,4 +1,10 @@
-.PHONY: setup refresh-version install uninstall reset remove-venv lint format pre-commit-check test build clean ci upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv lint format pre-commit-check test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+
+# Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
+# [tool.coverage.report] fail_under so any direct `coverage report` run also
+# enforces it. The slow floor only applies to ci-slow / coverage-slow.
+COV_FAIL_UNDER ?= 100
+COV_FAIL_UNDER_SLOW ?= 100
 
 # ---------------------------------------------------------------------------
 # Peer-repo discovery for *-local targets
@@ -105,21 +111,43 @@ pre-commit-check: ## Run pre-commit on all files
 	@echo "🪝 Running pre-commit on all files..."
 	uv run pre-commit run --all-files
 
-test: ## Run the pytest suite
+test: ## Run the pytest suite (skips @pytest.mark.slow integration tests)
 	@echo "🧪 Running tests..."
 	uv run pytest tests/ -v
+
+test-slow: ## Run the full pytest suite including slow integration tests (downloads pinned model on first run)
+	@echo "🧪 Running tests (including slow)..."
+	uv run pytest tests/ -v --run-slow
+
+coverage: ## Run fast tests with coverage + HTML report; fails if total drops below COV_FAIL_UNDER (default 50)
+	@echo "🧪 Running tests with coverage (threshold: $(COV_FAIL_UNDER)%)..."
+	uv run pytest tests/ --cov=pd_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
+	@echo "📊 Coverage report: htmlcov/index.html"
+
+coverage-slow: ## Run full suite (incl. slow) with coverage; fails if total drops below COV_FAIL_UNDER_SLOW (default 70)
+	@echo "🧪 Running tests with coverage including slow integration (threshold: $(COV_FAIL_UNDER_SLOW)%)..."
+	uv run pytest tests/ --run-slow --cov=pd_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER_SLOW)
+	@echo "📊 Coverage report: htmlcov/index.html"
 
 build: ## Build the project
 	@echo "🔨 Building project..."
 	uv build
 
-ci: ## Run complete CI pipeline (setup → refresh-version → pre-commit → test → build)
-	@echo "🚀 Running complete CI pipeline..."
+ci: ## Run fast CI pipeline (setup → pre-commit → coverage → build); enforces COV_FAIL_UNDER (default 50)
+	@echo "🚀 Running fast CI pipeline..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check
-	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory coverage
 	@$(MAKE) --no-print-directory build
 	@echo "✅ CI pipeline complete!"
+
+ci-slow: ## Run full CI pipeline including slow integration tests; enforces COV_FAIL_UNDER_SLOW (default 70)
+	@echo "🚀 Running full CI pipeline (including slow integration tests)..."
+	@$(MAKE) --no-print-directory setup
+	@$(MAKE) --no-print-directory pre-commit-check
+	@$(MAKE) --no-print-directory coverage-slow
+	@$(MAKE) --no-print-directory build
+	@echo "✅ Full CI pipeline complete!"
 
 clean: ## Clean up cache and build artifacts
 	@echo "🧹 Cleaning Python cache files..."
@@ -127,6 +155,9 @@ clean: ## Clean up cache and build artifacts
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
+	@echo "🧹 Cleaning coverage artifacts..."
+	rm -rf htmlcov/ 2>/dev/null || true
+	rm -f coverage.xml .coverage 2>/dev/null || true
 	@echo "🧹 Cleaning build artifacts..."
 	rm -rf dist/ 2>/dev/null || true
 	@echo "✅ Cleanup complete!"

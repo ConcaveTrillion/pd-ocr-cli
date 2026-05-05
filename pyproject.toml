@@ -28,14 +28,69 @@ Repository = "https://github.com/ConcaveTrillion/pd-ocr-cli"
 dev = [
     "pre-commit>=4.6.0",
     "pytest>=8.3",
+    "pytest-cov>=7.0.0",
+    "coverage>=7.0",
     "ruff>=0.12.5",
 ]
 
 [tool.uv.sources]
-pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.7.3" }
+pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.9.0" }
 
 [tool.hatch.version]
 source = "vcs"
 
 [tool.ruff]
 line-length = 100
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: end-to-end tests that download a pinned model and run the OCR pipeline (opt in with --run-slow).",
+]
+addopts = "--cov=pd_ocr_cli --cov-report=term-missing:skip-covered"
+
+[tool.coverage.run]
+source = ["pd_ocr_cli"]
+branch = true
+# The CLI spawns a daemon thread for the GitHub-tag update check; tell
+# coverage to instrument across threads so that path is counted when it
+# runs (e.g. under --run-slow).
+concurrency = ["thread", "multiprocessing"]
+# parallel = true writes per-process .coverage.HOSTNAME.PID files instead of
+# a single .coverage. pytest-cov runs `coverage combine` automatically at the
+# end of the session to merge them. Required so the slow integration tests
+# (which invoke pd-ocr in a subprocess) actually contribute coverage of
+# main() — pair this with COVERAGE_PROCESS_START in the subprocess env.
+parallel = true
+omit = [
+    "*/tests/*",
+    "*/.venv/*",
+    "*/site-packages/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+# Floor for the fast suite (`make ci`). The unit tests mock every heavy
+# pd_book_tools / cv2 / torch dependency so main() is exercised in fast
+# tests too. The `_load_*` import-trampolines are auto-excluded via the
+# pattern in `exclude_also` below, so 100% is the realistic target —
+# any new uncovered line should be either tested or pragma'd with intent.
+fail_under = 100
+precision = 1
+exclude_also = [
+    "if __name__ == .__main__.:",
+    "pragma: no cover",
+    "raise NotImplementedError",
+    # `_load_*` helpers in ocr_to_txt.py exist solely as monkeypatch points
+    # for fast tests; their bodies are trivial `from pd_book_tools... import`
+    # statements that the slow integration tests still execute against real
+    # models. Excluding the bodies keeps the fast-coverage signal honest
+    # (these functions are deliberately not unit-testable in isolation).
+    "def _load_[a-z_]+\\(",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"

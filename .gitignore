@@ -4,6 +4,12 @@ __pycache__/
 dist/
 *.egg-info/
 
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # Local uv source overrides (e.g. pointing pd-book-tools at a local path)
 uv.toml
 Makefile.local

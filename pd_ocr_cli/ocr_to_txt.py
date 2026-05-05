@@ -65,11 +65,17 @@ from pd_ocr_cli._hf_models import (
     resolve_ocr_models,
     silence_transformers_load_chatter,
 )
-from pd_ocr_cli._text_normalize import (
-    normalize_curly_quotes as _normalize_curly_quotes,
-)
-from pd_ocr_cli._text_normalize import (
-    normalize_em_dash as _normalize_em_dash,
+from pd_ocr_cli._pipeline import (
+    apply_text_normalizations,
+    clear_layout_debug_env,
+    compute_mirror_root,
+    format_drops_warning,
+    illustration_crop_path,
+    iter_crop_regions,
+    output_paths_for,
+    resolve_dest_dir,
+    setup_layout_debug_env,
+    validate_extract_illustrations,
 )
 from pd_ocr_cli._update_check import VERSION as _VERSION
 from pd_ocr_cli._update_check import check_for_update as _check_for_update
@@ -89,6 +95,64 @@ def _detect_torch_device() -> str:
     if mps is not None and getattr(mps, "is_available", lambda: False)():
         return "mps"
     return "cpu"
+
+
+# ---------------------------------------------------------------------------
+# Lazy-import indirection — the only purpose of these tiny wrappers is to
+# give tests a single attribute to ``monkeypatch`` so ``main()`` can run end
+# to end without loading torch / DocTR / pd_book_tools / cv2.
+# ---------------------------------------------------------------------------
+
+
+def _load_predictor(det_path: Path, reco_path: Path):
+    """Import doctr support and build the fine-tuned predictor."""
+    from pd_book_tools.ocr.doctr_support import get_finetuned_torch_doctr_predictor
+
+    return get_finetuned_torch_doctr_predictor(det_path, reco_path)
+
+
+def _load_layout_detector(args, device: str):
+    """Import the layout module and instantiate the configured detector."""
+    silence_transformers_load_chatter()
+    from pd_book_tools.layout import get_detector
+
+    return get_detector(
+        args.layout_model,
+        device=device,
+        confidence=args.layout_confidence,
+        checkpoint_path=args.layout_checkpoint,
+    )
+
+
+def _load_document_factory():
+    """Return the ``Document.from_image_ocr_via_doctr`` callable."""
+    from pd_book_tools.ocr.document import Document
+
+    return Document.from_image_ocr_via_doctr
+
+
+def _load_validate_word_preservation():
+    """Return the ``validate_word_preservation`` reorganize-checker."""
+    from pd_book_tools.ocr.reorganize_page_utils import validate_word_preservation
+
+    return validate_word_preservation
+
+
+def _load_illustration_deps() -> tuple[object, set]:
+    """Return ``(cv2_module, crop_types_set)`` used during illustration cropping."""
+    import cv2 as _cv2
+    from pd_book_tools.layout.types import RegionType
+
+    return _cv2, {RegionType.figure, RegionType.decoration, RegionType.table}
+
+
+def _start_update_check_thread(disabled: bool) -> threading.Thread | None:
+    """Spawn the background GitHub-tag check unless suppressed."""
+    if disabled:
+        return None
+    thread = threading.Thread(target=_check_for_update, daemon=True)
+    thread.start()
+    return thread
 
 
 def _env_truthy(name: str) -> bool:
@@ -307,25 +371,13 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
 def main():
     args = parse_args()
 
-    # Layout detection is always-on unless the user explicitly opts out
-    # with `--layout-model none`. Cropping illustration regions needs a
-    # real model — refuse the combination rather than silently producing
-    # zero crops.
+    validate_extract_illustrations(args)
     layout_enabled = args.layout_model != "none"
-    if args.extract_illustrations and not layout_enabled:
-        print(
-            "ERROR: --extract-illustrations requires a layout model; drop --layout-model none.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
-    _update_thread: threading.Thread | None = None
     update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")
-    if not update_check_disabled:
-        _update_thread = threading.Thread(target=_check_for_update, daemon=True)
-        _update_thread.start()
+    _update_thread = _start_update_check_thread(disabled=update_check_disabled)
 
     print("Resolving model files...", flush=True)
     det_path, reco_path = resolve_ocr_models(args)
@@ -341,16 +393,14 @@ def main():
     output_dir = Path(args.output_dir) if args.output_dir else None
 
     print("Importing deep-learning runtime (PyTorch + DocTR)...", flush=True)
-    try:
-        from pd_book_tools.ocr.doctr_support import get_finetuned_torch_doctr_predictor
-    except ImportError as e:
-        print(f"ERROR: pd_book_tools not importable: {e}", file=sys.stderr)
-        sys.exit(1)
-
     device = _detect_torch_device()
 
     print("Loading OCR models (detection + recognition)...", flush=True)
-    predictor = get_finetuned_torch_doctr_predictor(det_path, reco_path)
+    try:
+        predictor = _load_predictor(det_path, reco_path)
+    except ImportError as e:
+        print(f"ERROR: pd_book_tools not importable: {e}", file=sys.stderr)
+        sys.exit(1)
     if predictor is None:
         print("ERROR: failed to load models.", file=sys.stderr)
         sys.exit(1)
@@ -360,16 +410,8 @@ def main():
     layout_detector = None
     if layout_enabled:
         print("Loading layout model...", flush=True)
-        silence_transformers_load_chatter()
         try:
-            from pd_book_tools.layout import get_detector
-
-            layout_detector = get_detector(
-                args.layout_model,
-                device=device,
-                confidence=args.layout_confidence,
-                checkpoint_path=args.layout_checkpoint,
-            )
+            layout_detector = _load_layout_detector(args, device)
         except (ImportError, ValueError) as e:
             print(f"ERROR: {e}", file=sys.stderr)
             sys.exit(1)
@@ -380,57 +422,29 @@ def main():
     cv2 = None
     crop_types: set = set()
     if args.extract_illustrations:
-        import cv2 as _cv2
-        from pd_book_tools.layout.types import RegionType
+        cv2, crop_types = _load_illustration_deps()
 
-        cv2 = _cv2
-        crop_types = {RegionType.figure, RegionType.decoration, RegionType.table}
-
-    from pd_book_tools.ocr.document import Document
+    document_factory = _load_document_factory()
 
     images = collect_images(args.inputs, args.recursive)
     if not images:
         print("ERROR: no valid image files found.", file=sys.stderr)
         sys.exit(1)
 
-    # Determine a common input root for directory mirroring (only when inputs
-    # include at least one directory and an output_dir is set).
-    input_dirs = [Path(i) for i in args.inputs if Path(i).is_dir()]
-    if input_dirs and output_dir:
-        mirror_root = Path(os.path.commonpath([d.resolve() for d in input_dirs]))
-    else:
-        mirror_root = None
+    mirror_root = compute_mirror_root(args.inputs, output_dir)
 
     errors = 0
     for img_path in images:
-        if output_dir and mirror_root:
-            try:
-                rel = img_path.resolve().relative_to(mirror_root)
-                dest_dir = output_dir / rel.parent
-            except ValueError:
-                dest_dir = output_dir
-        elif output_dir:
-            dest_dir = output_dir
-        else:
-            dest_dir = img_path.parent
+        dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
         dest_dir.mkdir(parents=True, exist_ok=True)
 
-        out_path = dest_dir / img_path.with_suffix(".txt").name
-        json_path = dest_dir / img_path.with_suffix(".json").name
+        out_path, json_path = output_paths_for(img_path, dest_dir)
 
         print(f"Processing {img_path} ...", end=" ", flush=True)
-        debug_file: Path | None = None
-        if args.layout_debug:
-            debug_dir = Path(args.layout_debug_dir) if args.layout_debug_dir else dest_dir
-            debug_dir.mkdir(parents=True, exist_ok=True)
-            debug_file = debug_dir / f"{img_path.stem}.layout-debug.txt"
-            os.environ["PD_OCR_LAYOUT_DEBUG"] = "1"
-            os.environ["PD_OCR_LAYOUT_DEBUG_FILE"] = str(debug_file)
+        debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
 
         try:
-            doc = Document.from_image_ocr_via_doctr(
-                img_path, source_identifier=img_path.name, predictor=predictor
-            )
+            doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
             page = doc.pages[0] if doc.pages else None
             if page is None:
                 print("WARNING: no pages in result", file=sys.stderr)
@@ -464,32 +478,19 @@ def main():
                     page.reorganize_page()
 
                 if args.validate_reorg:
-                    from pd_book_tools.ocr.reorganize_page_utils import (
-                        validate_word_preservation,
-                    )
-
+                    validate_word_preservation = _load_validate_word_preservation()
                     drops = validate_word_preservation(pre_reorg_words, list(page.words))
-                    if drops:
-                        print(
-                            f"WARNING: reorganize dropped {len(drops)} word(s) in {img_path.name}:",
-                            file=sys.stderr,
-                        )
-                        for line in drops[:20]:
-                            print(f"  {line}", file=sys.stderr)
-                        if len(drops) > 20:
-                            print(
-                                f"  ... ({len(drops) - 20} more)",
-                                file=sys.stderr,
-                            )
+                    for line in format_drops_warning(drops, img_path.name):
+                        print(line, file=sys.stderr)
 
-            text = page.text
-            if args.straight_quotes and text:
-                text = _normalize_curly_quotes(text)
-            if args.em_dash_to_double_hyphen and text:
-                text = _normalize_em_dash(text)
+            text = apply_text_normalizations(
+                page.text,
+                straight_quotes=args.straight_quotes,
+                em_dash_to_double_hyphen=args.em_dash_to_double_hyphen,
+            )
             if not text:
                 print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
-            out_path.write_text(text or "", encoding="utf-8")
+            out_path.write_text(text, encoding="utf-8")
 
             extra_paths: list[str] = []
             if want_pre_reorg_json:
@@ -508,20 +509,16 @@ def main():
                         file=sys.stderr,
                     )
                 else:
-                    crop_idx = 0
-                    for region in page_layout.regions:
-                        if region.type not in crop_types:
-                            continue
-                        if region.confidence < args.layout_confidence:
-                            continue
-                        crop_idx += 1
+                    for crop_idx, region in iter_crop_regions(
+                        page_layout.regions, args.layout_confidence, crop_types
+                    ):
                         crop = source_img[
                             max(0, region.T) : max(0, region.B),
                             max(0, region.L) : max(0, region.R),
                         ]
                         if crop.size == 0:
                             continue
-                        crop_path = dest_dir / f"i_{img_path.stem}_{crop_idx:02d}.jpg"
+                        crop_path = illustration_crop_path(dest_dir, img_path.stem, crop_idx)
                         cv2.imwrite(str(crop_path), crop)
                         extra_paths.append(str(crop_path))
 
@@ -538,8 +535,7 @@ def main():
                 traceback.print_exc(file=sys.stderr)
             errors += 1
         finally:
-            os.environ.pop("PD_OCR_LAYOUT_DEBUG", None)
-            os.environ.pop("PD_OCR_LAYOUT_DEBUG_FILE", None)
+            clear_layout_debug_env()
 
     if _update_thread is not None:
         _update_thread.join(timeout=3)

@@ -9,7 +9,7 @@ from importlib.metadata import version as _pkg_version
 
 try:
     VERSION = _pkg_version("pd-ocr-cli")
-except PackageNotFoundError:
+except PackageNotFoundError:  # pragma: no cover - only fires if package metadata is missing
     VERSION = "unknown"
 
 _GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
