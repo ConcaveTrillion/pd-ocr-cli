@@ -327,6 +327,7 @@ def main():
         _update_thread = threading.Thread(target=_check_for_update, daemon=True)
         _update_thread.start()
 
+    print("Resolving model files...", flush=True)
     det_path, reco_path = resolve_ocr_models(args)
 
     layout_repo: str | None = None
@@ -339,6 +340,7 @@ def main():
 
     output_dir = Path(args.output_dir) if args.output_dir else None
 
+    print("Importing deep-learning runtime (PyTorch + DocTR)...", flush=True)
     try:
         from pd_book_tools.ocr.doctr_support import get_finetuned_torch_doctr_predictor
     except ImportError as e:
