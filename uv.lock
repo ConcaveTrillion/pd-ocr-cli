@@ -1877,8 +1877,8 @@ wheels = [
 
 [[package]]
 name = "pd-book-tools"
-version = "0.7.1"
-source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.7.1#799ac5bc7ac339b3b25e577aba9bc9383c98c874" }
+version = "0.7.2"
+source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.7.2#7903999559151d2d46404688b1e82807b3659e3e" }
 dependencies = [
     { name = "cupy-cuda12x" },
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1922,7 +1922,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.7.1" },
+    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.7.2" },
 ]
 
 [package.metadata.requires-dev]

@@ -61,6 +61,7 @@ If you also want pd-book-tools' own venv (to run its tests):
 | Target | Purpose |
 |---|---|
 | `setup` | Install dev deps + pre-commit hooks (uses pinned `pd-book-tools` tag). |
+| `refresh-version` | Force-reinstall the editable package so `pd-ocr --version` re-derives from current git state (hatch-vcs bakes the version at install time, not at runtime — run this after `git pull` / new local tags). |
 | `install` | Install `pd-ocr` as a `uv tool` from local source, auto-detecting CUDA. |
 | `uninstall` | Remove the installed `pd-ocr` uv tool. |
 | `lint` | Run ruff (with auto-fix). |

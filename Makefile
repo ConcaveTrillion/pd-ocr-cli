@@ -1,4 +1,4 @@
-.PHONY: setup install uninstall reset remove-venv lint format pre-commit-check test build clean ci upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv lint format pre-commit-check test build clean ci upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
 
 # ---------------------------------------------------------------------------
 # Peer-repo discovery for *-local targets
@@ -27,12 +27,19 @@ help: ## Show this help message
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-setup: ## Set up development environment (sync deps + pre-commit hooks)
+setup: ## Set up development environment (sync deps + pre-commit hooks + refresh version)
 	@echo "📦 Installing dependencies..."
 	uv sync --group dev
 	@echo "🪝 Setting up pre-commit hooks..."
 	uv run pre-commit install
+	@$(MAKE) --no-print-directory refresh-version
 	@echo "✅ Setup complete!"
+
+refresh-version: ## Force hatch-vcs to re-derive `pd-ocr --version` from current git state (~1s)
+	@echo "🔄 Reinstalling pd-ocr-cli so hatch-vcs picks up the current HEAD / tags..."
+	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pd-ocr-cli
+	@echo "✅ Version now reports as:"
+	@uv run pd-ocr --version
 
 install: ## Install pd-ocr as a uv tool from the local source (auto-detects CUDA)
 	@EXTRA_INDEX=""; \
@@ -106,7 +113,7 @@ build: ## Build the project
 	@echo "🔨 Building project..."
 	uv build
 
-ci: ## Run complete CI pipeline (setup, pre-commit, test, build)
+ci: ## Run complete CI pipeline (setup → refresh-version → pre-commit → test → build)
 	@echo "🚀 Running complete CI pipeline..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check

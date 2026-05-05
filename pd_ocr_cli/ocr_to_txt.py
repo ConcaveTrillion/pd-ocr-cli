@@ -347,6 +347,7 @@ def main():
 
     device = _detect_torch_device()
 
+    print("Loading OCR models (detection + recognition)...", flush=True)
     predictor = get_finetuned_torch_doctr_predictor(det_path, reco_path)
     if predictor is None:
         print("ERROR: failed to load models.", file=sys.stderr)
@@ -356,6 +357,7 @@ def main():
 
     layout_detector = None
     if layout_enabled:
+        print("Loading layout model...", flush=True)
         silence_transformers_load_chatter()
         try:
             from pd_book_tools.layout import get_detector
@@ -528,6 +530,10 @@ def main():
                 print(f"-> {out_path}{tag}")
         except Exception as e:
             print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
+            if _env_truthy("PD_OCR_DEBUG"):
+                import traceback
+
+                traceback.print_exc(file=sys.stderr)
             errors += 1
         finally:
             os.environ.pop("PD_OCR_LAYOUT_DEBUG", None)
