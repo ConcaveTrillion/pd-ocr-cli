@@ -8,10 +8,9 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**S1** — `main()` in `pd_ocr_cli/ocr_to_txt.py:575–594` contains a 20-line
-illustration-crop block inside the per-image loop that is orthogonal to
-the rest of the loop body. Extract to a helper such as
-`_process_illustration_crops(page_layout, cv2, crop_types, args, dest_dir, img_path, img_stem)`.
+**B7** — multi-dot-stem image filenames (`page.001.png`) collide in
+`diagnostic_output_paths`. See "Round 2 bugs" below for the rest of the
+fresh batch (B7..B13).
 
 ### Done
 
@@ -349,6 +348,294 @@ it into `pd_book_tools.text` and having the CLI import from there.
 | `_parse_release_prefix` | `(version: str) -> tuple[int,int,int] \| None` | Lenient semver prefix parser (tolerates dev suffixes) | none |
 | `_latest_stable_tag` | `(tags: list[dict]) -> tuple[str, tuple] \| None` | Finds highest stable tag from GitHub response | none |
 | `check_for_update` | `() -> None` | HTTP GET to GitHub tags API; prints upgrade notice to stderr | network I/O, stderr |
+
+---
+
+## Round 2 bugs
+
+Fresh deep pass after B1..B6 shipped. Each finding is a real defect
+(correctness / silent failure / misreporting) — not style or refactor.
+
+### B7 [MAJOR] `diagnostic_output_paths` collapses multi-dot stems, causing collisions
+
+**File:** `pd_ocr_cli/_pipeline.py:297-304`
+
+```python
+stem_json = json_path.with_suffix("")  # strip .json
+stem_txt = txt_path.with_suffix("")    # strip .txt
+return {
+    "pure_ocr_json": stem_json.with_suffix(".pure-ocr.json"),
+    ...
+}
+```
+
+`Path.with_suffix(".pure-ocr.json")` replaces the **last** suffix, not
+appends. For an image named `page.001.png`:
+
+- `out_path` = `dest/page.001.txt` (correct — `with_suffix(".txt")` only
+  replaced `.png`).
+- `txt_path.with_suffix("")` → `Path("dest/page.001")`.
+- `Path("dest/page.001").with_suffix(".pure-ocr.txt")` strips `.001` and
+  yields `dest/page.pure-ocr.txt`.
+
+**Verified:**
+```
+>>> Path('dest/page.001.txt').with_suffix('').with_suffix('.pure-ocr.txt')
+PosixPath('dest/page.pure-ocr.txt')
+```
+
+So `page.001.png`, `page.002.png`, `page.003.png` all write the same
+four diagnostic files (`dest/page.pure-ocr.{json,txt}`,
+`dest/page.post-noise.{json,txt}`) — each later page silently overwrites
+the previous one. Multi-dot stems are common for scanned books
+(`book.001.png`, `vol2.ch3.png`, `0001.bin.png`).
+
+**Suggested fix:**
+```python
+def diagnostic_output_paths(json_path: Path, txt_path: Path) -> dict[str, Path]:
+    return {
+        "pure_ocr_json": json_path.with_name(f"{json_path.stem}.pure-ocr.json"),
+        "pure_ocr_txt":  txt_path.with_name(f"{txt_path.stem}.pure-ocr.txt"),
+        "post_noise_json": json_path.with_name(f"{json_path.stem}.post-noise.json"),
+        "post_noise_txt":  txt_path.with_name(f"{txt_path.stem}.post-noise.txt"),
+    }
+```
+
+`Path.stem` strips only the last suffix — `Path("page.001.txt").stem`
+is `"page.001"`, which is what we want. Add a regression test using a
+stem with embedded dots.
+
+---
+
+### B8 [MAJOR] `setup_layout_debug_env` runs outside the per-image `try` — one bad page kills the whole batch
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:507-510`
+
+```python
+print(f"Processing {img_path} ...", end=" ", flush=True)
+debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+
+try:
+    doc = document_factory(...)
+```
+
+`setup_layout_debug_env` calls `Path.mkdir(parents=True, exist_ok=True)`
+on a user-supplied `--layout-debug-dir`. If that dir is unwritable
+(read-only mount, permission denied, name collides with an existing
+file), `mkdir` raises `OSError` / `FileExistsError`. Because the call
+sits **outside** the per-image `try`, the exception aborts `main()`
+entirely — every subsequent image in the batch is skipped, no `Done.`
+summary, no `errors += 1`. A 500-page batch dies on page 1 with the
+filesystem error and 499 pages remain unprocessed even though they
+might have succeeded with the debug-dir issue resolved.
+
+The same risk applies if a future change to `setup_layout_debug_env`
+raises (e.g. validating `args.layout_debug_dir` shape).
+
+**Suggested fix:** move the call inside the `try`, or wrap it in its
+own try/except that records the failure as a per-image error and
+continues with `debug_file = None`:
+
+```python
+try:
+    debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+    doc = document_factory(...)
+    ...
+```
+
+The `finally: clear_layout_debug_env()` on line 628 already covers the
+cleanup path, so moving the setup inside the try is a minimal change.
+
+---
+
+### B9 [MINOR] `--no-reorg --layout-debug` falsely reports a layout-debug file that is never written
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:592-593`
+
+```python
+if args.layout_debug and debug_file is not None:
+    extra_paths.append(f"layout-debug: {debug_file}")
+```
+
+The layout-debug report is written by
+`pd_book_tools.ocr.reorganize_page_utils.write_layout_debug_report`,
+which is invoked from inside `Page.reorganize_page()`. With
+`--no-reorg`, `reorganize_page()` is never called (line 538:
+`if do_reorg:`), so no debug file is created — yet the CLI still
+appends `layout-debug: {debug_file}` to `extra_paths` and prints it on
+the success line. The user is told an artifact exists at a path that
+contains nothing.
+
+This is a sibling of the three silent-no-op cases B3 covered. B3
+warned for `--layout-debug` + `--layout-model none`; the
+`--layout-debug` + `--no-reorg` combination has the same outcome and
+needs the same warning, plus the spurious success-line entry should
+be suppressed.
+
+**Suggested fix:** add a fourth warning at the top of `main()`:
+
+```python
+if args.no_reorg and args.layout_debug:
+    print("warning: --layout-debug has no effect with --no-reorg ...",
+          file=sys.stderr)
+```
+
+and gate the `extra_paths.append(...)` on `do_reorg` as well, or check
+`debug_file.exists()` before reporting.
+
+---
+
+### B10 [MINOR] Dev/pre-release users never receive the upgrade notice for the matching stable
+
+**File:** `pd_ocr_cli/_update_check.py:85-90`
+
+```python
+current = _parse_release_prefix(VERSION)
+...
+if latest > current:
+    print(...)
+```
+
+`_parse_release_prefix` strips dev/local suffixes:
+`"1.2.3.dev1+abc"` parses to `(1, 2, 3)`. When the actual stable
+`v1.2.3` is the latest tag, `latest = (1, 2, 3)` and
+`current = (1, 2, 3)`, so `latest > current` is False and no notice is
+printed. A user installed from a pre-release commit (which is what
+`uv tool install git+...@main` typically yields when no tag is at
+HEAD — hatch-vcs adds a `.devN+gHASH` suffix) is therefore *less*
+likely to be told about the actual release than someone on an old
+stable.
+
+**Suggested fix:** treat any version whose raw `VERSION` differs from
+its parsed prefix as pre-release, and notify when `latest >= current`
+(not strictly greater) for those cases. Sketch:
+
+```python
+is_prerelease = _parse_stable_tag(VERSION) is None
+if latest > current or (is_prerelease and latest >= current):
+    print(...)
+```
+
+Add tests in `tests/test_update_check_parsers.py` covering
+`VERSION="1.2.3.dev1+abc"` with latest tag `v1.2.3`.
+
+---
+
+### B11 [MINOR] `--layout-debug-dir DIR` without `--layout-debug` is silently ignored
+
+**File:** `pd_ocr_cli/_pipeline.py:144-151`
+
+```python
+def setup_layout_debug_env(args, dest_dir, img_stem):
+    if not args.layout_debug:
+        return None
+    debug_dir = Path(args.layout_debug_dir) if args.layout_debug_dir else dest_dir
+    ...
+```
+
+A user who passes only `--layout-debug-dir /tmp/dbg` (forgetting the
+boolean `--layout-debug` toggle) gets nothing — no warning, no
+artifacts. This is the same family as the silent no-ops B3 already
+caught for the three other flag combinations. Sibling defect; B3
+just missed this combination.
+
+**Suggested fix:** add to the warning block at `ocr_to_txt.py:418-437`:
+
+```python
+if args.layout_debug_dir and not args.layout_debug:
+    print(
+        "warning: --layout-debug-dir has no effect without --layout-debug; "
+        "ignoring.",
+        file=sys.stderr,
+    )
+```
+
+---
+
+### B12 [MINOR] `collect_images` does not deduplicate, double-processing files passed both directly and via a parent dir
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:392-409`
+
+```python
+def collect_images(inputs, recursive):
+    images = []
+    for inp in inputs:
+        p = Path(inp)
+        if p.is_file():
+            ...
+            images.append(p)
+        elif p.is_dir():
+            ...
+            for child in sorted(p.glob(pattern)):
+                ... images.append(child)
+    return images
+```
+
+Calling `pd-ocr scans/ scans/page1.png` (or with overlapping `-r`
+trees, e.g. `pd-ocr scans/ scans/sub/`) appends `scans/page1.png`
+twice. The image is OCR'd twice and the second pass overwrites the
+first (same `dest_dir`, same output paths) — wasted work, doubled
+elapsed time, and `Done. (0 errors)` even though the user wouldn't
+have asked to do it twice if they realised. Multi-image runs that
+already take minutes per page make this measurable.
+
+**Suggested fix:** deduplicate before returning:
+
+```python
+seen: set[Path] = set()
+deduped: list[Path] = []
+for img in images:
+    resolved = img.resolve()
+    if resolved in seen:
+        continue
+    seen.add(resolved)
+    deduped.append(img)
+return deduped
+```
+
+Add a regression test passing both a directory and a file inside it.
+
+---
+
+### B13 [MINOR] Empty-pages images are silently dropped without incrementing the error counter
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:512-515`
+
+```python
+page = doc.pages[0] if doc.pages else None
+if page is None:
+    print("WARNING: no pages in result", file=sys.stderr)
+    continue
+```
+
+Three issues bundled:
+
+1. The WARNING omits `img_path` — every other warning includes it
+   (`f"WARNING: empty text result for {img_path}"`,
+   `f"WARNING: could not re-read {img_path} ..."`). Bare
+   `"WARNING: no pages in result"` is unattributable in a 500-image
+   batch.
+2. `errors` is **not** incremented, so the run exits 0 even when 100%
+   of inputs produced no pages (e.g. a corrupt JPEG batch). The user's
+   shell scripts that branch on `pd-ocr ...` exit code think the batch
+   succeeded.
+3. `Processing {img_path} ...` was printed with `end=" "` (no
+   newline). `continue` skips the trailing `-> {out_path}` line, so
+   the next iteration's `Processing` prints concatenate onto the same
+   stdout line. Cosmetic fallout from issue 2.
+
+**Suggested fix:**
+
+```python
+if page is None:
+    print(f"WARNING: no pages in result for {img_path}", file=sys.stderr)
+    print()  # close the "Processing X ..." line
+    errors += 1
+    continue
+```
+
+Add a multi-image test where the document factory returns an empty
+`pages` list and assert exit code 1 plus the warning text.
 
 ---
 
