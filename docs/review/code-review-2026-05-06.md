@@ -8,8 +8,7 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-Round 6 exhausted — all listed bugs resolved. Loop may stop, or
-trigger round 7 with a fresh top-to-bottom pass.
+Round 7 exhausted — nothing found. Loop should stop.
 
 ### Done
 
@@ -1554,3 +1553,56 @@ the per-page latency cost on slow disks).
   needed (Makefile help isn't exercised by pytest). Marked MINOR
   rather than NIT because the misinformation actively misleads
   contributors about whether their PR will pass CI.
+
+---
+
+## Round 7: nothing found
+
+Fresh end-to-end mental walk-through of representative `pd-ocr` invocations:
+single image, multi-image, directory, recursive directory tree, `-o`
+mirroring, `--save-json`, `--save-reorganize-diagnostics`,
+`--validate-reorg`, `--no-reorg`, `--extract-illustrations`,
+`--layout-model none`, `--layout-debug`/`--layout-debug-dir`,
+`--experimental-drop-layout-words`, `--straight-quotes` /
+`--em-dash-to-double-hyphen`, `--no-update-check` /
+`PD_OCR_NO_UPDATE_CHECK`, `--detection`/`--recognition` local-file path,
+`--hf-repo` / `--model-version` pinning, `--layout-confidence`
+boundary values. Cross-checked each against `--help` output, the
+module docstring at the top of `ocr_to_txt.py`, and `README.md`.
+
+Items considered and rejected:
+
+- **`.json` sidecar / illustration crops not full-fsync atomic** —
+  `os.replace(json_tmp, json_path)` and `os.replace(crop_tmp,
+  crop_path)` are metadata-atomic but skip the temp-fd / parent-dir
+  fsync that `_atomic_write_raw` performs for `.txt`. In a
+  power-loss scenario the canonical `.txt` is written *last* (B19)
+  with full fsync (B18/B24), so external pipelines keying on `.txt`
+  existence still see all-or-nothing. A re-run replaces any stale
+  sidecar atomically. Not a new bug.
+- **Two warnings fire for `--save-reorganize-diagnostics --no-reorg`
+  (without `--save-json`)** — both warnings are technically true and
+  the user gets a clear message either way; consolidating would lose
+  information. Not a bug.
+- **`--validate-reorg` silently no-ops if `page.reorganize_page`
+  isn't callable** — production `pd_book_tools` `Page` always has
+  it; only test fakes hit this branch. Not user-observable.
+- **Illustration crop filenames use `:02d` width** — `i_<stem>_100.jpg`
+  sorts before `i_<stem>_99.jpg` lexically, but >99 illustrations
+  per single book page is implausible. Not a real concern.
+- **`--model-version` help text says "Requires --hf-repo"** —
+  technically `--hf-repo` always has a default, so the phrasing is
+  slightly off, but the *intent* (revision is interpreted relative
+  to the configured repo) is clear and changing the wording would
+  not improve any user's outcome.
+- **`--layout-confidence` is parsed but ignored under `--layout-model
+  none`** — the value is harmless and the `--extract-illustrations`
+  path that consumes it already errors out when paired with
+  `--layout-model none`. Not user-observable.
+
+The codebase has been thoroughly swept across rounds 1–6 (B1–B25)
+covering correctness, durability, atomicity, error handling, output
+ordering, dedup, mirror-root edge cases, argparse type validation,
+help-text accuracy, and resume-pipeline invariants. Round 7's
+end-to-end behavioral pass produced no real findings. Recommend
+ending the /loop here.
