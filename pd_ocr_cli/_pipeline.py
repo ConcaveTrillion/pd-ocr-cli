@@ -27,6 +27,65 @@ from pd_ocr_cli._text_normalize import (
 )
 
 # ---------------------------------------------------------------------------
+# Atomic file writes
+# ---------------------------------------------------------------------------
+#
+# ``Path.write_text`` / ``Path.write_bytes`` open the target with
+# ``mode="w"`` which truncates first and then writes. A SIGKILL, OOM,
+# ``ENOSPC``, or any other interruption between truncation and the final
+# byte arriving on disk leaves a half-empty file at the canonical name —
+# visually indistinguishable from a successfully exported short page,
+# silently poisoning downstream consumers (PGDP packaging, training-set
+# diff tools, the ``[ -f foo.txt ] || pd-ocr foo.png`` resume idiom).
+#
+# All disk writes from the pipeline therefore go through these helpers:
+# write to a sibling temp file then ``os.replace`` onto the final path.
+# ``os.replace`` is atomic on POSIX and Windows when source/dest live on
+# the same filesystem (always true here since the temp sits next to the
+# target). On crash either the previous file remains untouched, or the
+# new one is fully present — never a partial write at the canonical
+# name. (Code-review B18.)
+
+
+def _atomic_tmp_path(path: Path) -> Path:
+    """Return the sibling temp path used for atomic writes."""
+    return path.with_name(f".{path.name}.tmp")
+
+
+def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    """Write ``text`` to ``path`` atomically via a sibling temp + ``os.replace``.
+
+    On any exception during the temp write the partial temp file is
+    removed and the canonical ``path`` is left untouched (whatever was
+    there before is what remains).
+    """
+    tmp = _atomic_tmp_path(path)
+    try:
+        tmp.write_text(text, encoding=encoding)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    os.replace(tmp, path)
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` atomically. Mirrors :func:`atomic_write_text`."""
+    tmp = _atomic_tmp_path(path)
+    try:
+        tmp.write_bytes(data)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    os.replace(tmp, path)
+
+
+# ---------------------------------------------------------------------------
 # Argument validation
 # ---------------------------------------------------------------------------
 
@@ -259,11 +318,11 @@ def write_diagnostic_snapshots(
 
     pure = getattr(page, "diagnostic_pure_ocr", None)
     if pure is not None:
-        pure_ocr_json.write_text(
+        atomic_write_text(
+            pure_ocr_json,
             json.dumps(pure.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
-        pure_ocr_txt.write_text(pure.text or "", encoding="utf-8")
+        atomic_write_text(pure_ocr_txt, pure.text or "")
         written.extend([pure_ocr_json, pure_ocr_txt])
     else:
         notes.append(
@@ -273,11 +332,11 @@ def write_diagnostic_snapshots(
 
     post = getattr(page, "diagnostic_post_noise_removal", None)
     if post is not None:
-        post_noise_json.write_text(
+        atomic_write_text(
+            post_noise_json,
             json.dumps(post.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
         )
-        post_noise_txt.write_text(post.text or "", encoding="utf-8")
+        atomic_write_text(post_noise_txt, post.text or "")
         written.extend([post_noise_json, post_noise_txt])
     else:
         notes.append(

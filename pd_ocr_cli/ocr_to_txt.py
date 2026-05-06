@@ -82,6 +82,7 @@ from pd_ocr_cli._hf_models import (
 )
 from pd_ocr_cli._pipeline import (
     apply_text_normalizations,
+    atomic_write_text,
     clear_layout_debug_env,
     compute_mirror_root,
     diagnostic_output_paths,
@@ -631,11 +632,28 @@ def main():
             )
             if not text:
                 print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
-            out_path.write_text(text, encoding="utf-8")
+            # Atomic write: a SIGKILL/OOM/ENOSPC mid-write must never
+            # leave a truncated ``.txt`` at the canonical path that
+            # downstream tooling would mistake for a successful short
+            # page export. (Code-review B18.)
+            atomic_write_text(out_path, text)
 
             extra_paths: list[str] = []
             if args.save_json:
-                doc.to_json_file(json_path)
+                # ``Document.to_json_file`` opens the destination with
+                # mode ``"w"`` (truncate-then-write) so we route it
+                # through a sibling temp + ``os.replace`` rather than
+                # touching the upstream library. (Code-review B18.)
+                json_tmp = json_path.with_name(f".{json_path.name}.tmp")
+                try:
+                    doc.to_json_file(json_tmp)
+                except BaseException:
+                    try:
+                        json_tmp.unlink()
+                    except FileNotFoundError:
+                        pass
+                    raise
+                os.replace(json_tmp, json_path)
                 extra_paths.append(str(json_path))
             if want_diagnostic_export:
                 diag_paths = diagnostic_output_paths(json_path, out_path)
@@ -675,7 +693,23 @@ def main():
                         if crop.size == 0:
                             continue
                         crop_path = illustration_crop_path(dest_dir, img_path.stem, crop_idx)
-                        cv2.imwrite(str(crop_path), crop)
+                        # Atomic crop write: pick a sibling tmp that
+                        # preserves the suffix so ``cv2.imwrite`` still
+                        # selects the JPEG encoder, then ``os.replace``
+                        # onto the canonical path. (Code-review B18.)
+                        crop_tmp = crop_path.with_name(f".{crop_path.stem}.tmp{crop_path.suffix}")
+                        ok = cv2.imwrite(str(crop_tmp), crop)
+                        if not ok:
+                            try:
+                                crop_tmp.unlink()
+                            except FileNotFoundError:
+                                pass
+                            print(
+                                f"WARNING: cv2.imwrite failed for {crop_path}",
+                                file=sys.stderr,
+                            )
+                            continue
+                        os.replace(crop_tmp, crop_path)
                         extra_paths.append(str(crop_path))
 
             tag = " (no-reorg)" if args.no_reorg else ""

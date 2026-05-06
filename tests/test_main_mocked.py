@@ -236,6 +236,210 @@ def test_main_save_json_writes_sidecar(patched_main, monkeypatch, tmp_path):
     assert (out / "page.json").exists()
 
 
+def test_main_save_json_failure_cleans_up_tmp_and_increments_errors(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """If ``doc.to_json_file`` fails mid-write the canonical ``.json``
+    must not exist and the sibling tmp must be cleaned up. The error
+    counter increments. (B18 atomic-write invariant for the JSON
+    sidecar.)
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    page = _FakePage(text="OK")
+    captured: list = []
+
+    def factory(img_path, source_identifier=None, predictor=None):
+        clone = _FakePage(page.text, list(page.words))
+        doc = _FakeDoc(clone)
+
+        def _boom_to_json_file(p):
+            # Mimic a partial flush before crashing — the helper must
+            # still leave the canonical name absent.
+            Path(p).write_text("PARTIAL", encoding="utf-8")
+            raise OSError(28, "No space left on device")
+
+        doc.to_json_file = _boom_to_json_file
+        captured.append(doc)
+        return doc
+
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "--save-json",
+            "-o",
+            str(out),
+            str(img),
+        )
+    assert exc_info.value.code == 1
+
+    # No canonical JSON, no leftover hidden tmp.
+    assert not (out / "page.json").exists()
+    assert not (out / ".page.json.tmp").exists()
+    err = capsys.readouterr().err
+    assert "ERROR processing" in err
+    assert "No space left on device" in err
+
+
+def test_main_save_json_failure_with_no_tmp_swallows_unlink_error(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """When ``doc.to_json_file`` raises *before* it ever creates the
+    sibling tmp, the defensive ``unlink()`` must swallow
+    ``FileNotFoundError`` and re-raise the original error. Covers the
+    same B18 cleanup branch when no partial tmp ever lands on disk.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    def factory(img_path, source_identifier=None, predictor=None):
+        clone = _FakePage("OK", [])
+        doc = _FakeDoc(clone)
+
+        def _explode(_p):
+            raise RuntimeError("explode before any byte hits disk")
+
+        doc.to_json_file = _explode
+        return doc
+
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "--save-json",
+            "-o",
+            str(out),
+            str(img),
+        )
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "explode before any byte hits disk" in err
+    assert not (out / "page.json").exists()
+
+
+def test_main_extract_illustrations_imwrite_returns_false_no_tmp_swallows_unlink(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """``cv2.imwrite`` returns False but never created the tmp file:
+    the defensive cleanup must swallow ``FileNotFoundError`` and warn
+    rather than crashing the batch.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    fake_layout = MagicMock()
+    fake_layout.detect = MagicMock(
+        return_value=SimpleNamespace(
+            regions=[SimpleNamespace(L=0, R=10, T=0, B=10, type="figure", confidence=0.99)],
+            inference_ms=1,
+        )
+    )
+    monkeypatch.setattr(ocr_to_txt, "_load_layout_detector", lambda args, device: fake_layout)
+
+    class _FakeArray:
+        def __init__(self, extent: int):
+            self.size = extent
+
+        def __getitem__(self, slc):
+            row, col = slc
+            extent = max(0, row.stop - row.start) * max(0, col.stop - col.start)
+            return _FakeArray(extent)
+
+    fake_cv2 = MagicMock()
+    fake_cv2.imread = MagicMock(return_value=_FakeArray(100))
+    # Returns False without ever touching disk.
+    fake_cv2.imwrite = MagicMock(return_value=False)
+    monkeypatch.setattr(ocr_to_txt, "_load_illustration_deps", lambda: (fake_cv2, {"figure"}))
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "pp-doclayout-plus-l",
+        "--extract-illustrations",
+        "-o",
+        str(out),
+        str(img),
+    )
+    assert (out / "page.txt").exists()
+    assert not (out / "i_page_01.jpg").exists()
+    assert "cv2.imwrite failed" in capsys.readouterr().err
+
+
+def test_main_extract_illustrations_imwrite_failure_skips_and_cleans_tmp(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """When ``cv2.imwrite`` returns False for a crop, the atomic-write
+    branch must remove any sibling tmp it created and emit a warning,
+    not crash the batch and not leave the canonical crop on disk.
+    (B18 atomic-write invariant for illustration crops.)
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    fake_layout = MagicMock()
+    fake_layout.detect = MagicMock(
+        return_value=SimpleNamespace(
+            regions=[SimpleNamespace(L=0, R=10, T=0, B=10, type="figure", confidence=0.99)],
+            inference_ms=1,
+        )
+    )
+    monkeypatch.setattr(ocr_to_txt, "_load_layout_detector", lambda args, device: fake_layout)
+
+    class _FakeArray:
+        def __init__(self, extent: int):
+            self.size = extent
+
+        def __getitem__(self, slc):
+            row, col = slc
+            extent = max(0, row.stop - row.start) * max(0, col.stop - col.start)
+            return _FakeArray(extent)
+
+    fake_cv2 = MagicMock()
+    fake_cv2.imread = MagicMock(return_value=_FakeArray(100))
+
+    def _imwrite_returns_false(path, _crop):
+        # Touch the tmp so we can verify cleanup actually unlinks it.
+        Path(path).write_bytes(b"\x00")
+        return False
+
+    fake_cv2.imwrite = MagicMock(side_effect=_imwrite_returns_false)
+    monkeypatch.setattr(ocr_to_txt, "_load_illustration_deps", lambda: (fake_cv2, {"figure"}))
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "pp-doclayout-plus-l",
+        "--extract-illustrations",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    # The .txt still landed (atomic txt write succeeded).
+    assert (out / "page.txt").exists()
+    # The crop did not — and the tmp was unlinked.
+    assert not (out / "i_page_01.jpg").exists()
+    assert not list(out.glob(".i_page_01*.tmp*"))
+    err = capsys.readouterr().err
+    assert "cv2.imwrite failed" in err
+
+
 def test_main_save_reorganize_diagnostics_writes_all_six_outputs(
     patched_main, monkeypatch, tmp_path
 ):
@@ -1001,7 +1205,15 @@ def test_main_extract_illustrations_writes_crops(patched_main, monkeypatch, tmp_
 
     fake_cv2 = MagicMock()
     fake_cv2.imread = MagicMock(return_value=_FakeArray(100))
-    fake_cv2.imwrite = MagicMock(return_value=True)
+
+    def _fake_imwrite(path, _crop):
+        # The atomic-write path (B18) writes to a sibling tmp file then
+        # ``os.replace`` onto the canonical name, so the mock must
+        # actually create the file the rename will move.
+        Path(path).write_bytes(b"\x00")
+        return True
+
+    fake_cv2.imwrite = MagicMock(side_effect=_fake_imwrite)
     monkeypatch.setattr(
         ocr_to_txt,
         "_load_illustration_deps",
@@ -1021,8 +1233,13 @@ def test_main_extract_illustrations_writes_crops(patched_main, monkeypatch, tmp_
 
     # The empty-crop region was skipped; only one imwrite call ran.
     assert fake_cv2.imwrite.call_count == 1
-    crop_path = fake_cv2.imwrite.call_args[0][0]
-    assert "i_page_01.jpg" in crop_path
+    # ``imwrite`` is called against the sibling atomic-tmp path; after
+    # ``os.replace`` the final crop lands at ``i_page_01.jpg`` in the
+    # output dir. (B18.)
+    tmp_call_path = fake_cv2.imwrite.call_args[0][0]
+    assert tmp_call_path.endswith(".jpg")
+    assert ".i_page_01.tmp" in tmp_call_path
+    assert (out / "i_page_01.jpg").exists()
 
 
 def test_main_layout_debug_writes_debug_file(patched_main, monkeypatch, tmp_path):

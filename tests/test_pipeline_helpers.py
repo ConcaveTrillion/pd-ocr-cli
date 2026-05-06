@@ -16,6 +16,8 @@ import pytest
 from pd_ocr_cli import _pipeline
 from pd_ocr_cli._pipeline import (
     apply_text_normalizations,
+    atomic_write_bytes,
+    atomic_write_text,
     clear_layout_debug_env,
     compute_mirror_root,
     diagnostic_output_paths,
@@ -535,3 +537,134 @@ def test_write_diagnostic_snapshots_partial_one_missing(tmp_path):
     assert not (tmp_path / "page.post-noise.json").exists()
     assert len(written) == 2  # pure pair only
     assert any("post_noise_removal unavailable" in n for n in notes)
+
+
+# ---------------------------------------------------------------------------
+# atomic_write_text / atomic_write_bytes (B18)
+# ---------------------------------------------------------------------------
+
+
+def test_atomic_write_text_basic_roundtrip(tmp_path):
+    """Happy path: file ends up at the canonical name with the new text."""
+    target = tmp_path / "page.txt"
+    atomic_write_text(target, "hello\n")
+    assert target.read_text(encoding="utf-8") == "hello\n"
+    # No leftover sibling temp.
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_atomic_write_text_overwrites_existing(tmp_path):
+    target = tmp_path / "page.txt"
+    target.write_text("OLD CONTENT", encoding="utf-8")
+    atomic_write_text(target, "NEW")
+    assert target.read_text(encoding="utf-8") == "NEW"
+
+
+def test_atomic_write_text_failure_preserves_prior_file(tmp_path, monkeypatch):
+    """If the temp write blows up, the canonical path keeps its prior bytes
+    and no partial sibling is left behind. This is the B18 invariant: a
+    crash mid-write must never leave a truncated ``.txt`` at the final
+    path that downstream tools would mistake for a successful export.
+    """
+    target = tmp_path / "page.txt"
+    target.write_text("PRIOR GOOD CONTENT", encoding="utf-8")
+
+    real_write_text = Path.write_text
+
+    def boom(self, *args, **kwargs):  # noqa: ANN001
+        # Simulate the OS killing us mid-write (SIGKILL/OOM/ENOSPC) by
+        # raising AFTER the underlying ``open(..., "w")`` would have
+        # truncated the temp — so we know the helper still leaves the
+        # canonical path untouched.
+        if self.name.endswith(".tmp"):
+            # Touch the temp to mimic a partial flush, then explode.
+            real_write_text(self, "PARTIAL", encoding=kwargs.get("encoding", "utf-8"))
+            raise OSError(28, "No space left on device")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", boom)
+
+    with pytest.raises(OSError):
+        atomic_write_text(target, "NEW CONTENT")
+
+    # Canonical path is untouched — prior content intact, no partial.
+    assert target.read_text(encoding="utf-8") == "PRIOR GOOD CONTENT"
+    # Partial sibling was cleaned up.
+    siblings = [p.name for p in tmp_path.iterdir()]
+    assert siblings == ["page.txt"], siblings
+
+
+def test_atomic_write_text_failure_with_no_prior_file_leaves_no_partial(tmp_path, monkeypatch):
+    """Same invariant when the canonical path didn't yet exist: a failed
+    write must not leave a half-written file at the canonical name.
+    """
+    target = tmp_path / "page.txt"
+
+    real_write_text = Path.write_text
+
+    def boom(self, *args, **kwargs):  # noqa: ANN001
+        if self.name.endswith(".tmp"):
+            real_write_text(self, "PARTIAL", encoding=kwargs.get("encoding", "utf-8"))
+            raise RuntimeError("simulated SIGKILL between truncate and full flush")
+        return real_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", boom)
+
+    with pytest.raises(RuntimeError):
+        atomic_write_text(target, "NEW CONTENT")
+
+    # Canonical path never appeared.
+    assert not target.exists()
+    # Partial sibling cleaned up.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path, monkeypatch):
+    """If the underlying ``write_text`` raises *before* the temp file
+    even appears on disk, the helper's defensive ``unlink()`` must
+    swallow ``FileNotFoundError`` and re-raise the original error.
+    """
+    target = tmp_path / "page.txt"
+
+    def boom(self, *args, **kwargs):  # noqa: ANN001
+        raise RuntimeError("blew up before any byte hit disk")
+
+    monkeypatch.setattr(Path, "write_text", boom)
+    with pytest.raises(RuntimeError, match="blew up"):
+        atomic_write_text(target, "x")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_write_bytes_failure_with_no_tmp_created_swallows_unlink(tmp_path, monkeypatch):
+    target = tmp_path / "page.bin"
+
+    def boom(self, *args, **kwargs):  # noqa: ANN001
+        raise RuntimeError("blew up before any byte hit disk")
+
+    monkeypatch.setattr(Path, "write_bytes", boom)
+    with pytest.raises(RuntimeError, match="blew up"):
+        atomic_write_bytes(target, b"x")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_write_bytes_roundtrip_and_failure(tmp_path, monkeypatch):
+    target = tmp_path / "page.bin"
+    atomic_write_bytes(target, b"\x00\x01\x02")
+    assert target.read_bytes() == b"\x00\x01\x02"
+
+    real_write_bytes = Path.write_bytes
+
+    def boom(self, *args, **kwargs):  # noqa: ANN001
+        if self.name.endswith(".tmp"):
+            real_write_bytes(self, b"PARTIAL")
+            raise OSError("disk full")
+        return real_write_bytes(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_bytes", boom)
+
+    with pytest.raises(OSError):
+        atomic_write_bytes(target, b"\xff\xff")
+
+    # Original bytes preserved, no leftover temp.
+    assert target.read_bytes() == b"\x00\x01\x02"
+    assert list(tmp_path.iterdir()) == [target]

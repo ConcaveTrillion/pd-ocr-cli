@@ -9,21 +9,53 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 ## Next item
 
 Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). B20 is now done (see Done list). Pick **B18** next —
-the only remaining MAJOR-tagged item: `out_path.write_text` is
-non-atomic, so a crash mid-write leaves a truncated `.txt` that is
-visually indistinguishable from a successful single-page export and
-will silently poison downstream consumers (PGDP packaging, training
-sets, diff tools). All the remaining MINORs (B17, B19, B21, B22,
-B23) can wait behind it. After B18, work top-to-bottom: B17 (stdout
-line not terminated on per-image exception), B19 (`to_json_file`
-failure leaves orphan `.txt` — atomic write from B18 unblocks the
-fix), B21 (no bounds check on `--layout-confidence`), B22 (GitHub
-error-dict body silently swallowed), B23 (Windows cross-drive
-`commonpath` crash).
+this file). B18 and B20 are now done (see Done list). With B18's
+atomic-write helper landed, **B19** is the next priority — the
+`to_json_file` / diagnostic / crop write sites that previously
+"left an orphan `.txt`" should now be re-examined: the atomic-write
+change ensures the canonical `.txt` lands fully or not at all, but
+the *orphan-on-later-failure* behavior (txt commits, then json or
+crop fails) still leaves an unclean state. Decide whether to (a)
+order writes so the `.txt` lands last, (b) cleanup `out_path` on
+failure of subsequent steps, or (c) downgrade B19 to a doc note now
+that the truncation-vs-orphan distinction has changed. After B19,
+work top-to-bottom through the remaining MINORs: B17 (stdout line
+not terminated on per-image exception), B21 (no bounds check on
+`--layout-confidence`), B22 (GitHub error-dict body silently
+swallowed), B23 (Windows cross-drive `commonpath` crash).
 
 ### Done
 
+- **B18** — All disk writes from `ocr_to_txt.main` and
+  `write_diagnostic_snapshots` now go through a sibling temp +
+  `os.replace` atomic pattern, so a SIGKILL/OOM/`ENOSPC` mid-write
+  can no longer leave a truncated file at the canonical path. Two
+  helpers `atomic_write_text` / `atomic_write_bytes` were added to
+  `_pipeline.py`; the `out_path.write_text` site, the four
+  diagnostic-snapshot writes, the `cv2.imwrite` crop site, and the
+  `doc.to_json_file` JSON sidecar all use the same temp+rename. JSON
+  and crops use inline temp+rename rather than the helper because
+  they delegate the actual byte-write to upstream code (pd-book-tools
+  `Document.to_json_file` and OpenCV `cv2.imwrite`); both wrap that
+  call in a try with a defensive `unlink()` on failure. The crop
+  site additionally checks `cv2.imwrite`'s bool return and emits a
+  warning + cleans the tmp on `False` rather than silently advancing.
+  Regression tests in `tests/test_pipeline_helpers.py`
+  (`test_atomic_write_text_*`, `test_atomic_write_bytes_*`) cover
+  the helper invariants directly: prior file untouched on failure,
+  no canonical-path partial when there was no prior file, no leftover
+  sibling tmp. Tests in `tests/test_main_mocked.py`
+  (`test_main_save_json_failure_cleans_up_tmp_and_increments_errors`,
+  `test_main_save_json_failure_with_no_tmp_swallows_unlink_error`,
+  `test_main_extract_illustrations_imwrite_failure_skips_and_cleans_tmp`,
+  `test_main_extract_illustrations_imwrite_returns_false_no_tmp_swallows_unlink`)
+  cover the wired-up call sites end-to-end. Existing
+  `test_main_extract_illustrations_writes_crops` updated: the mock
+  imwrite now actually creates the file at the path it's handed (so
+  the subsequent `os.replace` succeeds) and the assertion verifies
+  the canonical `i_page_01.jpg` lands in the output dir after the
+  rename, with imwrite invoked against the sibling
+  `.i_page_01.tmp.jpg` path.
 - **B20** — `KeyboardInterrupt` mid-batch no longer escapes the
   per-image `try/except Exception` (KeyboardInterrupt inherits from
   `BaseException`, not `Exception`). A dedicated
@@ -976,7 +1008,7 @@ that `Processing` appears exactly twice on separate lines.
 
 ---
 
-### B18 [MAJOR] `out_path.write_text` is non-atomic — crash mid-write leaves a truncated `.txt` indistinguishable from a valid one
+### B18 [MAJOR] `out_path.write_text` is non-atomic — crash mid-write leaves a truncated `.txt` indistinguishable from a valid one — DONE
 
 **File:** `pd_ocr_cli/ocr_to_txt.py:632`
 
