@@ -9,18 +9,30 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 ## Next item
 
 Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). B18, B19, and B20 are now done (see Done list). The
-remaining MINORs go top-to-bottom: **B17** is next — the
-`Processing X ...` stdout line is left without a trailing newline
-when the per-image `try` raises (the success path prints `-> ...`
-which terminates it, but the exception path goes straight to
-stderr, so the next image's `Processing` line glues onto the
-previous one). After B17: B21 (no bounds check on
-`--layout-confidence`), B22 (GitHub error-dict body silently
-swallowed), B23 (Windows cross-drive `commonpath` crash).
+this file). B17, B18, B19, and B20 are now done (see Done list).
+The remaining MINORs go top-to-bottom: **B21** is next — no bounds
+check on `--layout-confidence` (a value outside `[0.0, 1.0]` is
+accepted by argparse and silently passed to the layout detector,
+which may either reject it deep in the stack or, worse, accept a
+nonsensical threshold). After B21: B22 (GitHub error-dict body
+silently swallowed), B23 (Windows cross-drive `commonpath` crash).
 
 ### Done
 
+- **B17** — The per-image `except Exception` branch now prints a
+  bare `print()` to terminate the unterminated `Processing X ...`
+  stdout line (which `ocr_to_txt.main` emits with `end=" "`) before
+  the `ERROR processing` stderr message. Without it, consecutive
+  failed images glued their stdout into one line — `Processing a
+  ... Processing b ... Done (2 error(s)).` — and the trailing
+  `Done` summary glued onto the last failure too. The `page is
+  None` (B13) and `KeyboardInterrupt` (B20) siblings already did
+  this; this was the last gap. New regression
+  `test_main_per_image_exception_terminates_processing_stdout_line`
+  drives a two-image batch where the document factory raises for
+  both, and asserts there are exactly two separate `Processing`
+  lines on stdout — confirmed right-reason failure before the fix
+  (a single glued line) and green after.
 - **B19** — The canonical `.txt` is now written *last* in the
   per-page artifact set, after `doc.to_json_file`, the diagnostic
   snapshots, and the illustration crop loop. Previously, the order

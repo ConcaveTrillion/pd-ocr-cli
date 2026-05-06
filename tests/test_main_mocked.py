@@ -293,6 +293,58 @@ def test_main_save_json_failure_cleans_up_tmp_and_increments_errors(
     assert not (out / "page.txt").exists()
 
 
+def test_main_per_image_exception_terminates_processing_stdout_line(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """B17: when the per-image ``try`` raises (caught by the broad
+    ``except Exception``), the ``Processing X ...`` stdout line printed
+    with ``end=" "`` must be terminated before the next image's
+    ``Processing`` line is written. Otherwise consecutive failed images
+    print as ``Processing a ... Processing b ... `` glued onto a single
+    stdout line, with the corresponding ``ERROR processing`` messages
+    going to stderr where they don't help readers reading stdout.
+
+    The ``page is None`` and ``KeyboardInterrupt`` siblings already do
+    this; the broad ``except Exception`` branch did not.
+    """
+    img_a = tmp_path / "a.png"
+    img_b = tmp_path / "b.png"
+    shutil.copy(TITLE_IMAGE, img_a)
+    shutil.copy(TITLE_IMAGE, img_b)
+    out = tmp_path / "out"
+
+    def factory(img_path, source_identifier=None, predictor=None):
+        raise RuntimeError(f"boom-{Path(img_path).stem}")
+
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(img_a),
+            str(img_b),
+        )
+    assert exc_info.value.code == 1
+
+    captured = capsys.readouterr()
+    # The two ``Processing`` lines must each terminate before the next
+    # one is printed. They are emitted with ``end=" "``; on failure,
+    # the exception branch must close the line so ``Processing b`` does
+    # not glue onto the prior ``Processing a ...`` line.
+    assert "Processing" in captured.out
+    proc_lines = [ln for ln in captured.out.splitlines() if "Processing" in ln]
+    assert len(proc_lines) == 2, (
+        f"expected 2 separate Processing lines (one per image), got: {captured.out!r}"
+    )
+    # Both errors should still land on stderr.
+    assert captured.err.count("ERROR processing") == 2
+
+
 def test_main_save_json_failure_with_no_tmp_swallows_unlink_error(
     patched_main, monkeypatch, tmp_path, capsys
 ):

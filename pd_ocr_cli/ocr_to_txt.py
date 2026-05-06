@@ -739,6 +739,14 @@ def main():
             interrupted = True
             break
         except Exception as e:
+            # Close the unterminated ``Processing X ...`` stdout line
+            # (printed with ``end=" "``) before the stderr message so
+            # the next image's ``Processing`` line — and the eventual
+            # ``Done`` summary — start on their own line rather than
+            # gluing onto this one. The ``page is None`` and
+            # ``KeyboardInterrupt`` siblings already do this; this
+            # branch had been the one gap. (B17)
+            print()
             print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
             if _env_truthy("PD_OCR_DEBUG"):
                 import traceback
