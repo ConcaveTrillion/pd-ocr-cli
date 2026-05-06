@@ -1201,9 +1201,18 @@ def test_main_no_valid_images_exits_clean(patched_main, monkeypatch, tmp_path, c
     assert "no valid image files found" in err
 
 
-def test_main_doc_with_no_pages_warns_and_continues(patched_main, monkeypatch, tmp_path, capsys):
-    img = tmp_path / "page.png"
-    shutil.copy(TITLE_IMAGE, img)
+def test_main_doc_with_no_pages_warns_increments_errors_and_exits_1(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """B13 regression: ``page is None`` must (1) name the image in the
+    warning, (2) increment the per-image error counter so the batch
+    exit code reflects the failure, and (3) terminate the
+    ``Processing X ...`` line so subsequent stdout doesn't concatenate
+    onto it."""
+    img_a = tmp_path / "page_a.png"
+    img_b = tmp_path / "page_b.png"
+    shutil.copy(TITLE_IMAGE, img_a)
+    shutil.copy(TITLE_IMAGE, img_b)
     out = tmp_path / "out"
 
     def empty_factory(img_path, source_identifier=None, predictor=None):
@@ -1211,18 +1220,34 @@ def test_main_doc_with_no_pages_warns_and_continues(patched_main, monkeypatch, t
 
     monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: empty_factory)
 
-    # Should NOT exit with an error — empty pages is a per-image warning.
-    _run_main(
-        monkeypatch,
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "-o",
-        str(out),
-        str(img),
-    )
-    err = capsys.readouterr().err
-    assert "no pages in result" in err
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(img_a),
+            str(img_b),
+        )
+    # All images yielded no pages — batch exit code MUST be non-zero so
+    # shell scripts branching on $? don't think a corrupt-JPEG batch
+    # succeeded.
+    assert exc_info.value.code == 1
+
+    captured = capsys.readouterr()
+    # Warning must name each image (unattributable in a 500-image batch
+    # otherwise).
+    assert f"no pages in result for {img_a}" in captured.err
+    assert f"no pages in result for {img_b}" in captured.err
+    # Final tally must reflect both errors.
+    assert "Done (2 error(s))" in captured.out
+    # ``Processing X ...`` was printed with end=" "; without an
+    # explicit newline before ``continue`` the next iteration's
+    # ``Processing`` concatenates onto the same line. Assert each
+    # ``Processing`` starts at column zero.
+    assert captured.out.count("\nProcessing ") + captured.out.startswith("Processing ") == 2
 
 
 # ---------------------------------------------------------------------------

@@ -8,13 +8,26 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B13** — Empty-pages images (`page is None`) are silently dropped
-without incrementing the error counter and the WARNING omits
-`img_path`; also the `Processing X ...` line is left unterminated.
-See the B13 section below for `ocr_to_txt.py:512-515` details.
+All round-2 B items (B1–B13) are now done. Trigger round 3 deep
+review — re-scan the source tree for a fresh batch of findings before
+the next /loop iteration.
 
 ### Done
 
+- **B13** — `page is None` branch in `ocr_to_txt.py:main()` now (1)
+  prints the closing newline so the `Processing X ...` line is
+  terminated before subsequent stdout, (2) names the image in the
+  warning (`WARNING: no pages in result for {img_path}`), and (3)
+  increments the per-image `errors` counter so an all-empty batch
+  exits 1 rather than misleading shell scripts that branch on `$?`.
+  Regression test
+  `test_main_doc_with_no_pages_warns_increments_errors_and_exits_1`
+  in `tests/test_main_mocked.py` runs a 2-image batch with an empty-
+  pages factory and asserts exit code 1, both image paths in the
+  stderr warnings, `Done (2 error(s))` on stdout, and that each
+  `Processing` line starts at column zero. Replaces the old
+  `test_main_doc_with_no_pages_warns_and_continues` which codified
+  the buggy "exit 0 + no img_path" behavior.
 - **B12** — `collect_images` now dedupes by resolved absolute path
   (first-seen order preserved), so passing a file directly and via a
   parent directory (or repeating a path / overlapping `-r` trees) no

@@ -544,7 +544,14 @@ def main():
             doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
             page = doc.pages[0] if doc.pages else None
             if page is None:
-                print("WARNING: no pages in result", file=sys.stderr)
+                # Close the ``Processing X ...`` line (printed with
+                # end=" ") before the warning so subsequent stdout
+                # doesn't concatenate onto it. Tally as a per-image
+                # error so an all-empty batch exits non-zero rather
+                # than misleading shell scripts that branch on $?.
+                print()
+                print(f"WARNING: no pages in result for {img_path}", file=sys.stderr)
+                errors += 1
                 continue
 
             page_layout = None
