@@ -8,10 +8,10 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B4** — `write_diagnostic_snapshots` accepts but silently ignores its
-`json_path` / `txt_path` parameters (`pd_ocr_cli/_pipeline.py:289`). Either
-remove the parameters and update callers, or document them as
-intentionally unused with a comment that makes the invariant explicit.
+**B5** — GitHub tags API call in `pd_ocr_cli/_update_check.py:63` uses no
+`per_page` parameter and so fetches at most 30 tags. Once the project
+exceeds 30 tags, the latest stable release may fall off the first page
+and the update notice silently goes stale. Append `?per_page=100`.
 
 ### Done
 
@@ -27,6 +27,10 @@ intentionally unused with a comment that makes the invariant explicit.
   `tests/test_main_mocked.py` (`test_main_no_reorg_with_save_diag_warns`,
   `test_main_no_reorg_with_validate_reorg_warns`,
   `test_main_layout_none_with_layout_debug_warns`).
+- **B4** — `write_diagnostic_snapshots` no longer accepts the unused
+  `json_path` / `txt_path` parameters; caller in `ocr_to_txt.py` updated
+  and signature-guard test added in `tests/test_pipeline_helpers.py`
+  (`test_write_diagnostic_snapshots_signature_has_no_unused_path_params`).
 
 ---
 

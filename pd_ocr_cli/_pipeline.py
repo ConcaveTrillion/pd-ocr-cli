@@ -236,8 +236,6 @@ def format_noise_drop_warning(
 
 def write_diagnostic_snapshots(
     page: Any,
-    json_path: Path,
-    txt_path: Path,
     *,
     pure_ocr_json: Path,
     pure_ocr_txt: Path,
@@ -286,11 +284,6 @@ def write_diagnostic_snapshots(
             "diagnostic_post_noise_removal unavailable "
             "(capture_diagnostics=False); skipping post-noise snapshot files"
         )
-
-    # Silence unused-arg lint: callers pass json_path/txt_path so they
-    # stay grouped with the snapshot pair in main(); they're written by
-    # the existing post-reorganize code path, not this helper.
-    _ = (json_path, txt_path)
 
     return written, notes
 

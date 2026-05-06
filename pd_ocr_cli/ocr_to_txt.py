@@ -581,8 +581,6 @@ def main():
                 diag_paths = diagnostic_output_paths(json_path, out_path)
                 written, notes = write_diagnostic_snapshots(
                     page,
-                    json_path=json_path,
-                    txt_path=out_path,
                     pure_ocr_json=diag_paths["pure_ocr_json"],
                     pure_ocr_txt=diag_paths["pure_ocr_txt"],
                     post_noise_json=diag_paths["post_noise_json"],

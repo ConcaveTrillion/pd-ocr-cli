@@ -452,8 +452,6 @@ def test_write_diagnostic_snapshots_writes_all_four_when_present(tmp_path):
     )
     written, notes = write_diagnostic_snapshots(
         page,
-        json_path=tmp_path / "page.json",
-        txt_path=tmp_path / "page.txt",
         pure_ocr_json=tmp_path / "page.pure-ocr.json",
         pure_ocr_txt=tmp_path / "page.pure-ocr.txt",
         post_noise_json=tmp_path / "page.post-noise.json",
@@ -474,8 +472,6 @@ def test_write_diagnostic_snapshots_skips_missing_with_note(tmp_path):
     page = _PageWithDiagnostics(pure=None, post=None)
     written, notes = write_diagnostic_snapshots(
         page,
-        json_path=tmp_path / "page.json",
-        txt_path=tmp_path / "page.txt",
         pure_ocr_json=tmp_path / "page.pure-ocr.json",
         pure_ocr_txt=tmp_path / "page.pure-ocr.txt",
         post_noise_json=tmp_path / "page.post-noise.json",
@@ -488,6 +484,19 @@ def test_write_diagnostic_snapshots_skips_missing_with_note(tmp_path):
     assert not (tmp_path / "page.post-noise.json").exists()
 
 
+def test_write_diagnostic_snapshots_signature_has_no_unused_path_params():
+    """B4: ``json_path`` / ``txt_path`` were accepted but silently ignored.
+
+    They've been removed from the signature so callers can't mistake them
+    for inputs the helper writes to.
+    """
+    import inspect
+
+    params = inspect.signature(write_diagnostic_snapshots).parameters
+    assert "json_path" not in params
+    assert "txt_path" not in params
+
+
 def test_write_diagnostic_snapshots_partial_one_missing(tmp_path):
     """Only one snapshot present — the other is reported as unavailable."""
     page = _PageWithDiagnostics(
@@ -496,8 +505,6 @@ def test_write_diagnostic_snapshots_partial_one_missing(tmp_path):
     )
     written, notes = write_diagnostic_snapshots(
         page,
-        json_path=tmp_path / "page.json",
-        txt_path=tmp_path / "page.txt",
         pure_ocr_json=tmp_path / "page.pure-ocr.json",
         pure_ocr_txt=tmp_path / "page.pure-ocr.txt",
         post_noise_json=tmp_path / "page.post-noise.json",
