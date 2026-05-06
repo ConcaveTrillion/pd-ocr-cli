@@ -924,6 +924,53 @@ def test_main_layout_debug_writes_debug_file(patched_main, monkeypatch, tmp_path
     assert (out / "page.txt").exists()
 
 
+def test_main_layout_debug_setup_failure_recorded_per_image_not_batch_abort(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """An unwritable ``--layout-debug-dir`` must not kill the whole batch.
+
+    Regression for B8: ``setup_layout_debug_env`` previously ran outside the
+    per-image ``try``, so a single ``mkdir`` failure aborted ``main()`` with
+    an unhandled ``OSError``. The fix moves the call inside the try, so each
+    image records the failure as its own per-image error and the loop keeps
+    going.
+    """
+    img1 = tmp_path / "page-001.png"
+    img2 = tmp_path / "page-002.png"
+    shutil.copy(TITLE_IMAGE, img1)
+    shutil.copy(TITLE_IMAGE, img2)
+    out = tmp_path / "out"
+
+    # Use a *file* as the layout-debug-dir; mkdir(parents=True, exist_ok=True)
+    # will raise FileExistsError because the path exists and is not a dir.
+    bogus_debug = tmp_path / "not-a-dir"
+    bogus_debug.write_text("file, not directory", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "--layout-debug",
+            "--layout-debug-dir",
+            str(bogus_debug),
+            "-o",
+            str(out),
+            str(img1),
+            str(img2),
+        )
+
+    captured = capsys.readouterr()
+    # Both images must be visited — the second one would never be touched if
+    # the first mkdir failure aborted main() before re-entering the loop.
+    assert "page-001.png" in (captured.out + captured.err)
+    assert "page-002.png" in (captured.out + captured.err)
+    # Both failures recorded as per-image errors, exit 1, "2 error(s)" tally.
+    assert exc_info.value.code == 1
+    assert "2 error(s)" in captured.out
+
+
 def test_main_straight_quotes_normalizes(patched_main, monkeypatch, tmp_path):
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)

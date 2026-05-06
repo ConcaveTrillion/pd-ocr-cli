@@ -505,9 +505,14 @@ def main():
         out_path, json_path = output_paths_for(img_path, dest_dir)
 
         print(f"Processing {img_path} ...", end=" ", flush=True)
-        debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+        debug_file = None
 
         try:
+            # ``setup_layout_debug_env`` calls ``mkdir`` on a user-supplied
+            # path; keep it inside the per-image ``try`` so an unwritable
+            # ``--layout-debug-dir`` is recorded as one per-image error
+            # rather than aborting the whole batch.
+            debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
             doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
             page = doc.pages[0] if doc.pages else None
             if page is None:

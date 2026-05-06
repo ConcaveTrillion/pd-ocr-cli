@@ -8,12 +8,26 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B8** — `setup_layout_debug_env` runs outside the per-image `try`, so a
-single bad `--layout-debug-dir` aborts the whole batch instead of being
-recorded as one per-image error.
+**B9** — `--no-reorg --layout-debug` falsely reports a `layout-debug:`
+artifact path on the success line even though `reorganize_page()` is
+never called and no debug file is written. Sibling silent-no-op of the
+B3 cases.
 
 ### Done
 
+- **B8** — `setup_layout_debug_env(args, dest_dir, img_stem)` is now
+  called *inside* the per-image `try` in `ocr_to_txt.py:main()`, so an
+  unwritable `--layout-debug-dir` (e.g. path that already exists as a
+  regular file, raising `FileExistsError` from `mkdir`) is recorded as
+  one per-image error and the loop continues to the next image instead
+  of aborting `main()` outright. `debug_file` is initialised to `None`
+  before the try so the existing `finally: clear_layout_debug_env()`
+  and the success-line `extra_paths.append(...)` gate stay correct.
+  Regression test
+  `test_main_layout_debug_setup_failure_recorded_per_image_not_batch_abort`
+  added in `tests/test_main_mocked.py`: passes a regular file as
+  `--layout-debug-dir` across a 2-image batch and asserts both images
+  are visited and tallied as `2 error(s)`.
 - **B7** — `diagnostic_output_paths` now builds names with
   `path.with_name(f"{path.stem}.pure-ocr.json")` instead of
   double-`with_suffix`, preserving multi-dot stems
