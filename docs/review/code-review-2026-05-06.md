@@ -8,14 +8,23 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B10** — Dev/pre-release users (e.g. `uv tool install git+...@main`,
-hatch-vcs `.devN+gHASH` suffix) never receive the upgrade notice for
-the matching stable: `_parse_release_prefix` strips dev/local
-suffixes, so `latest > current` becomes False when the stable matches
-the dev's prefix.
+**B11** — `--layout-debug-dir DIR` without `--layout-debug` is
+silently ignored: same silent-no-op family as B3, just an additional
+flag combination missed at the time. User passes a directory path,
+no warning, no artifacts. Add a stderr warning at the top-of-`main`
+arg-validation block.
 
 ### Done
 
+- **B10** — `check_for_update` now fires the upgrade notice for
+  pre-release users whose release prefix matches the latest stable
+  (e.g. `VERSION="1.2.3.dev1+gHASH"` with latest tag `v1.2.3`). A
+  version is treated as pre-release when `_parse_stable_tag(VERSION)`
+  returns None; for those the comparison becomes `latest >= current`
+  rather than strict `>`. PEP 440 says `1.2.3.dev1 < 1.2.3`, so the
+  stable IS strictly newer and the notice must fire. Regression test
+  `test_notice_when_dev_prefix_equals_latest_stable` added in
+  `tests/test_update_check_network.py`.
 - **B9** — `--no-reorg --layout-debug` is now treated as a silent
   no-op identical to the B3 cases: a stderr warning is emitted at
   arg-validation time, and the success-line `layout-debug: <path>`
@@ -515,7 +524,7 @@ and gate the `extra_paths.append(...)` on `do_reorg` as well, or check
 
 ---
 
-### B10 [MINOR] Dev/pre-release users never receive the upgrade notice for the matching stable
+### B10 [MINOR] Dev/pre-release users never receive the upgrade notice for the matching stable — DONE
 
 **File:** `pd_ocr_cli/_update_check.py:85-90`
 

@@ -87,7 +87,15 @@ def check_for_update() -> None:
             return
 
         latest_tag_name, latest = latest_stable
-        if latest > current:
+        # A dev/local-suffixed version (e.g. ``1.2.3.dev1+gHASH``) is a
+        # *pre-release of* its release prefix — strictly less than the
+        # matching stable tag (PEP 440: ``1.2.3.dev1 < 1.2.3``). Without
+        # this check, ``_parse_release_prefix`` strips the suffix and the
+        # naive ``latest > current`` comparison treats them as equal,
+        # silently denying pre-release users the upgrade notice for the
+        # very stable they were tracking toward.
+        is_pre_release = _parse_stable_tag(VERSION) is None
+        if latest > current or (is_pre_release and latest == current):
             print(
                 f"\nNOTICE: A newer version of pd-ocr is available ({latest_tag_name}, "
                 f"you have {VERSION}).\n"

@@ -135,6 +135,24 @@ def test_notice_uses_dev_version_release_prefix(monkeypatch, capsys):
     assert "v1.0.0" in err
 
 
+def test_notice_when_dev_prefix_equals_latest_stable(monkeypatch, capsys):
+    """A user on ``1.2.3.devN+gHASH`` is on a pre-release *of* 1.2.3 — the
+    stable ``v1.2.3`` is therefore strictly newer (PEP 440: 1.2.3.dev1 <
+    1.2.3) and the upgrade notice must fire. Stripping the dev/local
+    suffix to compare bare ``(1,2,3) > (1,2,3)`` would silently miss this.
+    """
+    monkeypatch.setattr(_update_check, "VERSION", "1.2.3.dev1+gabc1234")
+    payload = [{"name": "v1.2.3"}]
+    with patch("urllib.request.urlopen", _fake_urlopen(payload)):
+        _update_check.check_for_update()
+    err = capsys.readouterr().err
+    assert "newer version" in err, (
+        f"dev pre-release of 1.2.3 must be told v1.2.3 stable is newer; got stderr: {err!r}"
+    )
+    assert "v1.2.3" in err
+    assert "1.2.3.dev1+gabc1234" in err
+
+
 # ---------------------------------------------------------------------------
 # Best-effort error handling
 # ---------------------------------------------------------------------------
