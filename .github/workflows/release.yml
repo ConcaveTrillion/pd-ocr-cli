@@ -1,0 +1,63 @@
+name: release
+
+# Triggered by an annotated tag push (`v*`). The local pre-flight
+# (`scripts/do-release.sh` → `make ci-slow`) is the primary safety net;
+# this workflow is the build + publish step.
+#
+# Steps:
+#   1. Check out at full depth (hatch-vcs derives the version from tags).
+#   2. Build wheel + sdist with uv.
+#   3. Attest build provenance via Sigstore (actions/attest-build-provenance).
+#   4. Publish a GitHub Release with auto-generated notes and attach
+#      dist/*.whl + dist/*.tar.gz as assets.
+#
+# install.sh downloads the wheel asset from the latest GitHub Release —
+# there is no PyPI publish.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: build + publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write       # softprops/action-gh-release needs this to create the Release
+      id-token: write       # required by attest-build-provenance for Sigstore
+      attestations: write   # required by attest-build-provenance to upload the attestation
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # hatch-vcs needs full history for the version
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: latest
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: List built artifacts
+        run: ls -la dist/
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: "dist/*"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          fail_on_unmatched_files: true

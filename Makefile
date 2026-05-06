@@ -134,15 +134,20 @@ clean: ## Clean up cache and build artifacts
 	rm -rf dist/ 2>/dev/null || true
 	@echo "✅ Cleanup complete!"
 
-release-patch: ## Bump patch version and create a git tag (e.g. v0.3 → v0.3.1)
+release-patch: ## Release: bump patch, run ci-slow, tag, push (fires GitHub Release workflow; e.g. v0.4.2 → v0.4.3)
 	@$(MAKE) --no-print-directory _do-release BUMP=patch
 
-release-minor: ## Bump minor version and create a git tag (e.g. v0.3 → v0.4)
+release-minor: ## Release: bump minor, run ci-slow, tag, push (fires GitHub Release workflow; e.g. v0.4.2 → v0.5.0)
 	@$(MAKE) --no-print-directory _do-release BUMP=minor
 
-release-major: ## Bump major version and create a git tag (e.g. v0.3 → v1.0)
+release-major: ## Release: bump major, run ci-slow, tag, push (fires GitHub Release workflow; e.g. v0.4.2 → v1.0.0)
 	@$(MAKE) --no-print-directory _do-release BUMP=major
 
+# scripts/do-release.sh handles repo-state guards, runs the ci-slow pre-flight,
+# creates the three-component tag, and pushes main + tag (which fires the
+# GitHub Release workflow at .github/workflows/release.yml).
+# Pass FORCE=1 to skip the repo-state guards (pre-flight still runs).
+# Pass SKIP_PUSH=1 to create the tag locally without pushing (dry-run).
 _do-release:
 	@BUMP=$(or $(BUMP),minor) ./scripts/do-release.sh
 
