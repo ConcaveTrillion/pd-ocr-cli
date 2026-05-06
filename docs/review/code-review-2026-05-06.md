@@ -8,11 +8,8 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-All Round 5 bugs (B24) done. The loop may stop here or pivot to a
-Round 6 review pass over the same modules — pick up new findings
-that Rounds 1-5 missed (race conditions in concurrent batch runs,
-signal-handling gaps in long batches, locale assumptions in tag
-sorters, etc.).
+**B25** — Fix `make help` drift on coverage thresholds in
+`Makefile`. The four affected lines are 94, 99, 108, 116.
 
 ### Done
 
@@ -1518,3 +1515,27 @@ at the canonical name" line if the fsync is judged not worth
 the per-page latency cost on slow disks).
 
 ---
+
+## Round 6 bugs
+
+- **B25** [MINOR] `Makefile` help text vs. variable-default drift.
+  Lines 6-7 set `COV_FAIL_UNDER ?= 100` and
+  `COV_FAIL_UNDER_SLOW ?= 100`, but the `##` self-documenting help
+  strings (rendered by `make help`) on the `coverage` target
+  (line 94), `coverage-slow` (line 99), `ci` (line 108), and
+  `ci-slow` (line 116) all advertise "default 50" / "default 70".
+  These were the historical floors before the project tightened
+  to a 100% gate; the variable defaults were updated but the help
+  text was not. Symptom: a contributor running `make help` is told
+  "fails if total drops below 50%" and reasonably assumes a small
+  drop is fine, only to be surprised when CI rejects a PR that
+  shaved coverage from 100% → 99%. Fix: swap "default 50" → "default
+  100" on the `coverage` and `ci` lines, and "default 70" → "default
+  100" on the `coverage-slow` and `ci-slow` lines, so `make help`
+  matches the actual gate. The CLAUDE.md agent doc has the same
+  stale "default 50" claim — out of scope for this repo's review
+  doc but worth a follow-up note in the workspace agent file.
+  No code change needed beyond the Makefile help strings; no test
+  needed (Makefile help isn't exercised by pytest). Marked MINOR
+  rather than NIT because the misinformation actively misleads
+  contributors about whether their PR will pass CI.
