@@ -64,6 +64,7 @@ subsequent runs.
 """
 
 import argparse
+import math
 import os
 import sys
 import threading
@@ -177,6 +178,29 @@ def _start_update_check_thread(disabled: bool) -> threading.Thread | None:
 def _env_truthy(name: str) -> bool:
     """True if the env var is set to a truthy value (1/true/yes/on, case-insensitive)."""
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _confidence_threshold(s: str) -> float:
+    """argparse type for --layout-confidence: finite float in [0.0, 1.0].
+
+    Plain ``type=float`` happily accepts ``nan``, ``inf``, ``-inf``,
+    negatives, and values >1. ``nan`` silently disables the crop
+    filter (every ``x < nan`` is False, so every region passes);
+    ``inf`` / out-of-range values silently produce zero crops. Reject
+    these at the CLI boundary with a clear message rather than letting
+    them propagate into the layout backend. (B21)
+    """
+    try:
+        v = float(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"--layout-confidence must be a finite number in [0, 1]; got {s!r}"
+        )
+    if not math.isfinite(v) or not 0.0 <= v <= 1.0:
+        raise argparse.ArgumentTypeError(
+            f"--layout-confidence must be a finite number in [0, 1]; got {s!r}"
+        )
+    return v
 
 
 def parse_args():
@@ -348,7 +372,7 @@ def parse_args():
     )
     p.add_argument(
         "--layout-confidence",
-        type=float,
+        type=_confidence_threshold,
         default=0.5,
         metavar="THRESHOLD",
         help="Confidence threshold for layout detections (0..1). Default 0.5.",

@@ -9,16 +9,33 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 ## Next item
 
 Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). B17, B18, B19, and B20 are now done (see Done list).
-The remaining MINORs go top-to-bottom: **B21** is next — no bounds
-check on `--layout-confidence` (a value outside `[0.0, 1.0]` is
-accepted by argparse and silently passed to the layout detector,
-which may either reject it deep in the stack or, worse, accept a
-nonsensical threshold). After B21: B22 (GitHub error-dict body
-silently swallowed), B23 (Windows cross-drive `commonpath` crash).
+this file). B17, B18, B19, B20, and B21 are now done (see Done list).
+The remaining MINORs go top-to-bottom: **B22** is next —
+`_latest_stable_tag` raises on GitHub error-response bodies (e.g. a
+rate-limit JSON dict instead of a list of refs), and the exception is
+swallowed silently by the background update-check thread, so users
+never learn that the upgrade-notice machinery is broken. After B22:
+B23 (Windows cross-drive `commonpath` crash in `compute_mirror_root`
+that aborts the whole batch).
 
 ### Done
 
+- **B21** — `--layout-confidence` previously used plain `type=float`,
+  silently accepting `nan` (every `x < nan` is False, so the crop
+  filter is turned off and every region passes), `inf`/`-inf`
+  (no region passes; `--extract-illustrations` produces zero crops
+  with no warning), negatives, and values >1 (e.g. user typo `50`
+  meaning `0.5`). New `_confidence_threshold` argparse type rejects
+  non-finite values and anything outside `[0.0, 1.0]` with a clear
+  `--layout-confidence must be a finite number in [0, 1]; got X`
+  error at the CLI boundary, before the value is handed to the
+  layout backend. Two regression tests in `tests/test_parse_args.py`:
+  `test_layout_confidence_accepts_inclusive_bounds` (0, 0.0, 1, 1.0
+  still pass) and `test_layout_confidence_rejects_out_of_range_or_nonfinite`
+  parametrized over `nan`, `NaN`, `inf`, `-inf`, `Infinity`, `-1`,
+  `-0.0001`, `1.0001`, `50`, `not-a-number` — confirmed
+  right-reason failure (`DID NOT RAISE SystemExit`) before the fix
+  and green after.
 - **B17** — The per-image `except Exception` branch now prints a
   bare `print()` to terminate the unterminated `Processing X ...`
   stdout line (which `ocr_to_txt.main` emits with `end=" "`) before

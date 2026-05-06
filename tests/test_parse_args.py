@@ -98,6 +98,23 @@ def test_layout_confidence_parsed_as_float():
     assert args.layout_confidence == pytest.approx(0.25)
 
 
+@pytest.mark.parametrize("boundary", ["0", "0.0", "1", "1.0"])
+def test_layout_confidence_accepts_inclusive_bounds(boundary):
+    with _argv("--layout-confidence", boundary, "page.png"):
+        args = parse_args()
+    assert args.layout_confidence == pytest.approx(float(boundary))
+
+
+@pytest.mark.parametrize(
+    "bad",
+    ["nan", "NaN", "inf", "-inf", "Infinity", "-1", "-0.0001", "1.0001", "50", "not-a-number"],
+)
+def test_layout_confidence_rejects_out_of_range_or_nonfinite(bad):
+    """B21: argparse must reject nan/inf/negative/>1 with a clear error."""
+    with _argv("--layout-confidence", bad, "page.png"), pytest.raises(SystemExit):
+        parse_args()
+
+
 def test_output_dir_alias_short():
     with _argv("-o", "out/", "page.png"):
         args = parse_args()
