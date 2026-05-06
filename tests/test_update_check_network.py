@@ -196,3 +196,35 @@ def test_tags_request_uses_per_page_100(monkeypatch):
     assert "per_page=100" in captured["url"], (
         f"tags URL must request per_page=100 (got: {captured['url']!r})"
     )
+
+
+# ---------------------------------------------------------------------------
+# User-Agent: GitHub may rate-limit the default ``Python-urllib/3.x`` UA more
+# aggressively than a clearly-identified application UA. Set an explicit one.
+# ---------------------------------------------------------------------------
+
+
+def test_tags_request_sets_explicit_user_agent(monkeypatch):
+    """The tags-API request must carry an explicit ``User-Agent`` header
+    identifying ``pd-ocr-cli`` and its version, rather than relying on
+    urllib's default ``Python-urllib/3.x`` (which GitHub may throttle).
+    """
+    monkeypatch.setattr(_update_check, "VERSION", "0.5.0")
+
+    captured: dict = {}
+
+    def _capturing_opener(req, timeout=None):
+        # ``Request.headers`` keys are title-cased by urllib internals.
+        captured["headers"] = dict(req.headers)
+        captured["ua"] = req.get_header("User-agent")
+        return _FakeResponse(b"[]")
+
+    with patch("urllib.request.urlopen", _capturing_opener):
+        _update_check.check_for_update()
+
+    ua = captured.get("ua")
+    assert ua is not None, (
+        f"Request must set an explicit User-Agent header (headers seen: {captured.get('headers')!r})"
+    )
+    assert "pd-ocr-cli" in ua, f"User-Agent must identify pd-ocr-cli (got: {ua!r})"
+    assert "0.5.0" in ua, f"User-Agent must include the package version (got: {ua!r})"

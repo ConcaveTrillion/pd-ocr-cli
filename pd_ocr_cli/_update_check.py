@@ -64,7 +64,16 @@ def check_for_update() -> None:
         # than 30 tags (incl. dev/rc/draft tags), causing the update notice to
         # silently go stale.
         url = f"https://api.github.com/repos/{_GITHUB_REPO}/tags?per_page=100"
-        req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+        # Identify ourselves explicitly. urllib's default ``Python-urllib/3.x``
+        # User-Agent is generic and GitHub may rate-limit it more aggressively;
+        # a clear application UA also helps GitHub diagnose abuse if it occurs.
+        req = urllib.request.Request(
+            url,
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": f"pd-ocr-cli/{VERSION}",
+            },
+        )
         with urllib.request.urlopen(req, timeout=3) as resp:
             tags = json.loads(resp.read())
         if not tags:

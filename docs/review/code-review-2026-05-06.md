@@ -8,13 +8,17 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B6** — `check_for_update` in `pd_ocr_cli/_update_check.py:63` sends no
-explicit `User-Agent` header. `urllib.request` defaults to
-`Python-urllib/3.x`, which GitHub may rate-limit unsympathetically. Set
-an explicit `User-Agent: pd-ocr-cli/{VERSION}` on the `Request`.
+**S1** — `main()` in `pd_ocr_cli/ocr_to_txt.py:575–594` contains a 20-line
+illustration-crop block inside the per-image loop that is orthogonal to
+the rest of the loop body. Extract to a helper such as
+`_process_illustration_crops(page_layout, cv2, crop_types, args, dest_dir, img_path, img_stem)`.
 
 ### Done
 
+- **B6** — `check_for_update` now sends an explicit
+  `User-Agent: pd-ocr-cli/{VERSION}` header on the GitHub tags request;
+  test `test_tags_request_sets_explicit_user_agent` added in
+  `tests/test_update_check_network.py`.
 - **B1** — `format_noise_drop_warning` `(+N more)` miscount fixed; tests added
   in `tests/test_pipeline_helpers.py` (`..._no_phantom_more_when_blanks_within_sample`,
   `..._more_count_reflects_unseen_words`).
