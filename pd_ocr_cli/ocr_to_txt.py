@@ -442,6 +442,13 @@ def main():
             "which is skipped); ignoring.",
             file=sys.stderr,
         )
+    if args.layout_debug_dir and not args.layout_debug:
+        print(
+            "warning: --layout-debug-dir has no effect without --layout-debug "
+            "(the directory is only used when the debug artifact is enabled); "
+            "ignoring.",
+            file=sys.stderr,
+        )
 
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).

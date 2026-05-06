@@ -8,14 +8,17 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B11** — `--layout-debug-dir DIR` without `--layout-debug` is
-silently ignored: same silent-no-op family as B3, just an additional
-flag combination missed at the time. User passes a directory path,
-no warning, no artifacts. Add a stderr warning at the top-of-`main`
-arg-validation block.
+**B12** — `collect_images` does not deduplicate: passing the same
+image both directly and via a parent dir double-processes it. See
+the B12 section below for `ocr_to_txt.py:392-409` details.
 
 ### Done
 
+- **B11** — `--layout-debug-dir DIR` without `--layout-debug` now
+  emits a stderr warning at the top-of-`main` arg-validation block,
+  matching the B3 silent-no-op pattern. Regression test
+  `test_main_layout_debug_dir_without_layout_debug_warns` added in
+  `tests/test_main_mocked.py`.
 - **B10** — `check_for_update` now fires the upgrade notice for
   pre-release users whose release prefix matches the latest stable
   (e.g. `VERSION="1.2.3.dev1+gHASH"` with latest tag `v1.2.3`). A
@@ -560,7 +563,7 @@ Add tests in `tests/test_update_check_parsers.py` covering
 
 ---
 
-### B11 [MINOR] `--layout-debug-dir DIR` without `--layout-debug` is silently ignored
+### B11 [MINOR] `--layout-debug-dir DIR` without `--layout-debug` is silently ignored — DONE
 
 **File:** `pd_ocr_cli/_pipeline.py:144-151`
 
