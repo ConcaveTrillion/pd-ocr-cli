@@ -8,14 +8,17 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-All round-3 B items (B12-B16) are done. **Trigger round 4 deep
-review** — open a new review pass against `pd_ocr_cli/` to surface
-the next batch of bugs/concerns. The previous rounds focused on
-silent no-op flag combinations, per-image error containment, and
-pre-release upgrade-notice gaps; round 4 should look at fresh angles
-(e.g. concurrency in update-check thread, encoding edge cases in
-text normalization, signal/SIGINT handling mid-batch, layout/OCR
-result invariants, CLI exit code semantics across edge paths).
+Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
+this file). Start with **B20** — `KeyboardInterrupt` mid-batch skips
+the progress summary entirely, which is the highest-leverage fix
+(observable user pain on any aborted long batch and unblocks a
+shared `_finalize_summary()` helper that B17 / B18 / B19 can also
+hang behind). After B20, work top-to-bottom: B17 (stdout line not
+terminated on per-image exception, cosmetic but trivial), B18
+(non-atomic `.txt` write — partial files survive crashes), B19
+(`to_json_file` failure leaves orphan `.txt`), B21 (no bounds check
+on `--layout-confidence`), B22 (GitHub error-dict body silently
+swallowed), B23 (Windows cross-drive `commonpath` crash).
 
 ### Done
 
@@ -895,3 +898,376 @@ are written.
 9. **S3** — Unwrap full `args` namespace in `_load_layout_detector` + `setup_layout_debug_env`
 10. **D1/D2/D3** — Fix stale documentation (DEVELOPMENT.md, Makefile help text, agent CLAUDE.md)
 11. **U1** — Evaluate upstreaming `_text_normalize.py` to `pd-book-tools`
+
+---
+
+## Round 4 bugs
+
+Fresh deep pass after B14..B16 shipped. Re-scanned end-of-batch
+summary path, atomic-write semantics, signal handling, argparse type
+coercion bounds, GitHub-response parsing edge cases, and Windows-
+specific path crashes. Each finding is a real defect — not style.
+
+### B17 [MINOR] Per-image exception leaves the `Processing X ...` line unterminated on stdout
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:543, 684-690`
+
+```python
+print(f"Processing {img_path} ...", end=" ", flush=True)
+...
+try:
+    ...
+    print(f"-> {out_path}{tag}")          # success branch closes the line
+except Exception as e:
+    print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
+    ...
+    errors += 1
+```
+
+The `Processing X ...` header is printed with `end=" "`, so the
+trailing newline is left to whichever success branch runs (`-> ...`
+on stdout). The `page is None` branch was fixed in B13 with an
+explicit `print()` to close the line. The bare `except Exception`
+branch was missed: when a per-image try raises, the ERROR line goes
+to **stderr**, leaving the stdout `Processing X ...` line still
+open. The next iteration's `Processing Y ...` then concatenates
+onto the same stdout line. In a 500-page batch with intermittent
+errors, the `tee log.txt` output reads
+``Processing a.png ... Processing b.png ... -> a.txt`` with the
+`-> a.txt` belonging to a later page than its on-line predecessor —
+making it impossible to attribute outputs to inputs by reading
+stdout linearly.
+
+Same family as the (fixed) B13 case; the `except` branch needs the
+same single-character fix.
+
+**Suggested fix:**
+
+```python
+except Exception as e:
+    print()  # close the "Processing X ..." line on stdout
+    print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
+    ...
+```
+
+Add a regression test: run a 2-image batch where the first image's
+factory raises and the second succeeds; capture stdout and assert
+that `Processing` appears exactly twice on separate lines.
+
+---
+
+### B18 [MAJOR] `out_path.write_text` is non-atomic — crash mid-write leaves a truncated `.txt` indistinguishable from a valid one
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:632`
+
+```python
+out_path.write_text(text, encoding="utf-8")
+```
+
+`Path.write_text` is `open(..., "w").write(text)` — it truncates
+first, then writes. If the process is killed mid-write (SIGKILL,
+OOM, `KeyboardInterrupt` between `open` and `write` completion, or
+the disk fills with `ENOSPC` after `open` succeeded) the user is
+left with an empty or partial `.txt` file at `out_path`. Worse,
+because the per-image error path increments `errors` only when an
+exception bubbles out of the try, a SIGKILL never increments
+anything — the next batch run sees the truncated file and skips
+nothing (we don't memoize completed pages), but any *external*
+tooling that branches on file existence (e.g. `for f in *.png; do
+[ -f ${f%.png}.txt ] || pd-ocr "$f"; done`) treats the corrupt file
+as cached.
+
+Same hazard applies to the `.json` sidecar via `doc.to_json_file`
+and to the `i_<stem>_NN.jpg` crops via `cv2.imwrite` — none of the
+file-write call sites use a temp+rename pattern.
+
+**Suggested fix:** write to a sibling temp file, fsync, and
+`os.replace` to the final path. `os.replace` is atomic on POSIX
+and Windows for same-filesystem renames, so a crash either leaves
+the *previous* `.txt` intact (re-run produces the new one) or the
+new one. Sketch:
+
+```python
+def _atomic_write_text(path: Path, text: str) -> None:
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+```
+
+Apply at the three write sites (`out_path`, `json_path`, crop
+paths). Add a regression test that monkey-patches `Path.write_text`
+to raise mid-call and asserts `out_path` either does not exist or
+contains the prior text — never an empty/partial result.
+
+---
+
+### B19 [MINOR] `to_json_file` / diagnostic / crop failures after `out_path.write_text` succeeds leave an orphan `.txt`
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:632-677`
+
+```python
+out_path.write_text(text, encoding="utf-8")  # line 632 — succeeds
+
+extra_paths: list[str] = []
+if args.save_json:
+    doc.to_json_file(json_path)              # line 636 — may raise
+...
+if want_diagnostic_export:
+    written, notes = write_diagnostic_snapshots(...)  # line 640 — may raise
+...
+if args.extract_illustrations and ...:
+    cv2.imwrite(str(crop_path), crop)        # line 676 — may raise
+```
+
+Once the `.txt` is on disk, any later failure inside the same
+per-image try (json sidecar write, diagnostic bundle write, crop
+write) is caught by the bare `except Exception`, prints `ERROR
+processing <path>`, and increments `errors`. But the `.txt` is
+*not* rolled back. The user sees `Done (1 error(s))`, looks at the
+output directory, and finds a `.txt` for the failed page with no
+`.json` sidecar despite `--save-json`. External pipelines that
+key on `.txt` existence will silently consume the (post-reorganize,
+ostensibly correct) text without realising the run was incomplete.
+
+The simplest containment is to write the `.txt` *last* (after
+`to_json_file`, the diagnostic snapshots, and the crop loop), so
+the `.txt` only appears when every other artifact for that page
+was already produced. The atomic-write change in B18 makes this
+free since the `.txt` body is already in memory. Order becomes:
+crops → diagnostics → json sidecar → `.txt` (last).
+
+Alternative: on except, delete any partial outputs already written
+for the failing page before re-raising. Less surgical and harder to
+get right (which artifacts existed before this page started?).
+
+---
+
+### B20 [MAJOR] `KeyboardInterrupt` mid-batch skips the progress summary and exit code
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:541-699`
+
+```python
+errors = 0
+for img_path in images:
+    ...
+    try:
+        ...
+    except Exception as e:        # KeyboardInterrupt is BaseException, NOT caught
+        ...
+        errors += 1
+    finally:
+        clear_layout_debug_env()
+
+if _update_thread is not None:
+    _update_thread.join(timeout=3)
+if errors:
+    print(f"Done ({errors} error(s)).")
+    sys.exit(1)
+print("Done.")
+```
+
+`KeyboardInterrupt` and `SystemExit` inherit from `BaseException`,
+**not** `Exception`. When a user hits Ctrl-C during a long batch —
+common, since 500 pages at minutes per page is the documented
+workload — the signal propagates through the `try`, runs the
+`finally` (good — env vars cleaned up), then **escapes the
+for-loop**. The end-of-batch summary block never runs:
+
+- The user has no idea how many pages succeeded vs how many remain
+  unprocessed (no `Done (N of M, K error(s))` line).
+- The exit code is whatever Python's default SIGINT handling
+  produces (typically 130 / -SIGINT), not the deterministic `0`/`1`
+  the rest of the CLI surface promises.
+- The pending update-notice thread is not joined, so a fast notice
+  arriving microseconds before SIGINT is racing the process exit.
+- The `Processing X ...` line for the in-flight page is left
+  unterminated on stdout (B17 sibling).
+
+**Suggested fix:** add a dedicated except branch that logs and
+breaks out cleanly, letting the existing summary code emit a
+partial-progress report:
+
+```python
+processed = 0
+for img_path in images:
+    ...
+    try:
+        ...
+        processed += 1
+    except KeyboardInterrupt:
+        print()  # close "Processing X ..."
+        print(
+            f"\nInterrupted after {processed}/{len(images)} image(s); "
+            f"{errors} error(s) so far.",
+            file=sys.stderr,
+        )
+        clear_layout_debug_env()
+        sys.exit(130)
+    except Exception as e:
+        ...
+```
+
+Or wrap the for-loop body in `try/except KeyboardInterrupt: break`
+and let the existing summary pick up the partial counts. Either
+way the layout-debug env cleanup must still fire, the in-flight
+stdout line must close, and the exit code must signal partial
+completion.
+
+Add a regression test using `signal.raise_signal(SIGINT)` from a
+side-effect monkeypatch on the document factory (or a custom
+`KeyboardInterrupt`-raising factory) and assert the summary runs
+plus exit is 130.
+
+---
+
+### B21 [MINOR] `--layout-confidence` accepts `nan`, `inf`, negative, and >1 — silently subverts the crop filter
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:348-354`, `pd_ocr_cli/_pipeline.py:319-338`
+
+```python
+p.add_argument(
+    "--layout-confidence",
+    type=float,
+    default=0.5,
+    metavar="THRESHOLD",
+    help="Confidence threshold for layout detections (0..1). Default 0.5.",
+)
+```
+
+`type=float` accepts `nan`, `inf`, `-inf`, negatives, and values
+greater than 1 without complaint. The threshold is consumed in
+`iter_crop_regions` as `region.confidence < confidence_threshold`
+and inside the upstream layout backend. Two failure modes:
+
+1. `--layout-confidence nan` — every comparison `x < nan` is False,
+   so **every** region passes the filter regardless of its actual
+   confidence. The crop filter is silently turned off.
+2. `--layout-confidence inf` — every comparison fails, so **no**
+   regions pass; `--extract-illustrations` produces zero crops with
+   no warning.
+3. `--layout-confidence -1` — every comparison passes, same as
+   `nan` case.
+4. `--layout-confidence 5` — no regions pass, same as `inf`.
+
+The help text says "0..1" but argparse never enforces it. Users
+who type a typo (`--layout-confidence 50` meaning 0.5) or who pipe
+in an unvalidated config value silently get either zero crops or
+all-of-them.
+
+**Suggested fix:** custom converter that rejects nan/inf and clamps
+the documented domain:
+
+```python
+def _confidence(s: str) -> float:
+    v = float(s)  # raises ArgumentTypeError-equivalent on garbage
+    if not math.isfinite(v) or not 0.0 <= v <= 1.0:
+        raise argparse.ArgumentTypeError(
+            f"--layout-confidence must be a finite number in [0, 1]; got {s!r}"
+        )
+    return v
+
+p.add_argument("--layout-confidence", type=_confidence, default=0.5, ...)
+```
+
+Add tests covering each rejection case.
+
+---
+
+### B22 [MINOR] `_latest_stable_tag` raises on GitHub error-response bodies, swallowed silently
+
+**File:** `pd_ocr_cli/_update_check.py:37-47, 78-82, 106-107`
+
+```python
+with urllib.request.urlopen(req, timeout=3) as resp:
+    tags = json.loads(resp.read())
+if not tags:
+    return
+latest_stable = _latest_stable_tag(tags)
+...
+```
+
+When GitHub returns an error response (rate-limited, repo
+temporarily unavailable, or auth required) the body is a **dict**
+like `{"message": "API rate limit exceeded for ...",
+"documentation_url": "..."}`, not a list of tags. `if not tags:`
+short-circuits only when the dict is empty (`{}`), which it never
+is — error responses always include `message`. So execution falls
+through to `_latest_stable_tag(tags)`:
+
+```python
+for tag in tags:                 # iterates dict KEYS (strings)
+    name = tag.get("name", "")   # AttributeError on str.get(default)
+```
+
+The `AttributeError` is swallowed by the bare `except Exception:
+pass` in `check_for_update`, so the user never sees a notice and
+never learns *why*. With B6's `User-Agent: pd-ocr-cli/{VERSION}`
+shipped, anonymous rate limiting is the most common cause —
+exactly the case where users would benefit from a clearer
+diagnostic (or, at minimum, no silent swallow that masks future
+bugs in this function).
+
+**Suggested fix:** type-guard before parsing:
+
+```python
+with urllib.request.urlopen(req, timeout=3) as resp:
+    payload = json.loads(resp.read())
+if not isinstance(payload, list) or not payload:
+    return
+latest_stable = _latest_stable_tag(payload)
+```
+
+Add a regression test in `tests/test_update_check_network.py` with
+a mocked `urlopen` returning the rate-limit error dict and assert
+no exception (currently relies on the catch-all to mask it) and no
+notice printed.
+
+---
+
+### B23 [MINOR] `compute_mirror_root` raises on cross-drive Windows inputs, aborting the whole batch
+
+**File:** `pd_ocr_cli/_pipeline.py:54-66`, `pd_ocr_cli/ocr_to_txt.py:539`
+
+```python
+def compute_mirror_root(inputs, output_dir):
+    if output_dir is None:
+        return None
+    input_dirs = [Path(i) for i in inputs if Path(i).is_dir()]
+    if not input_dirs:
+        return None
+    return Path(os.path.commonpath([d.resolve() for d in input_dirs]))
+```
+
+`os.path.commonpath` raises `ValueError("Paths don't have the same
+drive")` on Windows when the resolved input directories straddle
+drive letters (e.g. `pd-ocr C:\scans D:\more_scans -o E:\out`).
+The call sits at `ocr_to_txt.py:539`, **outside** the per-image
+`try`, so the ValueError propagates out of `main()` as an
+unhandled traceback before any image is processed. Linux users are
+immune (single root); Windows users — who, given uv/pip support,
+are a real install target — see a stack trace instead of a clean
+diagnostic.
+
+**Suggested fix:** catch `ValueError` and degrade to flat output:
+
+```python
+def compute_mirror_root(inputs, output_dir):
+    if output_dir is None:
+        return None
+    input_dirs = [Path(i) for i in inputs if Path(i).is_dir()]
+    if not input_dirs:
+        return None
+    try:
+        return Path(os.path.commonpath([d.resolve() for d in input_dirs]))
+    except ValueError:
+        return None  # cross-drive on Windows — fall back to flat output
+```
+
+When the function returns `None`, `resolve_dest_dir` already
+falls back to `output_dir` (flat) instead of mirroring. Add a
+unit test that fakes the ValueError (e.g. monkeypatches
+`os.path.commonpath`) and asserts the fall-through returns
+`None`. Optional: emit a one-shot stderr warning so the user
+knows the mirror layout was disabled.
+
+---
