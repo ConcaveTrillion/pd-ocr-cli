@@ -8,11 +8,10 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B3** — Emit `print(file=sys.stderr)` warnings for the three silent no-op
-flag combinations in `pd_ocr_cli/ocr_to_txt.py:508–512` and `:485`:
-(1) `--no-reorg --save-reorganize-diagnostics`,
-(2) `--no-reorg --validate-reorg`,
-(3) `--layout-model none --layout-debug`.
+**B4** — `write_diagnostic_snapshots` accepts but silently ignores its
+`json_path` / `txt_path` parameters (`pd_ocr_cli/_pipeline.py:289`). Either
+remove the parameters and update callers, or document them as
+intentionally unused with a comment that makes the invariant explicit.
 
 ### Done
 
@@ -22,6 +21,12 @@ flag combinations in `pd_ocr_cli/ocr_to_txt.py:508–512` and `:485`:
 - **B2** — `_load_validate_word_preservation()` hoisted out of the per-image
   loop; test added in `tests/test_main_mocked.py`
   (`test_main_validate_reorg_loader_called_once_across_images`).
+- **B3** — Silent-no-op stderr warnings added for the three flag combos
+  (`--no-reorg --save-reorganize-diagnostics`, `--no-reorg --validate-reorg`,
+  `--layout-model none --layout-debug`); tests added in
+  `tests/test_main_mocked.py` (`test_main_no_reorg_with_save_diag_warns`,
+  `test_main_no_reorg_with_validate_reorg_warns`,
+  `test_main_layout_none_with_layout_debug_warns`).
 
 ---
 
@@ -83,7 +88,7 @@ wants to monkeypatch this function after the first image cannot do so.
 
 ---
 
-### B3 [MINOR] Silent no-ops — flags that interact but produce no warning
+### B3 [MINOR] Silent no-ops — flags that interact but produce no warning — DONE
 
 **File:** `pd_ocr_cli/ocr_to_txt.py:508–512`
 

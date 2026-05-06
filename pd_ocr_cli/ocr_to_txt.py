@@ -415,6 +415,27 @@ def main():
     validate_extract_illustrations(args)
     layout_enabled = args.layout_model != "none"
 
+    # Surface flag combinations that are silent no-ops so users do not chase
+    # missing output (B3 — see docs/review/code-review-2026-05-06.md).
+    if args.no_reorg and args.save_reorganize_diagnostics:
+        print(
+            "warning: --save-reorganize-diagnostics has no effect with --no-reorg "
+            "(diagnostics are produced only when reorganize runs); ignoring.",
+            file=sys.stderr,
+        )
+    if args.no_reorg and args.validate_reorg:
+        print(
+            "warning: --validate-reorg has no effect with --no-reorg "
+            "(validation compares pre/post reorganize word lists); ignoring.",
+            file=sys.stderr,
+        )
+    if not layout_enabled and args.layout_debug:
+        print(
+            "warning: --layout-debug has no effect with --layout-model none "
+            "(no layout model runs, so no debug artifact is written); ignoring.",
+            file=sys.stderr,
+        )
+
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
     update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")

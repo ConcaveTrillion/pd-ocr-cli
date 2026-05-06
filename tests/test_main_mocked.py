@@ -493,6 +493,90 @@ def test_main_no_reorg_skips_reorganize(patched_main, monkeypatch, tmp_path):
     assert not fake_doc.pages[0].reorganize_page.called
 
 
+def test_main_no_reorg_with_save_diag_warns(patched_main, monkeypatch, tmp_path, capsys):
+    """B3.1: ``--no-reorg --save-reorganize-diagnostics`` is a silent no-op.
+
+    The diagnostics flag only fires when reorganize runs, so combining it
+    with ``--no-reorg`` produces no output. Warn the user explicitly to
+    stderr so the flag's silence is not surprising.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--no-reorg",
+        "--save-json",
+        "--save-reorganize-diagnostics",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "--no-reorg" in err and "--save-reorganize-diagnostics" in err
+    assert "warning" in err.lower()
+
+
+def test_main_no_reorg_with_validate_reorg_warns(patched_main, monkeypatch, tmp_path, capsys):
+    """B3.2: ``--no-reorg --validate-reorg`` silently skips validation.
+
+    The ``if do_reorg and args.validate_reorg`` gate short-circuits, so no
+    validation runs and no warning is shown. Emit a stderr warning making
+    that explicit.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--no-reorg",
+        "--validate-reorg",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "--no-reorg" in err and "--validate-reorg" in err
+    assert "warning" in err.lower()
+
+
+def test_main_layout_none_with_layout_debug_warns(patched_main, monkeypatch, tmp_path, capsys):
+    """B3.3: ``--layout-model none --layout-debug`` is a silent no-op.
+
+    With layout disabled the debug file path is announced on stdout but no
+    layout model ever runs, so the file never materializes. Warn on stderr
+    so users understand why the announced path stays empty.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--layout-debug",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "--layout-model none" in err and "--layout-debug" in err
+    assert "warning" in err.lower()
+
+
 def test_main_default_passes_drop_layout_words_false_to_reorganize(
     patched_main, monkeypatch, tmp_path
 ):
