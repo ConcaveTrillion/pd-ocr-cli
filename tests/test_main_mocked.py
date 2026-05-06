@@ -286,6 +286,11 @@ def test_main_save_json_failure_cleans_up_tmp_and_increments_errors(
     err = capsys.readouterr().err
     assert "ERROR processing" in err
     assert "No space left on device" in err
+    # B19: ``.txt`` is written *after* the json sidecar (and the rest
+    # of the per-page artifacts) so a json failure must not leave an
+    # orphan ``.txt`` for downstream pipelines that key on its
+    # existence to mean "this page completed".
+    assert not (out / "page.txt").exists()
 
 
 def test_main_save_json_failure_with_no_tmp_swallows_unlink_error(

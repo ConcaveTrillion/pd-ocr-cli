@@ -9,23 +9,35 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 ## Next item
 
 Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). B18 and B20 are now done (see Done list). With B18's
-atomic-write helper landed, **B19** is the next priority — the
-`to_json_file` / diagnostic / crop write sites that previously
-"left an orphan `.txt`" should now be re-examined: the atomic-write
-change ensures the canonical `.txt` lands fully or not at all, but
-the *orphan-on-later-failure* behavior (txt commits, then json or
-crop fails) still leaves an unclean state. Decide whether to (a)
-order writes so the `.txt` lands last, (b) cleanup `out_path` on
-failure of subsequent steps, or (c) downgrade B19 to a doc note now
-that the truncation-vs-orphan distinction has changed. After B19,
-work top-to-bottom through the remaining MINORs: B17 (stdout line
-not terminated on per-image exception), B21 (no bounds check on
+this file). B18, B19, and B20 are now done (see Done list). The
+remaining MINORs go top-to-bottom: **B17** is next — the
+`Processing X ...` stdout line is left without a trailing newline
+when the per-image `try` raises (the success path prints `-> ...`
+which terminates it, but the exception path goes straight to
+stderr, so the next image's `Processing` line glues onto the
+previous one). After B17: B21 (no bounds check on
 `--layout-confidence`), B22 (GitHub error-dict body silently
 swallowed), B23 (Windows cross-drive `commonpath` crash).
 
 ### Done
 
+- **B19** — The canonical `.txt` is now written *last* in the
+  per-page artifact set, after `doc.to_json_file`, the diagnostic
+  snapshots, and the illustration crop loop. Previously, the order
+  was txt → json → diagnostics → crops, so any failure in the
+  later steps was caught by the per-image `except Exception`,
+  bumped the `errors` counter, and left an orphan `.txt` next to a
+  missing sidecar. Downstream pipelines that key on `.txt`
+  existence as "this page completed successfully" would have
+  silently consumed the orphan as a clean run. Reordered to
+  crops → diagnostics → json → `.txt` so a failure anywhere in the
+  chain leaves no `.txt` for that page; combined with B18's
+  atomic-write invariant, the per-page artifact set is now
+  all-or-nothing. The existing
+  `test_main_save_json_failure_cleans_up_tmp_and_increments_errors`
+  was extended with a `not (out / "page.txt").exists()` assertion
+  to lock in the new ordering — confirmed right-reason failure
+  before the fix, then green after.
 - **B18** — All disk writes from `ocr_to_txt.main` and
   `write_diagnostic_snapshots` now go through a sibling temp +
   `os.replace` atomic pattern, so a SIGKILL/OOM/`ENOSPC` mid-write
@@ -1053,7 +1065,7 @@ contains the prior text — never an empty/partial result.
 
 ---
 
-### B19 [MINOR] `to_json_file` / diagnostic / crop failures after `out_path.write_text` succeeds leave an orphan `.txt`
+### B19 [MINOR] [DONE] `to_json_file` / diagnostic / crop failures after `out_path.write_text` succeeds leave an orphan `.txt`
 
 **File:** `pd_ocr_cli/ocr_to_txt.py:632-677`
 

@@ -632,12 +632,17 @@ def main():
             )
             if not text:
                 print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
-            # Atomic write: a SIGKILL/OOM/ENOSPC mid-write must never
-            # leave a truncated ``.txt`` at the canonical path that
-            # downstream tooling would mistake for a successful short
-            # page export. (Code-review B18.)
-            atomic_write_text(out_path, text)
 
+            # The canonical ``.txt`` is written *last* (after the json
+            # sidecar, diagnostic snapshots, and illustration crops) so
+            # that any per-image failure leaves the output directory
+            # without a ``.txt`` for that page. External pipelines key
+            # on ``.txt`` existence to mean "this page completed
+            # successfully"; an orphan ``.txt`` next to a missing
+            # sidecar would silently masquerade as a clean run.
+            # (Code-review B19.) Combined with the B18 atomic-write
+            # invariant on the ``.txt`` itself, the per-page artifact
+            # set is now all-or-nothing.
             extra_paths: list[str] = []
             if args.save_json:
                 # ``Document.to_json_file`` opens the destination with
@@ -711,6 +716,12 @@ def main():
                             continue
                         os.replace(crop_tmp, crop_path)
                         extra_paths.append(str(crop_path))
+
+            # B19: ``.txt`` is written *last* so a failure in any prior
+            # sidecar/crop step leaves no orphan ``.txt``. B18: still
+            # atomic, so a SIGKILL/OOM/ENOSPC mid-rename never leaves a
+            # truncated ``.txt`` at the canonical path.
+            atomic_write_text(out_path, text)
 
             tag = " (no-reorg)" if args.no_reorg else ""
             if extra_paths:
