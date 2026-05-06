@@ -1352,6 +1352,97 @@ def test_main_doc_with_no_pages_warns_increments_errors_and_exits_1(
     assert captured.out.count("\nProcessing ") + captured.out.startswith("Processing ") == 2
 
 
+def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """B20 regression: Ctrl-C mid-batch must NOT escape the for-loop.
+
+    ``KeyboardInterrupt`` derives from ``BaseException``, so the
+    per-image ``except Exception`` does not catch it. Without a
+    dedicated handler the signal escapes the loop, skipping the
+    end-of-batch summary, the update-thread join, and the
+    deterministic exit code. The fix must:
+
+    1. close the unterminated ``Processing X ...`` stdout line,
+    2. emit a partial-progress summary on stderr naming
+       processed/total/error counts,
+    3. join the update-notice thread (no race against process exit),
+    4. exit with code 130 (SIGINT convention).
+    """
+    img_a = tmp_path / "page_a.png"
+    img_b = tmp_path / "page_b.png"
+    img_c = tmp_path / "page_c.png"
+    for img in (img_a, img_b, img_c):
+        shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    # First call returns a normal page; second call raises
+    # KeyboardInterrupt (simulating Ctrl-C while OCR'ing the second
+    # image); third call MUST never run.
+    call_count = {"n": 0}
+    third_seen = {"n": 0}
+
+    def interrupting_factory(img_path, source_identifier=None, predictor=None):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return SimpleNamespace(
+                pages=[_FakePage(text="OK")],
+                to_json_file=lambda p: None,
+            )
+        if call_count["n"] == 2:
+            raise KeyboardInterrupt
+        third_seen["n"] += 1
+        return SimpleNamespace(pages=[_FakePage(text="OK")], to_json_file=lambda p: None)
+
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: interrupting_factory)
+
+    # Track the update-notice thread so we can assert it was joined.
+    import threading
+
+    class _RecordingThread(threading.Thread):
+        joined = False
+
+        def join(self, timeout=None):
+            type(self).joined = True
+            return super().join(timeout=timeout)
+
+    started = _RecordingThread(target=lambda: None, daemon=True)
+    started.start()
+    monkeypatch.setattr(ocr_to_txt, "_start_update_check_thread", lambda disabled: started)
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(img_a),
+            str(img_b),
+            str(img_c),
+        )
+
+    # SIGINT convention: 128 + signal number.
+    assert exc_info.value.code == 130
+    # Loop must have broken — third image never visited.
+    assert third_seen["n"] == 0
+    # Update thread join must still fire (otherwise a fast notice
+    # racing SIGINT can interleave with shell prompt).
+    assert _RecordingThread.joined is True
+
+    captured = capsys.readouterr()
+    # First image's success line ran; second image's "Processing ..."
+    # was unterminated by ``end=" "`` and must be closed before the
+    # summary so subsequent stderr/stdout don't concatenate onto it.
+    assert "Processing " in captured.out
+    # Partial-progress summary on stderr names processed/total.
+    assert "Interrupted after 1/3 image(s)" in captured.err
+    # No "Done." (full success) and no "Done (N error(s))." (regular
+    # failure) lines — KeyboardInterrupt is its own exit path.
+    assert "Done." not in captured.out
+    assert "Done (" not in captured.out
+
+
 # ---------------------------------------------------------------------------
 # Multi-image / mirroring behavior
 # ---------------------------------------------------------------------------

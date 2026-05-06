@@ -539,6 +539,8 @@ def main():
     mirror_root = compute_mirror_root(args.inputs, output_dir)
 
     errors = 0
+    processed = 0
+    interrupted = False
     for img_path in images:
         print(f"Processing {img_path} ...", end=" ", flush=True)
         debug_file = None
@@ -681,6 +683,16 @@ def main():
                 print(f"-> {out_path}, {', '.join(extra_paths)}{tag}")
             else:
                 print(f"-> {out_path}{tag}")
+            processed += 1
+        except KeyboardInterrupt:
+            # ``KeyboardInterrupt`` inherits from ``BaseException`` and so
+            # is NOT caught by the ``except Exception`` branch below. Without
+            # this branch, Ctrl-C mid-batch escapes the for-loop entirely,
+            # skipping the end-of-batch summary, the update-thread join, and
+            # the deterministic exit code. (B20)
+            print()  # close the unterminated ``Processing X ...`` line
+            interrupted = True
+            break
         except Exception as e:
             print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
             if _env_truthy("PD_OCR_DEBUG"):
@@ -693,6 +705,12 @@ def main():
 
     if _update_thread is not None:
         _update_thread.join(timeout=3)
+    if interrupted:
+        print(
+            f"Interrupted after {processed}/{len(images)} image(s); {errors} error(s) so far.",
+            file=sys.stderr,
+        )
+        sys.exit(130)
     if errors:
         print(f"Done ({errors} error(s)).")
         sys.exit(1)

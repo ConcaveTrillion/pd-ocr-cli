@@ -9,19 +9,39 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 ## Next item
 
 Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). Start with **B20** — `KeyboardInterrupt` mid-batch skips
-the progress summary entirely, which is the highest-leverage fix
-(observable user pain on any aborted long batch and unblocks a
-shared `_finalize_summary()` helper that B17 / B18 / B19 can also
-hang behind). After B20, work top-to-bottom: B17 (stdout line not
-terminated on per-image exception, cosmetic but trivial), B18
-(non-atomic `.txt` write — partial files survive crashes), B19
-(`to_json_file` failure leaves orphan `.txt`), B21 (no bounds check
-on `--layout-confidence`), B22 (GitHub error-dict body silently
-swallowed), B23 (Windows cross-drive `commonpath` crash).
+this file). B20 is now done (see Done list). Pick **B18** next —
+the only remaining MAJOR-tagged item: `out_path.write_text` is
+non-atomic, so a crash mid-write leaves a truncated `.txt` that is
+visually indistinguishable from a successful single-page export and
+will silently poison downstream consumers (PGDP packaging, training
+sets, diff tools). All the remaining MINORs (B17, B19, B21, B22,
+B23) can wait behind it. After B18, work top-to-bottom: B17 (stdout
+line not terminated on per-image exception), B19 (`to_json_file`
+failure leaves orphan `.txt` — atomic write from B18 unblocks the
+fix), B21 (no bounds check on `--layout-confidence`), B22 (GitHub
+error-dict body silently swallowed), B23 (Windows cross-drive
+`commonpath` crash).
 
 ### Done
 
+- **B20** — `KeyboardInterrupt` mid-batch no longer escapes the
+  per-image `try/except Exception` (KeyboardInterrupt inherits from
+  `BaseException`, not `Exception`). A dedicated
+  `except KeyboardInterrupt` branch in the per-image loop now (1)
+  closes the unterminated `Processing X ...` stdout line, (2) sets
+  an `interrupted` flag and `break`s out of the loop, after which
+  the existing post-loop block joins the update-notice thread, prints
+  `Interrupted after {processed}/{len(images)} image(s); {errors}
+  error(s) so far.` to stderr, and `sys.exit(130)` (SIGINT
+  convention). The `finally: clear_layout_debug_env()` still fires
+  on the in-flight image. Regression test
+  `test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130`
+  added in `tests/test_main_mocked.py`: 3-image batch with the
+  factory raising `KeyboardInterrupt` on the 2nd call, asserts
+  `SystemExit(130)`, the 3rd image is never visited, the recorded
+  update thread is joined, the partial-progress summary names
+  `1/3 image(s)` on stderr, and neither `Done.` nor `Done (N
+  error(s)).` appear on stdout.
 - **B16** — `--save-reorganize-diagnostics` without `--save-json`
   now emits a stderr warning at the top-of-`main` arg-validation
   block, matching the B3/B11/B15 silent-no-op pattern. The export
@@ -1042,7 +1062,7 @@ get right (which artifacts existed before this page started?).
 
 ---
 
-### B20 [MAJOR] `KeyboardInterrupt` mid-batch skips the progress summary and exit code
+### B20 [MAJOR] [DONE] `KeyboardInterrupt` mid-batch skips the progress summary and exit code
 
 **File:** `pd_ocr_cli/ocr_to_txt.py:541-699`
 
