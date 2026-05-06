@@ -122,7 +122,24 @@ def compute_mirror_root(inputs: Iterable[str], output_dir: Path | None) -> Path 
     input_dirs = [Path(i) for i in inputs if Path(i).is_dir()]
     if not input_dirs:
         return None
-    return Path(os.path.commonpath([d.resolve() for d in input_dirs]))
+    resolved = [d.resolve() for d in input_dirs]
+    try:
+        return Path(os.path.commonpath(resolved))
+    except ValueError:
+        # ``os.path.commonpath`` raises ``ValueError`` when the inputs share
+        # no common ancestor — most commonly on Windows when directories live
+        # on different drives (``C:\scans`` and ``D:\more_scans``), but also
+        # for any platform when the resolved paths cannot be reconciled. Fall
+        # back to flat output (``mirror_root=None``) so the batch proceeds
+        # instead of aborting with an unhandled traceback before any image is
+        # processed. ``resolve_dest_dir`` then writes every page directly
+        # under ``output_dir``.
+        print(
+            "WARNING: input directories have no common ancestor; "
+            "writing outputs flat under --output-dir instead of mirroring.",
+            file=sys.stderr,
+        )
+        return None
 
 
 def resolve_dest_dir(

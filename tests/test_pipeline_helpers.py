@@ -108,6 +108,34 @@ def test_compute_mirror_root_ignores_non_directory_inputs(tmp_path):
     assert compute_mirror_root([str(img), str(d)], output_dir=tmp_path / "out") == d.resolve()
 
 
+def test_compute_mirror_root_handles_no_common_ancestor(tmp_path, monkeypatch, capsys):
+    """B23: ``os.path.commonpath`` raises ``ValueError`` for inputs with no
+    common ancestor — most commonly on Windows when directories live on
+    different drives (``C:\\scans`` vs ``D:\\more_scans``). We can't
+    reproduce a cross-drive layout on POSIX (after ``.resolve()`` every path
+    starts with ``/``), so simulate it by patching ``os.path.commonpath`` to
+    raise the same ``ValueError`` the real Windows stdlib raises. Before the
+    fix this aborted the entire batch with an unhandled traceback before any
+    image was processed; after the fix it falls back to ``None`` (flat
+    output) and emits a single WARNING on stderr."""
+    a = tmp_path / "scans"
+    b = tmp_path / "more_scans"
+    a.mkdir()
+    b.mkdir()
+    out = tmp_path / "out"
+
+    def _raise(_paths):
+        raise ValueError("Paths don't have the same drive")
+
+    monkeypatch.setattr(_pipeline.os.path, "commonpath", _raise)
+    result = compute_mirror_root([str(a), str(b)], output_dir=out)
+    assert result is None
+    err = capsys.readouterr().err
+    assert "no common ancestor" in err
+    # Exactly one warning, not one per image.
+    assert err.count("WARNING") == 1
+
+
 # ---------------------------------------------------------------------------
 # resolve_dest_dir
 # ---------------------------------------------------------------------------

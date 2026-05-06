@@ -8,17 +8,28 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). B17, B18, B19, B20, B21, and B22 are now done (see Done
-list). The remaining MINOR goes top-to-bottom: **B23** is next —
-Windows cross-drive `commonpath` crash in `compute_mirror_root`
-(`pd-ocr C:\scans D:\more_scans -o E:\out` raises `ValueError("Paths
-don't have the same drive")` outside the per-image try, aborting the
-whole batch with an unhandled traceback before any image is
-processed). Catch `ValueError` and degrade to flat output.
+All round-4 B items (B17–B23) are now done. Trigger round 5 deep
+review for the next batch of findings.
 
 ### Done
 
+- **B23** — `compute_mirror_root` previously called
+  `os.path.commonpath([d.resolve() for d in input_dirs])` with no
+  guard. On Windows, paths on different drives raise
+  `ValueError("Paths don't have the same drive")`; the call sits
+  outside the per-image `try`, so a single batch of inputs spanning
+  drives (`pd-ocr C:\scans D:\more_scans -o E:\out`) aborted the
+  entire batch with an unhandled traceback before any image was
+  processed. Wrapped the `commonpath` call in a `try/except
+  ValueError`, fall back to `mirror_root=None` (flat output under
+  `--output-dir`), and emit a single stderr WARNING explaining the
+  degraded behavior. New regression
+  `test_compute_mirror_root_handles_no_common_ancestor` patches
+  `os.path.commonpath` to raise the same `ValueError` the real
+  Windows stdlib raises (POSIX can't reproduce the cross-drive case
+  natively after `.resolve()`), asserts the function returns `None`
+  and emits exactly one `WARNING` — confirmed right-reason failure
+  before the fix (uncaught `ValueError`) and green after.
 - **B22** — `_latest_stable_tag` previously raised `AttributeError`
   on GitHub error-response bodies (rate-limit / auth-required /
   repo-unavailable JSON dicts like
