@@ -18,13 +18,16 @@ from pd_ocr_cli._pipeline import (
     apply_text_normalizations,
     clear_layout_debug_env,
     compute_mirror_root,
+    diagnostic_output_paths,
     format_drops_warning,
+    format_noise_drop_warning,
     illustration_crop_path,
     iter_crop_regions,
     output_paths_for,
     resolve_dest_dir,
     setup_layout_debug_env,
     validate_extract_illustrations,
+    write_diagnostic_snapshots,
 )
 
 
@@ -341,3 +344,143 @@ def test_iter_crop_regions_module_constants_present():
     """Regression guard: env-var names are part of the layout-debug contract."""
     assert _pipeline._LAYOUT_DEBUG_ENV == "PD_OCR_LAYOUT_DEBUG"
     assert _pipeline._LAYOUT_DEBUG_FILE_ENV == "PD_OCR_LAYOUT_DEBUG_FILE"
+
+
+# ---------------------------------------------------------------------------
+# format_noise_drop_warning
+# ---------------------------------------------------------------------------
+
+
+class _Word:
+    def __init__(self, text: str):
+        self.text = text
+
+
+def test_format_noise_drop_warning_empty_returns_empty_list():
+    assert format_noise_drop_warning([], "page.png", "--flag") == []
+
+
+def test_format_noise_drop_warning_includes_count_and_sample_and_hint():
+    words = [_Word("foo"), _Word("bar"), _Word("baz")]
+    out = format_noise_drop_warning(words, "page.png", "--save-reorganize-diagnostics")
+    joined = "\n".join(out)
+    assert "page.png" in joined
+    assert "dropped 3 word(s)" in joined
+    assert '"foo"' in joined and '"bar"' in joined and '"baz"' in joined
+    assert "--save-reorganize-diagnostics" in joined
+
+
+def test_format_noise_drop_warning_truncates_long_sample():
+    words = [_Word(f"w{i}") for i in range(20)]
+    out = format_noise_drop_warning(words, "page.png", "--flag", sample_size=5)
+    joined = "\n".join(out)
+    assert "dropped 20 word(s)" in joined
+    assert "(+15 more)" in joined
+
+
+def test_format_noise_drop_warning_handles_blank_token_text():
+    words = [_Word(""), _Word("real")]
+    out = format_noise_drop_warning(words, "page.png", "--flag")
+    joined = "\n".join(out)
+    # Blanks are skipped from the sample but still counted.
+    assert "dropped 2 word(s)" in joined
+    assert '"real"' in joined
+
+
+# ---------------------------------------------------------------------------
+# diagnostic_output_paths
+# ---------------------------------------------------------------------------
+
+
+def test_diagnostic_output_paths_pairs_pure_and_post_noise(tmp_path):
+    json_p = tmp_path / "page-001.json"
+    txt_p = tmp_path / "page-001.txt"
+    paths = diagnostic_output_paths(json_p, txt_p)
+    assert paths["pure_ocr_json"] == tmp_path / "page-001.pure-ocr.json"
+    assert paths["pure_ocr_txt"] == tmp_path / "page-001.pure-ocr.txt"
+    assert paths["post_noise_json"] == tmp_path / "page-001.post-noise.json"
+    assert paths["post_noise_txt"] == tmp_path / "page-001.post-noise.txt"
+
+
+# ---------------------------------------------------------------------------
+# write_diagnostic_snapshots
+# ---------------------------------------------------------------------------
+
+
+class _Snapshot:
+    def __init__(self, text: str, payload: dict | None = None):
+        self.text = text
+        self._payload = payload or {"text": text}
+
+    def to_dict(self):
+        return self._payload
+
+
+class _PageWithDiagnostics:
+    def __init__(self, pure: _Snapshot | None, post: _Snapshot | None):
+        self.diagnostic_pure_ocr = pure
+        self.diagnostic_post_noise_removal = post
+
+
+def test_write_diagnostic_snapshots_writes_all_four_when_present(tmp_path):
+    page = _PageWithDiagnostics(
+        pure=_Snapshot("pure text", {"type": "Page", "n": 1}),
+        post=_Snapshot("post text", {"type": "Page", "n": 2}),
+    )
+    written, notes = write_diagnostic_snapshots(
+        page,
+        json_path=tmp_path / "page.json",
+        txt_path=tmp_path / "page.txt",
+        pure_ocr_json=tmp_path / "page.pure-ocr.json",
+        pure_ocr_txt=tmp_path / "page.pure-ocr.txt",
+        post_noise_json=tmp_path / "page.post-noise.json",
+        post_noise_txt=tmp_path / "page.post-noise.txt",
+    )
+    assert notes == []
+    assert (tmp_path / "page.pure-ocr.txt").read_text() == "pure text"
+    assert (tmp_path / "page.post-noise.txt").read_text() == "post text"
+    # JSON files are non-empty and parse.
+    import json as _json
+
+    assert _json.loads((tmp_path / "page.pure-ocr.json").read_text())["n"] == 1
+    assert _json.loads((tmp_path / "page.post-noise.json").read_text())["n"] == 2
+    assert len(written) == 4
+
+
+def test_write_diagnostic_snapshots_skips_missing_with_note(tmp_path):
+    page = _PageWithDiagnostics(pure=None, post=None)
+    written, notes = write_diagnostic_snapshots(
+        page,
+        json_path=tmp_path / "page.json",
+        txt_path=tmp_path / "page.txt",
+        pure_ocr_json=tmp_path / "page.pure-ocr.json",
+        pure_ocr_txt=tmp_path / "page.pure-ocr.txt",
+        post_noise_json=tmp_path / "page.post-noise.json",
+        post_noise_txt=tmp_path / "page.post-noise.txt",
+    )
+    assert written == []
+    assert any("diagnostic_pure_ocr unavailable" in n for n in notes)
+    assert any("diagnostic_post_noise_removal unavailable" in n for n in notes)
+    assert not (tmp_path / "page.pure-ocr.json").exists()
+    assert not (tmp_path / "page.post-noise.json").exists()
+
+
+def test_write_diagnostic_snapshots_partial_one_missing(tmp_path):
+    """Only one snapshot present — the other is reported as unavailable."""
+    page = _PageWithDiagnostics(
+        pure=_Snapshot("only pure", {"x": 1}),
+        post=None,
+    )
+    written, notes = write_diagnostic_snapshots(
+        page,
+        json_path=tmp_path / "page.json",
+        txt_path=tmp_path / "page.txt",
+        pure_ocr_json=tmp_path / "page.pure-ocr.json",
+        pure_ocr_txt=tmp_path / "page.pure-ocr.txt",
+        post_noise_json=tmp_path / "page.post-noise.json",
+        post_noise_txt=tmp_path / "page.post-noise.txt",
+    )
+    assert (tmp_path / "page.pure-ocr.json").exists()
+    assert not (tmp_path / "page.post-noise.json").exists()
+    assert len(written) == 2  # pure pair only
+    assert any("post_noise_removal unavailable" in n for n in notes)

@@ -76,7 +76,20 @@ consumes layout output:
 - `--no-reorg` — skip `reorganize_page()` entirely; emit raw OCR. The
   layout detector still runs (for `--extract-illustrations`) but its
   hints aren't applied.
-- `--save-pre-reorg-json` — with `--save-json`, also writes
-  `<image>.pre-reorg.json` showing the page state before reorganize.
-  Useful when comparing pipeline output to raw OCR.
+- `--save-reorganize-diagnostics` — with `--save-json`, also writes
+  `<image>.pure-ocr.json` + `.txt` (literal OCR output) and
+  `<image>.post-noise.json` + `.txt` (state after figure-noise removal,
+  before reorg). Six files per page in total when combined with the
+  regular `--save-json` post-reorganize pair. Old alias:
+  `--save-pre-reorg-json`. Useful when comparing pipeline output to raw
+  OCR or auditing the noise-drop step.
 - `--validate-reorg` — warn (don't fail) if reorganize drops any words.
+- (always on) — when reorganize drops figure-internal noise words, the CLI
+  prints a warning to stderr
+  identifying the page, count, sample tokens, and the re-run hint for
+  the full diagnostic bundle.
+- `--experimental-drop-layout-words` (alias: `--edl`) — gates BOTH
+  figure-internal drop steps (Layout-2b and B2). Default OFF preserves
+  every OCR word; the always-on warning's count is then 0 and the
+  warning does not fire. Footnote / header / footer / abandoned
+  regions are NEVER dropped, regardless of this flag.

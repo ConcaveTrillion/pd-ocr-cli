@@ -13,10 +13,11 @@ exceptions back into CLI return codes — tests use ``pytest.raises(SystemExit)`
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
-from typing import Iterable, Iterator
+from typing import Any, Iterable, Iterator
 
 from pd_ocr_cli._text_normalize import (
     normalize_curly_quotes as _normalize_curly_quotes,
@@ -176,6 +177,134 @@ def format_drops_warning(drops: list[str], source_name: str, *, max_lines: int =
     if len(drops) > max_lines:
         lines.append(f"  ... ({len(drops) - max_lines} more)")
     return lines
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic noise-drop warning + export
+# ---------------------------------------------------------------------------
+
+
+def _word_text(word: Any) -> str:
+    """Best-effort text extraction from a ``Word`` (or test fake).
+
+    The library ``Word`` exposes ``.text`` as a property; tests may pass
+    ``SimpleNamespace`` fakes. Tolerate either, and falsy/missing text.
+    """
+    text = getattr(word, "text", "") or ""
+    return str(text)
+
+
+def format_noise_drop_warning(
+    dropped_words: list[Any],
+    source_name: str,
+    diagnostic_flag_name: str,
+    *,
+    sample_size: int = 8,
+) -> list[str]:
+    """Format the always-on "likely noise" warning for stderr.
+
+    ``dropped_words`` is the ``page.diagnostic_noise_dropped_words`` list
+    (each entry is a ``Word`` clone with ``.text``). When non-empty, this
+    builds a multi-line warning identifying the page, the count, a
+    sample of dropped tokens (quoted, comma-separated), and a hint
+    pointing the user at the diagnostic-export flag for the full
+    breakdown. Returns ``[]`` when the list is empty.
+    """
+    if not dropped_words:
+        return []
+    count = len(dropped_words)
+    samples = [_word_text(w) for w in dropped_words[:sample_size]]
+    samples = [s for s in samples if s]  # drop blank tokens for readability
+    sample_str = ", ".join(f'"{s}"' for s in samples) if samples else "(no text)"
+    extra = f" (+{count - len(samples)} more)" if count > len(samples) else ""
+    return [
+        (
+            f"WARNING: {source_name}: dropped {count} word(s) during "
+            "reorganize that look like figure-internal noise"
+        ),
+        f"  sample: {sample_str}{extra}",
+        (
+            f"  re-run with {diagnostic_flag_name} to write the full "
+            "pure-OCR / post-noise / post-reorganize JSON+TXT bundle"
+        ),
+    ]
+
+
+def write_diagnostic_snapshots(
+    page: Any,
+    json_path: Path,
+    txt_path: Path,
+    *,
+    pure_ocr_json: Path,
+    pure_ocr_txt: Path,
+    post_noise_json: Path,
+    post_noise_txt: Path,
+) -> tuple[list[Path], list[str]]:
+    """Write the pure-OCR + post-noise diagnostic snapshots to disk.
+
+    Returns ``(written_paths, notes)``. ``written_paths`` lists the
+    files actually created. ``notes`` carries any user-facing messages
+    (e.g. when a snapshot was unavailable because
+    ``capture_diagnostics=False`` was passed at the library layer).
+
+    Snapshots are written via ``json.dump(page.to_dict(), ...)`` rather
+    than a hypothetical ``page.to_json_file`` since the library only
+    exposes that helper on ``Document``. ``page.text`` powers the
+    sibling ``.txt`` exports.
+    """
+    written: list[Path] = []
+    notes: list[str] = []
+
+    pure = getattr(page, "diagnostic_pure_ocr", None)
+    if pure is not None:
+        pure_ocr_json.write_text(
+            json.dumps(pure.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        pure_ocr_txt.write_text(pure.text or "", encoding="utf-8")
+        written.extend([pure_ocr_json, pure_ocr_txt])
+    else:
+        notes.append(
+            "diagnostic_pure_ocr unavailable (capture_diagnostics=False); "
+            "skipping pure-OCR snapshot files"
+        )
+
+    post = getattr(page, "diagnostic_post_noise_removal", None)
+    if post is not None:
+        post_noise_json.write_text(
+            json.dumps(post.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        post_noise_txt.write_text(post.text or "", encoding="utf-8")
+        written.extend([post_noise_json, post_noise_txt])
+    else:
+        notes.append(
+            "diagnostic_post_noise_removal unavailable "
+            "(capture_diagnostics=False); skipping post-noise snapshot files"
+        )
+
+    # Silence unused-arg lint: callers pass json_path/txt_path so they
+    # stay grouped with the snapshot pair in main(); they're written by
+    # the existing post-reorganize code path, not this helper.
+    _ = (json_path, txt_path)
+
+    return written, notes
+
+
+def diagnostic_output_paths(json_path: Path, txt_path: Path) -> dict[str, Path]:
+    """Compute the diagnostic-export sibling filenames for a page.
+
+    Given the existing post-reorganize ``.json`` / ``.txt`` paths, return
+    the four new sibling paths the diagnostic export adds.
+    """
+    stem_json = json_path.with_suffix("")  # strip .json
+    stem_txt = txt_path.with_suffix("")  # strip .txt
+    return {
+        "pure_ocr_json": stem_json.with_suffix(".pure-ocr.json"),
+        "pure_ocr_txt": stem_txt.with_suffix(".pure-ocr.txt"),
+        "post_noise_json": stem_json.with_suffix(".post-noise.json"),
+        "post_noise_txt": stem_txt.with_suffix(".post-noise.txt"),
+    }
 
 
 # ---------------------------------------------------------------------------

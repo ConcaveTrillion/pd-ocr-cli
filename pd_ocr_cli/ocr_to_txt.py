@@ -35,8 +35,23 @@ Options
 --no-update-check            Skip the background GitHub-tag upgrade-notice request.
                              Also: PD_OCR_NO_UPDATE_CHECK=1 env var.
 --no-reorg                   Skip Page.reorganize_page() (raw OCR output).
---save-pre-reorg-json        With --save-json: also write *.pre-reorg.json.
+--save-reorganize-diagnostics
+                             With --save-json: also write the pure-OCR and
+                             post-noise-removal snapshots as JSON + TXT
+                             siblings (six files total per page when
+                             combined with --save-json). Old alias:
+                             --save-pre-reorg-json.
 --validate-reorg             Warn if reorganize_page drops any OCR words.
+--experimental-drop-layout-words / --edl
+                             [experimental] Enable drop of figure-
+                             internal OCR words during reorganize:
+                             lines fully inside detected figure regions
+                             with no body-text overlap (Step Layout-2b),
+                             and figure-internal heuristic noise
+                             (Step B2). Default OFF: all OCR words are
+                             preserved. Footnote/header/footer/abandoned
+                             regions are NEVER dropped, regardless of
+                             this flag.
 --layout-model {none,contour,pp-doclayout-plus-l}
                              Layout detector backend (default pp-doclayout-plus-l).
 --layout-checkpoint PATH     Fine-tuned PP-DocLayout checkpoint (path or HF repo).
@@ -69,13 +84,16 @@ from pd_ocr_cli._pipeline import (
     apply_text_normalizations,
     clear_layout_debug_env,
     compute_mirror_root,
+    diagnostic_output_paths,
     format_drops_warning,
+    format_noise_drop_warning,
     illustration_crop_path,
     iter_crop_regions,
     output_paths_for,
     resolve_dest_dir,
     setup_layout_debug_env,
     validate_extract_illustrations,
+    write_diagnostic_snapshots,
 )
 from pd_ocr_cli._update_check import VERSION as _VERSION
 from pd_ocr_cli._update_check import check_for_update as _check_for_update
@@ -230,14 +248,21 @@ def parse_args():
         ),
     )
     p.add_argument(
+        "--save-reorganize-diagnostics",
         "--save-pre-reorg-json",
+        dest="save_reorganize_diagnostics",
         action="store_true",
         default=False,
         help=(
-            "When --save-json is set and reorganize is enabled, also write a "
-            "<image>.pre-reorg.json snapshot of the page before "
-            "reorganize_page() runs. Useful when comparing pipeline output "
-            "against raw OCR."
+            "When --save-json is set and reorganize is enabled, also write "
+            "the full diagnostic bundle alongside the regular .txt / .json: "
+            "<image>.pure-ocr.json + <image>.pure-ocr.txt (literal OCR "
+            "output before any pipeline mutation), and "
+            "<image>.post-noise.json + <image>.post-noise.txt (state after "
+            "figure-noise removal but before reorg-proper). Useful for "
+            "auditing what the reorganize step preserved, dropped, or "
+            "rearranged. The old name --save-pre-reorg-json is accepted "
+            "as a backward-compatible alias."
         ),
     )
     p.add_argument(
@@ -248,6 +273,22 @@ def parse_args():
             "After reorganize_page(), assert that every OCR word present "
             "before reorganize is still present after (by text + bbox). "
             "Mismatches print a WARNING; the .txt/.json are still written."
+        ),
+    )
+    p.add_argument(
+        "--experimental-drop-layout-words",
+        "--edl",
+        action="store_true",
+        default=False,
+        help=(
+            "[experimental] Enable drop of figure-internal OCR words "
+            "during reorganize: lines fully inside detected figure "
+            "regions with no body-text overlap (Step Layout-2b), and "
+            "figure-internal heuristic noise (Step B2). Default is "
+            "OFF: all OCR words are preserved. Note: footnote / "
+            "header / footer / abandoned regions are NEVER dropped, "
+            "regardless of this flag — only figure-internal drops "
+            "are opt-in. Short alias: --edl."
         ),
     )
     p.add_argument(
@@ -458,24 +499,42 @@ def main():
                     flush=True,
                 )
 
-            pre_reorg_json_path = json_path.with_suffix(".pre-reorg.json")
-
-            # Snapshot pre-reorg state when validating or saving the pre-reorg
-            # JSON. Capturing the word list now (before reorganize_page mutates
-            # the block tree) is the only way to diff against the post state.
+            # Snapshot pre-reorg word list when --validate-reorg is on. The
+            # diagnostic-export bundle is written from the library's own
+            # post-reorganize ``page.diagnostic_pure_ocr`` /
+            # ``diagnostic_post_noise_removal`` snapshots, so we no longer
+            # need a manual pre-reorg JSON dump here.
             do_reorg = not args.no_reorg and callable(getattr(page, "reorganize_page", None))
-            want_pre_reorg_json = do_reorg and args.save_json and args.save_pre_reorg_json
+            want_diagnostic_export = (
+                do_reorg and args.save_json and args.save_reorganize_diagnostics
+            )
             pre_reorg_words: list = []
-            if do_reorg and (args.validate_reorg or want_pre_reorg_json):
+            if do_reorg and args.validate_reorg:
                 pre_reorg_words = list(page.words)
-                if want_pre_reorg_json:
-                    doc.to_json_file(pre_reorg_json_path)
 
             if do_reorg:
+                drop_layout_words = args.experimental_drop_layout_words
                 if page_layout is not None:
-                    page.reorganize_page(layout=page_layout)
+                    page.reorganize_page(
+                        layout=page_layout,
+                        drop_layout_words=drop_layout_words,
+                    )
                 else:
-                    page.reorganize_page()
+                    page.reorganize_page(drop_layout_words=drop_layout_words)
+
+                # Always-on noise-drop warning. The library populates
+                # ``diagnostic_noise_dropped_*`` regardless of whether the
+                # snapshot ``Page`` clones were captured, so this fires
+                # even when capture_diagnostics=False is wired through in
+                # the future.
+                dropped = list(getattr(page, "diagnostic_noise_dropped_words", []) or [])
+                if dropped:
+                    for line in format_noise_drop_warning(
+                        dropped,
+                        img_path.name,
+                        diagnostic_flag_name="--save-json --save-reorganize-diagnostics",
+                    ):
+                        print(line, file=sys.stderr)
 
                 if args.validate_reorg:
                     validate_word_preservation = _load_validate_word_preservation()
@@ -493,11 +552,23 @@ def main():
             out_path.write_text(text, encoding="utf-8")
 
             extra_paths: list[str] = []
-            if want_pre_reorg_json:
-                extra_paths.append(str(pre_reorg_json_path))
             if args.save_json:
                 doc.to_json_file(json_path)
                 extra_paths.append(str(json_path))
+            if want_diagnostic_export:
+                diag_paths = diagnostic_output_paths(json_path, out_path)
+                written, notes = write_diagnostic_snapshots(
+                    page,
+                    json_path=json_path,
+                    txt_path=out_path,
+                    pure_ocr_json=diag_paths["pure_ocr_json"],
+                    pure_ocr_txt=diag_paths["pure_ocr_txt"],
+                    post_noise_json=diag_paths["post_noise_json"],
+                    post_noise_txt=diag_paths["post_noise_txt"],
+                )
+                for note in notes:
+                    print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)
+                extra_paths.extend(str(p) for p in written)
             if args.layout_debug and debug_file is not None:
                 extra_paths.append(f"layout-debug: {debug_file}")
 

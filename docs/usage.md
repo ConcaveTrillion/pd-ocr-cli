@@ -112,13 +112,44 @@ it, or audit it.
 # Skip reorganize entirely — emit raw OCR
 pd-ocr --no-reorg page.png
 
-# With --save-json: also write <image>.pre-reorg.json (state before
-# reorganize). Handy for diffing pipeline output against raw OCR.
-pd-ocr --save-json --save-pre-reorg-json page.png
+# With --save-json: also write the full diagnostic bundle alongside
+# the regular .txt/.json — six files per page in total:
+#   <image>.txt + <image>.json                   (post-reorganize)
+#   <image>.pure-ocr.txt + <image>.pure-ocr.json (literal OCR output)
+#   <image>.post-noise.txt + <image>.post-noise.json
+#                                                (after figure-noise
+#                                                 removal, before reorg)
+# Useful for auditing what reorganize preserved, dropped, or rearranged.
+# The old name --save-pre-reorg-json is still accepted as a back-compat alias.
+pd-ocr --save-json --save-reorganize-diagnostics page.png
 
 # Warn (don't fail) if reorganize drops any words
 pd-ocr --validate-reorg page.png
+
+# [experimental] Enable drop of figure-internal OCR words during
+# reorganize. Two steps are gated by this flag:
+#   * Step Layout-2b — lines fully inside detected figure regions
+#     with no body-text overlap.
+#   * Step B2 — figure-internal heuristic noise.
+# Default keeps all words. Footnote / header / footer / abandoned
+# regions are NEVER dropped, regardless of this flag.
+pd-ocr --experimental-drop-layout-words page.png   # also: --edl
 ```
+
+### Always-on noise-drop warning
+
+When reorganize removes any words it considered figure-internal noise
+(via Step Layout-2b or Step B2 inside `pd-book-tools`), the CLI emits a
+warning to stderr — independent of any flag. The warning includes:
+
+- the page filename and the count of dropped words;
+- a quoted sample of the first few dropped tokens;
+- a hint pointing at `--save-json --save-reorganize-diagnostics` so you
+  can re-run and inspect the full pure-OCR / post-noise / post-reorg
+  bundle.
+
+This is intentionally always-on so quiet figure-noise drops don't slip
+past unnoticed. There is no quiet flag — file an issue if you need one.
 
 ## Misc
 
@@ -149,8 +180,9 @@ pd-ocr --help
 | `--recursive` | `-r`, `-R` | off | Recurse into subdirectories of input dirs. |
 | `--save-json` | | off | Write the reorganized doc as `<image>.json`. |
 | `--no-reorg` | | off | Skip `reorganize_page()`; emit raw OCR. |
-| `--save-pre-reorg-json` | | off | With `--save-json`: also write `<image>.pre-reorg.json`. |
+| `--save-reorganize-diagnostics` | | off | With `--save-json`: also write the pure-OCR + post-noise diagnostic snapshots as JSON+TXT siblings. Old alias: `--save-pre-reorg-json`. |
 | `--validate-reorg` | | off | Warn if reorganize drops any OCR words. |
+| `--experimental-drop-layout-words` | `--edl` | off | [experimental] Enable drop of figure-internal OCR words during reorganize: Step Layout-2b (lines fully inside figure regions with no body-text overlap) and Step B2 (figure-internal heuristic noise). Footnote / header / footer / abandoned regions are NEVER dropped, regardless of this flag. |
 | `--straight-quotes` | `-sq` | off | Curly → straight ASCII quotes. |
 | `--em-dash-to-double-hyphen` | `-ed` | off | Em dash → `--`. |
 | `--no-update-check` | | off | Skip the background GitHub-tag upgrade-notice request. Also via `PD_OCR_NO_UPDATE_CHECK=1`. |

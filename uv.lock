@@ -1995,8 +1995,8 @@ wheels = [
 
 [[package]]
 name = "pd-book-tools"
-version = "0.9.0"
-source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.9.0#a567d71be0a846aa4353db22bbc4137edd66c387" }
+version = "0.10.0"
+source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0#011b7ec5e8d24f91b74c60f292b011c352db3bbd" }
 dependencies = [
     { name = "cupy-cuda12x" },
     { name = "huggingface-hub" },
@@ -2043,7 +2043,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.9.0" },
+    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0" },
 ]
 
 [package.metadata.requires-dev]

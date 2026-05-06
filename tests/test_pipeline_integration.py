@@ -143,19 +143,20 @@ def test_ocr_no_reorg_runs_clean(title_image_path: Path, tmp_path: Path):
     assert "furniture" in normalized
 
 
-def test_ocr_save_pre_reorg_json_and_validate_reorg(title_image_path: Path, tmp_path: Path):
-    """``--save-json --save-pre-reorg-json --validate-reorg`` writes both JSONs.
+def test_ocr_save_reorganize_diagnostics_writes_full_bundle(title_image_path: Path, tmp_path: Path):
+    """``--save-json --save-reorganize-diagnostics --validate-reorg`` writes
+    the post-reorganize pair plus pure-OCR + post-noise diagnostic pairs.
 
-    Exercises the pre-reorg snapshot path (capturing the word list and
-    dumping the pre-reorg JSON) and the validate_word_preservation call.
-    The title page contains few enough words that no drops are expected,
-    but the path through ``format_drops_warning`` runs either way.
+    Exercises the ``page.diagnostic_pure_ocr`` /
+    ``diagnostic_post_noise_removal`` snapshot export path end to end and
+    runs ``validate_word_preservation`` on the title page (no drops
+    expected, but ``format_drops_warning`` is exercised regardless).
     """
     result = _run_pd_ocr(
         title_image_path,
         tmp_path,
         "--save-json",
-        "--save-pre-reorg-json",
+        "--save-reorganize-diagnostics",
         "--validate-reorg",
     )
     assert result.returncode == 0, (
@@ -163,10 +164,35 @@ def test_ocr_save_pre_reorg_json_and_validate_reorg(title_image_path: Path, tmp_
     )
     txt = tmp_path / "title_page_001.txt"
     json_ = tmp_path / "title_page_001.json"
-    pre_reorg_json = tmp_path / "title_page_001.pre-reorg.json"
+    pure_ocr_json = tmp_path / "title_page_001.pure-ocr.json"
+    pure_ocr_txt = tmp_path / "title_page_001.pure-ocr.txt"
+    post_noise_json = tmp_path / "title_page_001.post-noise.json"
+    post_noise_txt = tmp_path / "title_page_001.post-noise.txt"
+
     assert txt.exists()
     assert json_.exists() and json_.stat().st_size > 0
-    assert pre_reorg_json.exists() and pre_reorg_json.stat().st_size > 0
+    assert pure_ocr_json.exists() and pure_ocr_json.stat().st_size > 0
+    assert pure_ocr_txt.exists()
+    assert post_noise_json.exists() and post_noise_json.stat().st_size > 0
+    assert post_noise_txt.exists()
+
+
+def test_ocr_save_pre_reorg_json_alias_still_runs(title_image_path: Path, tmp_path: Path):
+    """The legacy ``--save-pre-reorg-json`` alias still triggers the same
+    diagnostic export bundle (backward compatibility).
+    """
+    result = _run_pd_ocr(
+        title_image_path,
+        tmp_path,
+        "--save-json",
+        "--save-pre-reorg-json",
+    )
+    assert result.returncode == 0, (
+        f"pd-ocr exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+    assert (tmp_path / "title_page_001.json").exists()
+    assert (tmp_path / "title_page_001.pure-ocr.json").exists()
+    assert (tmp_path / "title_page_001.post-noise.json").exists()
 
 
 def test_ocr_no_valid_images_exits_with_error(tmp_path: Path):

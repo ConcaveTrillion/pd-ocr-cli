@@ -14,9 +14,12 @@ plain OCR:
   text, the figures, the captions underneath them, the running title at
   the top, the page number at the bottom, any sidenotes in the margin.
   It uses that map to put the text together in the right order:
-  captions stay with their figures, page numbers and running titles are
-  stripped out, and sidenotes don't get mashed into the paragraphs they
-  sit next to. More in
+  captions stay with their figures, running titles and page numbers are
+  kept at the top, and sidenotes don't get mashed into the paragraphs
+  they sit next to. By default no OCR words are dropped; opt-in
+  `--experimental-drop-layout-words` (`--edl`) allows for
+  noise inside of figures to be dropped, and a warning is always emitted
+  if this happens. More in
   [docs/layout-aware-ocr.md](docs/layout-aware-ocr.md).
 - **Auto-rotation.** If a page was scanned sideways or upside down,
   `pd-ocr` re-runs the OCR at 90° / 180° / 270° and keeps the

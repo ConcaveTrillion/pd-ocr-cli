@@ -40,11 +40,46 @@ TITLE_IMAGE = FIXTURES_DIR / "title_page_001.png"
 # ---------------------------------------------------------------------------
 
 
+class _FakeSnapshot:
+    """Stand-in for the diagnostic Page snapshots — exposes ``text`` + ``to_dict``."""
+
+    def __init__(self, text: str):
+        self.text = text
+
+    def to_dict(self):
+        return {"type": "Page", "text": self.text}
+
+
+class _FakeWord:
+    def __init__(self, text: str):
+        self.text = text
+
+
 class _FakePage:
-    def __init__(self, text: str = "FAKE TEXT", words: list | None = None):
+    def __init__(
+        self,
+        text: str = "FAKE TEXT",
+        words: list | None = None,
+        *,
+        pure_ocr_text: str | None = None,
+        post_noise_text: str | None = None,
+        dropped_word_texts: list[str] | None = None,
+    ):
         self.text = text
         self.words = words or []
         self.reorganize_page = MagicMock(return_value=None)
+        # The library populates these on real pages after reorganize_page
+        # runs. The fake mirrors that contract so the CLI's diagnostic
+        # warning + export branches can be tested without the heavy
+        # dependency.
+        self.diagnostic_pure_ocr = (
+            _FakeSnapshot(pure_ocr_text) if pure_ocr_text is not None else None
+        )
+        self.diagnostic_post_noise_removal = (
+            _FakeSnapshot(post_noise_text) if post_noise_text is not None else None
+        )
+        self.diagnostic_noise_dropped_words = [_FakeWord(t) for t in (dropped_word_texts or [])]
+        self.diagnostic_noise_dropped_count = len(self.diagnostic_noise_dropped_words)
 
 
 class _FakeDoc:
@@ -61,11 +96,21 @@ class _FakeDoc:
 
 
 def _make_factory(page: _FakePage) -> tuple[callable, list[_FakeDoc]]:
-    """Return ``(factory, captured_docs)`` — captured_docs grows on each call."""
+    """Return ``(factory, captured_docs)`` — captured_docs grows on each call.
+
+    Each call rebuilds a fresh ``_FakePage`` mirroring the template's
+    ``text``, ``words``, and diagnostic attributes so per-page assertions
+    don't see state from a previous call.
+    """
     captured: list[_FakeDoc] = []
 
     def factory(img_path, source_identifier=None, predictor=None):
-        doc = _FakeDoc(_FakePage(page.text, list(page.words)))
+        clone = _FakePage(page.text, list(page.words))
+        clone.diagnostic_pure_ocr = page.diagnostic_pure_ocr
+        clone.diagnostic_post_noise_removal = page.diagnostic_post_noise_removal
+        clone.diagnostic_noise_dropped_words = list(page.diagnostic_noise_dropped_words)
+        clone.diagnostic_noise_dropped_count = page.diagnostic_noise_dropped_count
+        doc = _FakeDoc(clone)
         captured.append(doc)
         return doc
 
@@ -191,10 +236,62 @@ def test_main_save_json_writes_sidecar(patched_main, monkeypatch, tmp_path):
     assert (out / "page.json").exists()
 
 
-def test_main_save_pre_reorg_json(patched_main, monkeypatch, tmp_path):
+def test_main_save_reorganize_diagnostics_writes_all_six_outputs(
+    patched_main, monkeypatch, tmp_path
+):
+    """``--save-json --save-reorganize-diagnostics`` writes the post-reorg
+    .txt + .json *and* both diagnostic snapshots (pure-OCR + post-noise) as
+    JSON and TXT siblings — six files total per page.
+    """
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
+
+    factory, _ = _make_factory(
+        _FakePage(
+            text="POST-REORG TEXT",
+            pure_ocr_text="PURE OCR TEXT",
+            post_noise_text="POST NOISE TEXT",
+        )
+    )
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--save-json",
+        "--save-reorganize-diagnostics",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    # Post-reorganize pair (existing behavior).
+    assert (out / "page.txt").read_text() == "POST-REORG TEXT"
+    assert (out / "page.json").exists()
+    # Pure-OCR snapshot pair (new).
+    assert (out / "page.pure-ocr.json").exists()
+    assert (out / "page.pure-ocr.txt").read_text() == "PURE OCR TEXT"
+    # Post-noise-removal snapshot pair (new).
+    assert (out / "page.post-noise.json").exists()
+    assert (out / "page.post-noise.txt").read_text() == "POST NOISE TEXT"
+
+
+def test_main_save_pre_reorg_json_alias_still_works(patched_main, monkeypatch, tmp_path):
+    """The old ``--save-pre-reorg-json`` name maps to the same diagnostic export."""
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    factory, _ = _make_factory(
+        _FakePage(
+            pure_ocr_text="PURE",
+            post_noise_text="POST",
+        )
+    )
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
 
     _run_main(
         monkeypatch,
@@ -209,7 +306,169 @@ def test_main_save_pre_reorg_json(patched_main, monkeypatch, tmp_path):
     )
 
     assert (out / "page.json").exists()
-    assert (out / "page.pre-reorg.json").exists()
+    assert (out / "page.pure-ocr.json").exists()
+    assert (out / "page.post-noise.json").exists()
+
+
+def test_main_save_diagnostics_skips_missing_snapshots(patched_main, monkeypatch, tmp_path, capsys):
+    """When the library returns ``None`` snapshots (capture_diagnostics=False),
+    the CLI must skip the pure-OCR / post-noise files and emit a clear note,
+    not crash.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    # No pure_ocr_text / post_noise_text → snapshots stay None.
+    factory, _ = _make_factory(_FakePage(text="POST-REORG"))
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--save-json",
+        "--save-reorganize-diagnostics",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "diagnostic_pure_ocr unavailable" in err
+    assert "diagnostic_post_noise_removal unavailable" in err
+    assert (out / "page.json").exists()
+    assert not (out / "page.pure-ocr.json").exists()
+    assert not (out / "page.post-noise.json").exists()
+
+
+def test_main_noise_drop_warning_always_fires(patched_main, monkeypatch, tmp_path, capsys):
+    """When the library reports any dropped words, stderr gets a warning
+    that includes the count, a quoted token sample, and the re-run hint —
+    regardless of whether --save-json / diagnostics are passed.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    factory, _ = _make_factory(
+        _FakePage(
+            text="POST-REORG TEXT",
+            dropped_word_texts=["foo", "bar", "baz"],
+        )
+    )
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "page.png" in err
+    assert "dropped 3 word(s)" in err
+    assert '"foo"' in err and '"bar"' in err and '"baz"' in err
+    # Hint references the current flag name (plus --save-json which it requires).
+    assert "--save-reorganize-diagnostics" in err
+
+
+def test_main_noise_drop_warning_skipped_when_no_drops(patched_main, monkeypatch, tmp_path, capsys):
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    # Default _FakePage has no dropped words.
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "dropped" not in err.lower() or "look like figure-internal noise" not in err
+
+
+def test_main_noise_drop_warning_silent_with_zero_count(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """Mirror of ``test_main_noise_drop_warning_always_fires`` — when the
+    library reports ``diagnostic_noise_dropped_count == 0`` (which is the
+    new default-flag-off behavior after the upstream library tightening),
+    the always-on warning must NOT fire and stderr must contain neither
+    the count line nor the "look like figure-internal noise" phrase nor
+    the diagnostic re-run hint.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    # Build a page whose diagnostic snapshots are populated but whose
+    # dropped list is empty — i.e. reorganize ran with drop_layout_words=False
+    # and preserved every word.
+    factory, _ = _make_factory(
+        _FakePage(
+            text="POST-REORG TEXT",
+            pure_ocr_text="PURE OCR TEXT",
+            post_noise_text="POST NOISE TEXT",
+            dropped_word_texts=[],  # explicit empty list
+        )
+    )
+    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "look like figure-internal noise" not in err
+    assert "dropped 0 word(s)" not in err
+    assert "--save-reorganize-diagnostics to write the full" not in err
+    assert (out / "page.txt").read_text() == "POST-REORG TEXT"
+
+
+def test_main_experimental_drop_layout_words_short_alias(patched_main, monkeypatch, tmp_path):
+    """End-to-end: ``--edl`` alias flips the same wiring as the long form.
+
+    Mirrors ``test_main_experimental_drop_layout_words_passes_true_to_reorganize``
+    but uses ``--edl`` to confirm argparse routes the alias to the same
+    attribute and ``main()`` passes ``drop_layout_words=True`` through
+    to ``reorganize_page``.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--edl",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    fake_doc = patched_main.captured_docs[0]
+    fake_doc.pages[0].reorganize_page.assert_called_once()
+    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
+    assert kwargs.get("drop_layout_words") is True
 
 
 def test_main_no_reorg_skips_reorganize(patched_main, monkeypatch, tmp_path):
@@ -232,6 +491,64 @@ def test_main_no_reorg_skips_reorganize(patched_main, monkeypatch, tmp_path):
     assert (out / "page.txt").exists()
     fake_doc = patched_main.captured_docs[0]
     assert not fake_doc.pages[0].reorganize_page.called
+
+
+def test_main_default_passes_drop_layout_words_false_to_reorganize(
+    patched_main, monkeypatch, tmp_path
+):
+    """Default invocation must call reorganize_page(drop_layout_words=False).
+
+    This is the user-visible footnote-loss fix: by default the CLI must
+    match the new pd-book-tools library default and preserve all words.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    fake_doc = patched_main.captured_docs[0]
+    fake_doc.pages[0].reorganize_page.assert_called_once()
+    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
+    assert kwargs.get("drop_layout_words") is False
+
+
+def test_main_experimental_drop_layout_words_passes_true_to_reorganize(
+    patched_main, monkeypatch, tmp_path
+):
+    """``--experimental-drop-layout-words`` opts into legacy drop behavior.
+
+    Verifies the flag is wired through the call site at
+    ``pd_ocr_cli/ocr_to_txt.py`` so users who still want the pre-fix
+    behavior can request it explicitly.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--experimental-drop-layout-words",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    fake_doc = patched_main.captured_docs[0]
+    fake_doc.pages[0].reorganize_page.assert_called_once()
+    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
+    assert kwargs.get("drop_layout_words") is True
 
 
 def test_main_validate_reorg_invokes_validator(patched_main, monkeypatch, tmp_path):

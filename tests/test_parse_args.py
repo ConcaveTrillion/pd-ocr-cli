@@ -28,8 +28,9 @@ def test_defaults_with_single_input():
     assert args.output_dir is None
     assert args.save_json is False
     assert args.no_reorg is False
-    assert args.save_pre_reorg_json is False
+    assert args.save_reorganize_diagnostics is False
     assert args.validate_reorg is False
+    assert args.experimental_drop_layout_words is False
     assert args.recursive is False
     assert args.straight_quotes is False
     assert args.em_dash_to_double_hyphen is False
@@ -109,11 +110,19 @@ def test_output_dir_alias_long():
     assert args.output_dir == "out/"
 
 
-def test_save_json_and_pre_reorg_flags():
+def test_save_json_and_reorganize_diagnostics_flag_new_name():
+    with _argv("--save-json", "--save-reorganize-diagnostics", "page.png"):
+        args = parse_args()
+    assert args.save_json is True
+    assert args.save_reorganize_diagnostics is True
+
+
+def test_save_json_and_pre_reorg_alias_still_accepted():
+    """The old --save-pre-reorg-json name maps to save_reorganize_diagnostics."""
     with _argv("--save-json", "--save-pre-reorg-json", "page.png"):
         args = parse_args()
     assert args.save_json is True
-    assert args.save_pre_reorg_json is True
+    assert args.save_reorganize_diagnostics is True
 
 
 def test_no_reorg_and_validate_reorg_independent():
@@ -121,6 +130,34 @@ def test_no_reorg_and_validate_reorg_independent():
         args = parse_args()
     assert args.no_reorg is True
     assert args.validate_reorg is True
+
+
+def test_experimental_drop_layout_words_flag():
+    """Parsed when present; defaults False (verified in test_defaults_with_single_input)."""
+    with _argv("--experimental-drop-layout-words", "page.png"):
+        args = parse_args()
+    assert args.experimental_drop_layout_words is True
+
+
+@pytest.mark.parametrize("flag", ["--experimental-drop-layout-words", "--edl"])
+def test_experimental_drop_layout_words_aliases(flag):
+    """Both the long form and the ``--edl`` alias parse identically.
+
+    Note: argparse treats ``--edl`` as a long-form option string. A
+    single-dash ``-edl`` would be interpreted by argparse as a combined
+    short-flag sequence and would silently misbehave once any of
+    ``-e``, ``-d``, or ``-l`` is also defined (``-d`` already exists
+    as the short for ``--detection``), so the alias is intentionally
+    spelled with two dashes.
+    """
+    with _argv(flag, "page.png"):
+        args = parse_args()
+    assert args.experimental_drop_layout_words is True
+    # Sanity: every other flag still has its default value, so the alias
+    # only flips the one attribute it's wired to.
+    assert args.no_reorg is False
+    assert args.save_json is False
+    assert args.validate_reorg is False
 
 
 def test_extract_illustrations_flag():
