@@ -8,9 +8,12 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-All round-2 B items (B1–B13) are now done. Trigger round 3 deep
-review — re-scan the source tree for a fresh batch of findings before
-the next /loop iteration.
+**B14** — `dest_dir.mkdir(parents=True, exist_ok=True)` at
+`ocr_to_txt.py:531` runs OUTSIDE the per-image `try`, so a single
+filesystem failure (e.g. `--output-dir` is a regular file or a path
+whose parent is a regular file) aborts the whole batch with an
+unhandled exception. Same defect class as the now-fixed B8. See
+`## Round 3 bugs` below.
 
 ### Done
 
@@ -700,6 +703,149 @@ if page is None:
 
 Add a multi-image test where the document factory returns an empty
 `pages` list and assert exit code 1 plus the warning text.
+
+---
+
+## Round 3 bugs
+
+Fresh deep pass after B7..B13 shipped. Re-scanned `_pipeline.py`,
+`ocr_to_txt.py` body + warning block, `_update_check.py` parsing,
+and `collect_images` flow. Each finding is a real defect — not style.
+
+### B14 [MAJOR] `dest_dir.mkdir` runs outside the per-image `try` — one bad path kills the whole batch
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:530-531`
+
+```python
+for img_path in images:
+    dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path, json_path = output_paths_for(img_path, dest_dir)
+
+    print(f"Processing {img_path} ...", end=" ", flush=True)
+    debug_file = None
+
+    try:
+```
+
+This is the same defect class as the (now-fixed) **B8**:
+`mkdir(parents=True, exist_ok=True)` does NOT swallow every failure —
+it only treats *existing directories* as success. If any of these
+hold:
+
+- `--output-dir DIR` was passed and `DIR` is a regular file →
+  `FileExistsError`.
+- A parent component of the resolved `dest_dir` is a regular file
+  (e.g. `--output-dir scans/page1.png/out`) → `NotADirectoryError`.
+- The destination is on a read-only mount → `PermissionError` /
+  `OSError(EROFS)`.
+
+…then the very first image's `mkdir` raises and aborts `main()` before
+the per-image `try` is entered. A 500-page batch dies on page 1 with
+the filesystem error and 499 pages remain unprocessed even though they
+might have lived on a different filesystem (e.g. mirrored output where
+the first input directory's destination is bad but later ones are
+fine).
+
+Verified locally:
+```
+>>> Path('/tmp/file_not_dir/subdir').mkdir(parents=True, exist_ok=True)
+NotADirectoryError: [Errno 20] Not a directory: '/tmp/file_not_dir/subdir'
+```
+
+**Suggested fix:** move the `mkdir` inside the per-image `try` (and
+above the `setup_layout_debug_env` call so the debug-dir variant gets
+the same treatment via B8's existing handler). The `finally:
+clear_layout_debug_env()` already covers cleanup. Sketch:
+
+```python
+print(f"Processing {img_path} ...", end=" ", flush=True)
+debug_file = None
+try:
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+    ...
+```
+
+Add a regression test mirroring B8's
+`test_main_layout_debug_setup_failure_recorded_per_image_not_batch_abort`
+— pass `--output-dir <regular_file>` across a 2-image batch and
+assert exit code 1 plus `Done (2 error(s))` (currently the test would
+see the unhandled exception bubble out of `main()`).
+
+---
+
+### B15 [MINOR] `--experimental-drop-layout-words` / `--edl` is silently ignored under `--no-reorg`
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:578-586`
+
+```python
+if do_reorg:
+    drop_layout_words = args.experimental_drop_layout_words
+    if page_layout is not None:
+        page.reorganize_page(layout=page_layout, drop_layout_words=drop_layout_words)
+    else:
+        page.reorganize_page(drop_layout_words=drop_layout_words)
+```
+
+`drop_layout_words` is consumed only inside the `if do_reorg:` branch,
+so passing `--edl --no-reorg` (or `--experimental-drop-layout-words
+--no-reorg`) silently does nothing — same family as the silent no-ops
+B3/B9/B11 already cover. Users opting in to the experimental drop
+behavior would have a strong reason to expect it to apply, and the
+flag's `--edl` short alias makes the combination easy to type by
+accident in shell history (`-edl --no-reorg`).
+
+**Suggested fix:** add a fifth warning to the arg-validation block at
+`ocr_to_txt.py:434-465`:
+
+```python
+if args.no_reorg and args.experimental_drop_layout_words:
+    print(
+        "warning: --experimental-drop-layout-words has no effect with --no-reorg "
+        "(the drop only applies during reorganize_page); ignoring.",
+        file=sys.stderr,
+    )
+```
+
+Add a regression test alongside the existing B3 cluster in
+`tests/test_main_mocked.py`.
+
+---
+
+### B16 [MINOR] `--save-reorganize-diagnostics` without `--save-json` is silently ignored
+
+**File:** `pd_ocr_cli/ocr_to_txt.py:571-573`
+
+```python
+want_diagnostic_export = (
+    do_reorg and args.save_json and args.save_reorganize_diagnostics
+)
+```
+
+The diagnostic export is gated on `args.save_json`, but a user who
+passes only `--save-reorganize-diagnostics` (or its legacy alias
+`--save-pre-reorg-json`) gets nothing — no `.pure-ocr.{json,txt}`,
+no `.post-noise.{json,txt}`, no warning. The argparse help text says
+"When --save-json is set ..." but new users typically read flag names
+and try the most direct invocation. This is the exact silent-no-op
+pattern that B3/B11 set the precedent for warning about.
+
+**Suggested fix:** add to the arg-validation block:
+
+```python
+if args.save_reorganize_diagnostics and not args.save_json:
+    print(
+        "warning: --save-reorganize-diagnostics has no effect without --save-json "
+        "(diagnostic exports are siblings of the .json sidecar); ignoring.",
+        file=sys.stderr,
+    )
+```
+
+Regression test: pass `--save-reorganize-diagnostics` alone, assert
+the warning is on stderr and that none of the four diagnostic files
+are written.
 
 ---
 
