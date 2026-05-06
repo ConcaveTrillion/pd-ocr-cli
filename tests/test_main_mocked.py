@@ -640,6 +640,36 @@ def test_main_layout_debug_dir_without_layout_debug_warns(
     assert "warning" in err.lower()
 
 
+def test_main_no_reorg_with_experimental_drop_layout_words_warns(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """B15: ``--experimental-drop-layout-words`` with ``--no-reorg`` is a silent no-op.
+
+    The flag is consumed only inside the ``if do_reorg:`` block, so combining
+    it with ``--no-reorg`` quietly does nothing. Warn on stderr per the B3
+    silent-no-op pattern.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--no-reorg",
+        "--experimental-drop-layout-words",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "--no-reorg" in err and "--experimental-drop-layout-words" in err
+    assert "warning" in err.lower()
+
+
 def test_main_default_passes_drop_layout_words_false_to_reorganize(
     patched_main, monkeypatch, tmp_path
 ):

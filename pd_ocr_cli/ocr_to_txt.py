@@ -463,6 +463,12 @@ def main():
             "ignoring.",
             file=sys.stderr,
         )
+    if args.no_reorg and args.experimental_drop_layout_words:
+        print(
+            "warning: --experimental-drop-layout-words has no effect with --no-reorg "
+            "(the drop is applied inside reorganize_page, which is skipped); ignoring.",
+            file=sys.stderr,
+        )
 
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).

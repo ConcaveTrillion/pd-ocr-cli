@@ -8,16 +8,25 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B15** — `--experimental-drop-layout-words` / `--edl` combined with
-`--no-reorg` silently does nothing — the flag is consumed only inside
-`if do_reorg:` (`ocr_to_txt.py:578-586`). Same silent-no-op family as
-B3/B9/B11. Add a fifth arg-validation warning in the
-`ocr_to_txt.py:434-465` block plus a regression test alongside the
-existing B3 cluster in `tests/test_main_mocked.py`. See
-`## Round 3 bugs` below.
+**B16** — `--save-reorganize-diagnostics` without `--save-json` is
+silently ignored. The export is gated on `args.save_json` at
+`ocr_to_txt.py:571-573` (now ~576-578), so a user passing only
+`--save-reorganize-diagnostics` (or its legacy alias
+`--save-pre-reorg-json`) gets no diagnostic files and no feedback.
+Same silent-no-op family as B3/B9/B11/B15. Add a sixth arg-validation
+warning in the `ocr_to_txt.py:434-471` block plus a regression test
+alongside the existing B3 cluster in `tests/test_main_mocked.py`.
+See `## Round 3 bugs` below.
 
 ### Done
 
+- **B15** — `--experimental-drop-layout-words` / `--edl` combined
+  with `--no-reorg` now emits a stderr warning at the top-of-`main`
+  arg-validation block, matching the B3/B9/B11 silent-no-op pattern.
+  The flag is only ever consumed inside `if do_reorg:`, so combining
+  with `--no-reorg` was a quiet no-op. Regression test
+  `test_main_no_reorg_with_experimental_drop_layout_words_warns`
+  added in `tests/test_main_mocked.py`.
 - **B14** — `dest_dir.mkdir(parents=True, exist_ok=True)` at
   `ocr_to_txt.py:531` is now called *inside* the per-image `try` in
   `ocr_to_txt.py:main()`, so a filesystem failure (e.g. `-o` points at
