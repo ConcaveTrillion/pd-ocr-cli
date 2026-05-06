@@ -8,11 +8,26 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B25** — Fix `make help` drift on coverage thresholds in
-`Makefile`. The four affected lines are 94, 99, 108, 116.
+Round 6 exhausted — all listed bugs resolved. Loop may stop, or
+trigger round 7 with a fresh top-to-bottom pass.
 
 ### Done
 
+- **B25** — `Makefile` `coverage` / `coverage-slow` / `ci` /
+  `ci-slow` `##` help strings (lines 94, 99, 108, 116) advertised
+  the historical "default 50" / "default 70" coverage floors, but
+  `COV_FAIL_UNDER` and `COV_FAIL_UNDER_SLOW` were tightened to 100
+  in the variable defaults at the top of the file. `make help`
+  rendered the stale numbers, misleading contributors into thinking
+  a small drop from 100% would still pass CI when in fact it would
+  not. Fix: swapped "default 50" → "default 100" on `coverage` and
+  `ci`, and "default 70" → "default 100" on `coverage-slow` and
+  `ci-slow`. No pytest regression — Makefile help text isn't
+  exercised by the python suite, and writing a shell-grep assertion
+  would just re-encode the same four strings in a less readable
+  form. Verified manually with `make help` (all four lines now
+  read "default 100"). `make test` still green: 275 passed,
+  8 skipped, 100% coverage.
 - **B24** — `atomic_write_text` / `atomic_write_bytes` previously
   wrote a sibling temp via `Path.write_text` / `Path.write_bytes`
   and called `os.replace` with no `fsync` of the temp fd before

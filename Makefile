@@ -91,12 +91,12 @@ test-slow: ## Run the full pytest suite including slow integration tests (downlo
 	@echo "🧪 Running tests (including slow)..."
 	uv run pytest tests/ -v --run-slow
 
-coverage: ## Run fast tests with coverage + HTML report; fails if total drops below COV_FAIL_UNDER (default 50)
+coverage: ## Run fast tests with coverage + HTML report; fails if total drops below COV_FAIL_UNDER (default 100)
 	@echo "🧪 Running tests with coverage (threshold: $(COV_FAIL_UNDER)%)..."
 	uv run pytest tests/ --cov=pd_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 	@echo "📊 Coverage report: htmlcov/index.html"
 
-coverage-slow: ## Run full suite (incl. slow) with coverage; fails if total drops below COV_FAIL_UNDER_SLOW (default 70)
+coverage-slow: ## Run full suite (incl. slow) with coverage; fails if total drops below COV_FAIL_UNDER_SLOW (default 100)
 	@echo "🧪 Running tests with coverage including slow integration (threshold: $(COV_FAIL_UNDER_SLOW)%)..."
 	uv run pytest tests/ --run-slow --cov=pd_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER_SLOW)
 	@echo "📊 Coverage report: htmlcov/index.html"
@@ -105,7 +105,7 @@ build: ## Build the project
 	@echo "🔨 Building project..."
 	uv build
 
-ci: ## Run fast CI pipeline (setup → pre-commit → coverage → build); enforces COV_FAIL_UNDER (default 50)
+ci: ## Run fast CI pipeline (setup → pre-commit → coverage → build); enforces COV_FAIL_UNDER (default 100)
 	@echo "🚀 Running fast CI pipeline..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check
@@ -113,7 +113,7 @@ ci: ## Run fast CI pipeline (setup → pre-commit → coverage → build); enfor
 	@$(MAKE) --no-print-directory build
 	@echo "✅ CI pipeline complete!"
 
-ci-slow: ## Run full CI pipeline including slow integration tests; enforces COV_FAIL_UNDER_SLOW (default 70)
+ci-slow: ## Run full CI pipeline including slow integration tests; enforces COV_FAIL_UNDER_SLOW (default 100)
 	@echo "🚀 Running full CI pipeline (including slow integration tests)..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check
