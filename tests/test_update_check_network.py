@@ -169,3 +169,30 @@ def test_swallows_malformed_json(monkeypatch, capsys):
         _update_check.check_for_update()
     err = capsys.readouterr().err
     assert err == ""
+
+
+# ---------------------------------------------------------------------------
+# Pagination: GitHub defaults to 30 tags per page; we must opt into the max
+# (100) so the latest stable tag does not silently fall off page 1.
+# ---------------------------------------------------------------------------
+
+
+def test_tags_request_uses_per_page_100(monkeypatch):
+    """The tags-API URL must include ``per_page=100`` so we don't silently
+    miss the newest stable release once the project crosses 30 tags.
+    """
+    monkeypatch.setattr(_update_check, "VERSION", "0.5.0")
+
+    captured: dict = {}
+
+    def _capturing_opener(req, timeout=None):
+        captured["url"] = req.full_url
+        return _FakeResponse(b"[]")
+
+    with patch("urllib.request.urlopen", _capturing_opener):
+        _update_check.check_for_update()
+
+    assert "url" in captured, "urlopen was not called"
+    assert "per_page=100" in captured["url"], (
+        f"tags URL must request per_page=100 (got: {captured['url']!r})"
+    )

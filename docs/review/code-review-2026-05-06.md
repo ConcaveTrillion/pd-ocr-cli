@@ -8,10 +8,10 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B5** — GitHub tags API call in `pd_ocr_cli/_update_check.py:63` uses no
-`per_page` parameter and so fetches at most 30 tags. Once the project
-exceeds 30 tags, the latest stable release may fall off the first page
-and the update notice silently goes stale. Append `?per_page=100`.
+**B6** — `check_for_update` in `pd_ocr_cli/_update_check.py:63` sends no
+explicit `User-Agent` header. `urllib.request` defaults to
+`Python-urllib/3.x`, which GitHub may rate-limit unsympathetically. Set
+an explicit `User-Agent: pd-ocr-cli/{VERSION}` on the `Request`.
 
 ### Done
 
@@ -31,6 +31,10 @@ and the update notice silently goes stale. Append `?per_page=100`.
   `json_path` / `txt_path` parameters; caller in `ocr_to_txt.py` updated
   and signature-guard test added in `tests/test_pipeline_helpers.py`
   (`test_write_diagnostic_snapshots_signature_has_no_unused_path_params`).
+- **B5** — GitHub tags API URL now appends `?per_page=100` so the latest
+  stable tag cannot silently fall off page 1 once the project crosses 30
+  tags; test `test_tags_request_uses_per_page_100` added in
+  `tests/test_update_check_network.py`.
 
 ---
 

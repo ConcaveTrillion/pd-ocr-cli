@@ -59,7 +59,11 @@ def check_for_update() -> None:
         import json
         import urllib.request
 
-        url = f"https://api.github.com/repos/{_GITHUB_REPO}/tags"
+        # ``per_page=100`` is GitHub's max; the default of 30 risks dropping
+        # the newest stable tag off page 1 once the project accumulates more
+        # than 30 tags (incl. dev/rc/draft tags), causing the update notice to
+        # silently go stale.
+        url = f"https://api.github.com/repos/{_GITHUB_REPO}/tags?per_page=100"
         req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
         with urllib.request.urlopen(req, timeout=3) as resp:
             tags = json.loads(resp.read())
