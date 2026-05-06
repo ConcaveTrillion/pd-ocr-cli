@@ -8,18 +8,26 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B16** — `--save-reorganize-diagnostics` without `--save-json` is
-silently ignored. The export is gated on `args.save_json` at
-`ocr_to_txt.py:571-573` (now ~576-578), so a user passing only
-`--save-reorganize-diagnostics` (or its legacy alias
-`--save-pre-reorg-json`) gets no diagnostic files and no feedback.
-Same silent-no-op family as B3/B9/B11/B15. Add a sixth arg-validation
-warning in the `ocr_to_txt.py:434-471` block plus a regression test
-alongside the existing B3 cluster in `tests/test_main_mocked.py`.
-See `## Round 3 bugs` below.
+All round-3 B items (B12-B16) are done. **Trigger round 4 deep
+review** — open a new review pass against `pd_ocr_cli/` to surface
+the next batch of bugs/concerns. The previous rounds focused on
+silent no-op flag combinations, per-image error containment, and
+pre-release upgrade-notice gaps; round 4 should look at fresh angles
+(e.g. concurrency in update-check thread, encoding edge cases in
+text normalization, signal/SIGINT handling mid-batch, layout/OCR
+result invariants, CLI exit code semantics across edge paths).
 
 ### Done
 
+- **B16** — `--save-reorganize-diagnostics` without `--save-json`
+  now emits a stderr warning at the top-of-`main` arg-validation
+  block, matching the B3/B11/B15 silent-no-op pattern. The export
+  was gated on `args.save_json and args.save_reorganize_diagnostics`
+  in the per-image loop, so passing only `--save-reorganize-diagnostics`
+  (or its legacy alias `--save-pre-reorg-json`) silently produced no
+  diagnostic files. Regression test
+  `test_main_save_reorganize_diagnostics_without_save_json_warns`
+  added in `tests/test_main_mocked.py`.
 - **B15** — `--experimental-drop-layout-words` / `--edl` combined
   with `--no-reorg` now emits a stderr warning at the top-of-`main`
   arg-validation block, matching the B3/B9/B11 silent-no-op pattern.

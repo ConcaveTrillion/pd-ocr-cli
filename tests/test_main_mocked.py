@@ -670,6 +670,36 @@ def test_main_no_reorg_with_experimental_drop_layout_words_warns(
     assert "warning" in err.lower()
 
 
+def test_main_save_reorganize_diagnostics_without_save_json_warns(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """B16: ``--save-reorganize-diagnostics`` without ``--save-json`` is a silent no-op.
+
+    The diagnostic-export bundle is gated on ``args.save_json`` in the
+    per-image loop, so a user passing only ``--save-reorganize-diagnostics``
+    (or its legacy alias ``--save-pre-reorg-json``) gets no diagnostic
+    files and no feedback. Warn on stderr per the B3 silent-no-op pattern.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--save-reorganize-diagnostics",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "--save-reorganize-diagnostics" in err and "--save-json" in err
+    assert "warning" in err.lower()
+
+
 def test_main_default_passes_drop_layout_words_false_to_reorganize(
     patched_main, monkeypatch, tmp_path
 ):

@@ -463,6 +463,13 @@ def main():
             "ignoring.",
             file=sys.stderr,
         )
+    if args.save_reorganize_diagnostics and not args.save_json:
+        print(
+            "warning: --save-reorganize-diagnostics has no effect without --save-json "
+            "(the diagnostic bundle is written alongside the regular .json output, "
+            "which requires --save-json); ignoring.",
+            file=sys.stderr,
+        )
     if args.no_reorg and args.experimental_drop_layout_words:
         print(
             "warning: --experimental-drop-layout-words has no effect with --no-reorg "
