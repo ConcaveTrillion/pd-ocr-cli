@@ -54,13 +54,7 @@ branch = true
 # The CLI spawns a daemon thread for the GitHub-tag update check; tell
 # coverage to instrument across threads so that path is counted when it
 # runs (e.g. under --run-slow).
-concurrency = ["thread", "multiprocessing"]
-# parallel = true writes per-process .coverage.HOSTNAME.PID files instead of
-# a single .coverage. pytest-cov runs `coverage combine` automatically at the
-# end of the session to merge them. Required so the slow integration tests
-# (which invoke pd-ocr in a subprocess) actually contribute coverage of
-# main() — pair this with COVERAGE_PROCESS_START in the subprocess env.
-parallel = true
+concurrency = ["thread"]
 omit = [
     "*/tests/*",
     "*/.venv/*",

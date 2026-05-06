@@ -1,0 +1,1 @@
+- [Slow-test predictor sharing](slow_tests_shared_predictor.md) — slow integration tests share a session-scoped DocTR predictor via the `_load_predictor` monkeypatch seam; do not reintroduce subprocess-based slow tests.

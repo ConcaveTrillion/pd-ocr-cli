@@ -7,16 +7,24 @@ downloads ~166 MB of model weights from Hugging Face and caches them in
 Pinning the model revision (``PINNED_MODEL_REVISION``) gives reproducible
 output for a fixed input image, so we can assert on actual recognized
 tokens rather than a coarse "ran without crashing" smoke test.
+
+The slow tests share a single session-scoped predictor. The CLI's
+``_load_predictor`` seam is monkeypatched per test to hand back that
+cached predictor, so ``main()`` runs in-process without reloading the
+~150 MB OCR model for each case. Each test still drives ``main()``
+through its full argparse / argv path so flag handling, exit codes, and
+stderr/stdout messages stay covered.
 """
 
 from __future__ import annotations
 
-import os
-import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+from pd_ocr_cli import ocr_to_txt
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TITLE_IMAGE = FIXTURES_DIR / "title_page_001.png"
@@ -24,11 +32,6 @@ TITLE_EXPECTED = FIXTURES_DIR / "title_page_001.expected.txt"
 
 # Pin to a specific tag on the default HF repo so OCR output is reproducible.
 PINNED_MODEL_REVISION = "v0.6"
-
-# Coverage config lives at the repo root next to pyproject.toml. With
-# `parallel = true` set there, pytest-cov auto-combines child-process
-# coverage into the parent run when the child sees this env var.
-PYPROJECT = Path(__file__).resolve().parent.parent / "pyproject.toml"
 
 
 pytestmark = pytest.mark.slow
@@ -48,6 +51,27 @@ def title_expected_text() -> str:
     return TITLE_EXPECTED.read_text(encoding="utf-8")
 
 
+@pytest.fixture(scope="session")
+def shared_predictor():
+    """Build the fine-tuned DocTR predictor exactly once per pytest session.
+
+    Uses the same code path ``main()`` takes — ``resolve_ocr_models`` to
+    fetch the pinned weights, then ``_load_predictor`` to instantiate the
+    detection+recognition pair. Subsequent slow tests reuse this object
+    via monkeypatch instead of re-downloading or re-initialising.
+    """
+    args = SimpleNamespace(
+        hf_repo=ocr_to_txt.DEFAULT_HF_REPO,
+        model_version=PINNED_MODEL_REVISION,
+        det_filename=ocr_to_txt.DEFAULT_DET_FILENAME,
+        reco_filename=ocr_to_txt.DEFAULT_RECO_FILENAME,
+        detection=None,
+        recognition=None,
+    )
+    det_path, reco_path = ocr_to_txt.resolve_ocr_models(args)
+    return ocr_to_txt._load_predictor(det_path, reco_path)
+
+
 def _normalize_for_match(text: str) -> str:
     """Lowercase and collapse to a single-spaced word stream.
 
@@ -59,16 +83,24 @@ def _normalize_for_match(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def _run_pd_ocr(image: Path, output_dir: Path, *extra_args: str) -> subprocess.CompletedProcess:
-    """Invoke the CLI as a subprocess in the current venv.
+def _invoke_main(
+    monkeypatch: pytest.MonkeyPatch,
+    shared_predictor,
+    image: Path,
+    output_dir: Path,
+    *extra_args: str,
+) -> int:
+    """Run ``ocr_to_txt.main()`` in-process with the shared predictor.
 
-    Sets ``COVERAGE_PROCESS_START`` so the child also records coverage —
-    pytest-cov merges the per-process datafiles at session end.
+    Returns the ``SystemExit`` code (0 if ``main()`` returned normally).
+    Replaces ``_load_predictor`` so the session-scoped predictor is
+    reused — every other code path (argparse, layout resolution, the
+    per-image loop, exit-code logic) runs unmocked, exactly as in a
+    real ``pd-ocr`` invocation.
     """
-    cmd = [
-        sys.executable,
-        "-m",
-        "pd_ocr_cli.ocr_to_txt",
+    monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: shared_predictor)
+    argv = [
+        "pd-ocr",
         "--no-update-check",
         "--model-version",
         PINNED_MODEL_REVISION,
@@ -79,12 +111,22 @@ def _run_pd_ocr(image: Path, output_dir: Path, *extra_args: str) -> subprocess.C
         *extra_args,
         str(image),
     ]
-    env = {**os.environ, "COVERAGE_PROCESS_START": str(PYPROJECT)}
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env)
+    monkeypatch.setattr(sys, "argv", argv)
+    try:
+        ocr_to_txt.main()
+    except SystemExit as e:
+        code = e.code
+        return int(code) if isinstance(code, int) else 1
+    return 0
 
 
 def test_ocr_title_page_recovers_expected_tokens(
-    title_image_path: Path, title_expected_text: str, tmp_path: Path
+    title_image_path: Path,
+    title_expected_text: str,
+    tmp_path: Path,
+    shared_predictor,
+    monkeypatch,
+    capsys,
 ):
     """Pipeline should recover the major tokens from a clean title page.
 
@@ -97,10 +139,9 @@ def test_ocr_title_page_recovers_expected_tokens(
     the OCR engine may differ on punctuation, spacing, or roman-numeral
     glyphs, but every word should land in the output.
     """
-    result = _run_pd_ocr(title_image_path, tmp_path)
-    assert result.returncode == 0, (
-        f"pd-ocr exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    rc = _invoke_main(monkeypatch, shared_predictor, title_image_path, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
 
     out_txt = tmp_path / "title_page_001.txt"
     assert out_txt.exists(), f"expected output file missing: {out_txt}"
@@ -117,24 +158,26 @@ def test_ocr_title_page_recovers_expected_tokens(
     )
 
 
-def test_ocr_save_json_writes_sidecar(title_image_path: Path, tmp_path: Path):
+def test_ocr_save_json_writes_sidecar(
+    title_image_path: Path, tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """``--save-json`` produces a non-empty .json sidecar next to the .txt."""
-    result = _run_pd_ocr(title_image_path, tmp_path, "--save-json")
-    assert result.returncode == 0, (
-        f"pd-ocr exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    rc = _invoke_main(monkeypatch, shared_predictor, title_image_path, tmp_path, "--save-json")
+    captured = capsys.readouterr()
+    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
 
     out_json = tmp_path / "title_page_001.json"
     assert out_json.exists(), f"expected JSON sidecar missing: {out_json}"
     assert out_json.stat().st_size > 0, "JSON sidecar was empty"
 
 
-def test_ocr_no_reorg_runs_clean(title_image_path: Path, tmp_path: Path):
+def test_ocr_no_reorg_runs_clean(
+    title_image_path: Path, tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """``--no-reorg`` should also produce a usable .txt with the page tokens."""
-    result = _run_pd_ocr(title_image_path, tmp_path, "--no-reorg")
-    assert result.returncode == 0, (
-        f"pd-ocr exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    rc = _invoke_main(monkeypatch, shared_predictor, title_image_path, tmp_path, "--no-reorg")
+    captured = capsys.readouterr()
+    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
     out_txt = tmp_path / "title_page_001.txt"
     assert out_txt.exists()
     normalized = _normalize_for_match(out_txt.read_text(encoding="utf-8"))
@@ -143,7 +186,9 @@ def test_ocr_no_reorg_runs_clean(title_image_path: Path, tmp_path: Path):
     assert "furniture" in normalized
 
 
-def test_ocr_save_reorganize_diagnostics_writes_full_bundle(title_image_path: Path, tmp_path: Path):
+def test_ocr_save_reorganize_diagnostics_writes_full_bundle(
+    title_image_path: Path, tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """``--save-json --save-reorganize-diagnostics --validate-reorg`` writes
     the post-reorganize pair plus pure-OCR + post-noise diagnostic pairs.
 
@@ -152,16 +197,17 @@ def test_ocr_save_reorganize_diagnostics_writes_full_bundle(title_image_path: Pa
     runs ``validate_word_preservation`` on the title page (no drops
     expected, but ``format_drops_warning`` is exercised regardless).
     """
-    result = _run_pd_ocr(
+    rc = _invoke_main(
+        monkeypatch,
+        shared_predictor,
         title_image_path,
         tmp_path,
         "--save-json",
         "--save-reorganize-diagnostics",
         "--validate-reorg",
     )
-    assert result.returncode == 0, (
-        f"pd-ocr exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    captured = capsys.readouterr()
+    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
     txt = tmp_path / "title_page_001.txt"
     json_ = tmp_path / "title_page_001.json"
     pure_ocr_json = tmp_path / "title_page_001.pure-ocr.json"
@@ -177,37 +223,45 @@ def test_ocr_save_reorganize_diagnostics_writes_full_bundle(title_image_path: Pa
     assert post_noise_txt.exists()
 
 
-def test_ocr_save_pre_reorg_json_alias_still_runs(title_image_path: Path, tmp_path: Path):
+def test_ocr_save_pre_reorg_json_alias_still_runs(
+    title_image_path: Path, tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """The legacy ``--save-pre-reorg-json`` alias still triggers the same
     diagnostic export bundle (backward compatibility).
     """
-    result = _run_pd_ocr(
+    rc = _invoke_main(
+        monkeypatch,
+        shared_predictor,
         title_image_path,
         tmp_path,
         "--save-json",
         "--save-pre-reorg-json",
     )
-    assert result.returncode == 0, (
-        f"pd-ocr exited {result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    )
+    captured = capsys.readouterr()
+    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
     assert (tmp_path / "title_page_001.json").exists()
     assert (tmp_path / "title_page_001.pure-ocr.json").exists()
     assert (tmp_path / "title_page_001.post-noise.json").exists()
 
 
-def test_ocr_no_valid_images_exits_with_error(tmp_path: Path):
+def test_ocr_no_valid_images_exits_with_error(
+    tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """A non-image input alone yields no work to do — pd-ocr exits 1."""
     bogus = tmp_path / "notes.txt"
     bogus.write_text("not an image", encoding="utf-8")
-    result = _run_pd_ocr(bogus, tmp_path)
-    assert result.returncode == 1
+    rc = _invoke_main(monkeypatch, shared_predictor, bogus, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 1
     # Both messages land on stderr in the same run: the warning while
     # collecting (non-image file) and the final error (no valid images).
-    assert "no valid image files found" in result.stderr
-    assert "skipping non-image file" in result.stderr
+    assert "no valid image files found" in captured.err
+    assert "skipping non-image file" in captured.err
 
 
-def test_ocr_corrupt_image_continues_and_reports_error(tmp_path: Path):
+def test_ocr_corrupt_image_continues_and_reports_error(
+    tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """A bad image file fails per-page → exit 1 with an ERROR line on stderr.
 
     Exercises the per-image exception handler and the final non-zero exit
@@ -216,14 +270,17 @@ def test_ocr_corrupt_image_continues_and_reports_error(tmp_path: Path):
     bad_png = tmp_path / "broken.png"
     # Valid suffix so collect_images keeps it, but the bytes are not a real PNG.
     bad_png.write_bytes(b"not really a png")
-    result = _run_pd_ocr(bad_png, tmp_path)
-    assert result.returncode == 1
-    assert "ERROR processing" in result.stderr
+    rc = _invoke_main(monkeypatch, shared_predictor, bad_png, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "ERROR processing" in captured.err
     # The summary "Done (1 error(s))." is printed to stdout at the end.
-    assert "1 error(s)" in result.stdout
+    assert "1 error(s)" in captured.out
 
 
-def test_ocr_corrupt_image_with_debug_prints_traceback(tmp_path: Path):
+def test_ocr_corrupt_image_with_debug_prints_traceback(
+    tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
     """``PD_OCR_DEBUG=1`` makes the per-page handler also print a traceback.
 
     Covers the ``if _env_truthy("PD_OCR_DEBUG"): traceback.print_exc()`` branch.
@@ -231,26 +288,10 @@ def test_ocr_corrupt_image_with_debug_prints_traceback(tmp_path: Path):
     bad_png = tmp_path / "broken.png"
     bad_png.write_bytes(b"not really a png")
 
-    cmd = [
-        sys.executable,
-        "-m",
-        "pd_ocr_cli.ocr_to_txt",
-        "--no-update-check",
-        "--model-version",
-        PINNED_MODEL_REVISION,
-        "--layout-model",
-        "none",
-        "--output-dir",
-        str(tmp_path),
-        str(bad_png),
-    ]
-    env = {
-        **os.environ,
-        "COVERAGE_PROCESS_START": str(PYPROJECT),
-        "PD_OCR_DEBUG": "1",
-    }
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, env=env)
-    assert result.returncode == 1
-    assert "ERROR processing" in result.stderr
+    monkeypatch.setenv("PD_OCR_DEBUG", "1")
+    rc = _invoke_main(monkeypatch, shared_predictor, bad_png, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "ERROR processing" in captured.err
     # `traceback.print_exc` prints "Traceback (most recent call last):" header.
-    assert "Traceback" in result.stderr
+    assert "Traceback" in captured.err
