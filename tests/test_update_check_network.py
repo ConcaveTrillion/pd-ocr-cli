@@ -176,6 +176,49 @@ def test_swallows_urlopen_errors(monkeypatch, capsys, exc):
     assert err == ""
 
 
+def test_github_error_dict_body_does_not_reach_latest_stable_tag(monkeypatch, capsys):
+    """GitHub error responses (rate-limit, auth required) return a dict like
+    ``{"message": "API rate limit exceeded for ...", "documentation_url": ...}``,
+    not a list of tag dicts. The dict is truthy (non-empty), so the
+    ``if not tags: return`` guard does not fire and execution falls through
+    to ``_latest_stable_tag(tags)`` which iterates the dict's KEYS (strings)
+    and calls ``str.get("name", "")`` -> AttributeError. That AttributeError
+    is swallowed by the bare ``except Exception: pass`` in
+    ``check_for_update``, so the user sees nothing and never learns the
+    update notice machinery is broken (and any future bug in this function
+    is similarly masked).
+
+    Right-reason: spy on ``_latest_stable_tag`` and assert it is NOT called
+    when the GitHub response is a dict-shaped error body. Pre-fix, the spy
+    fires (the AttributeError is what later masks it); post-fix, the
+    type-guard skips the call entirely.
+    """
+    monkeypatch.setattr(_update_check, "VERSION", "0.5.0")
+    error_body = {
+        "message": "API rate limit exceeded for 203.0.113.7. ...",
+        "documentation_url": ("https://docs.github.com/rest/overview/resources-in-the-rest-api"),
+    }
+
+    calls: list = []
+    real_latest_stable_tag = _update_check._latest_stable_tag
+
+    def _spy(payload):
+        calls.append(payload)
+        return real_latest_stable_tag(payload)
+
+    monkeypatch.setattr(_update_check, "_latest_stable_tag", _spy)
+
+    with patch("urllib.request.urlopen", _fake_urlopen(error_body)):
+        _update_check.check_for_update()  # must not raise
+    err = capsys.readouterr().err
+    assert err == "", f"no upgrade notice should print on error body; got: {err!r}"
+    assert calls == [], (
+        f"_latest_stable_tag must not be invoked on a non-list GitHub response "
+        f"(it iterates dict keys as strings and crashes with AttributeError, "
+        f"silently masked by the broad except). Spy recorded calls: {calls!r}"
+    )
+
+
 def test_swallows_malformed_json(monkeypatch, capsys):
     """Non-JSON response should be swallowed at the json.loads boundary."""
     monkeypatch.setattr(_update_check, "VERSION", "0.5.0")

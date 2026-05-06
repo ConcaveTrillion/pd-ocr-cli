@@ -9,17 +9,33 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 ## Next item
 
 Round 4 added **B17–B23** (see `## Round 4 bugs` at the bottom of
-this file). B17, B18, B19, B20, and B21 are now done (see Done list).
-The remaining MINORs go top-to-bottom: **B22** is next —
-`_latest_stable_tag` raises on GitHub error-response bodies (e.g. a
-rate-limit JSON dict instead of a list of refs), and the exception is
-swallowed silently by the background update-check thread, so users
-never learn that the upgrade-notice machinery is broken. After B22:
-B23 (Windows cross-drive `commonpath` crash in `compute_mirror_root`
-that aborts the whole batch).
+this file). B17, B18, B19, B20, B21, and B22 are now done (see Done
+list). The remaining MINOR goes top-to-bottom: **B23** is next —
+Windows cross-drive `commonpath` crash in `compute_mirror_root`
+(`pd-ocr C:\scans D:\more_scans -o E:\out` raises `ValueError("Paths
+don't have the same drive")` outside the per-image try, aborting the
+whole batch with an unhandled traceback before any image is
+processed). Catch `ValueError` and degrade to flat output.
 
 ### Done
 
+- **B22** — `_latest_stable_tag` previously raised `AttributeError`
+  on GitHub error-response bodies (rate-limit / auth-required /
+  repo-unavailable JSON dicts like
+  `{"message": "API rate limit exceeded ...",
+  "documentation_url": ...}`). The dict is truthy, so the
+  `if not tags: return` guard didn't fire and the dict fell through
+  to `_latest_stable_tag` which iterates dict keys (strings) and
+  calls `str.get("name", "")` -> AttributeError. That was swallowed
+  by the bare `except Exception: pass` in `check_for_update`, so
+  users on rate-limited networks never saw an upgrade notice and
+  never learned the machinery was broken (every future bug in the
+  block was also masked). Fix: `if not isinstance(payload, list)
+  or not payload: return` before the call. New regression
+  `test_github_error_dict_body_does_not_reach_latest_stable_tag`
+  spies on `_latest_stable_tag` and asserts it is never invoked
+  with a dict-shaped error body — confirmed right-reason failure
+  before the fix (spy recorded the dict call) and green after.
 - **B21** — `--layout-confidence` previously used plain `type=float`,
   silently accepting `nan` (every `x < nan` is False, so the crop
   filter is turned off and every region passes), `inf`/`-inf`

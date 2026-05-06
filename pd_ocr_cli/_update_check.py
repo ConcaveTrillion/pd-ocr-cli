@@ -75,10 +75,18 @@ def check_for_update() -> None:
             },
         )
         with urllib.request.urlopen(req, timeout=3) as resp:
-            tags = json.loads(resp.read())
-        if not tags:
+            payload = json.loads(resp.read())
+        # GitHub error responses (rate-limit, auth required, repo unavailable)
+        # return a JSON *dict* like ``{"message": "API rate limit exceeded ...",
+        # "documentation_url": ...}`` rather than the expected list of tag
+        # dicts. A truthiness-only guard would let the dict through to
+        # ``_latest_stable_tag`` which iterates dict keys (strings) and calls
+        # ``str.get("name", "")`` -> AttributeError, masked by the broad
+        # ``except Exception: pass`` below. Type-guard explicitly so the
+        # update-check machinery degrades cleanly instead of silently dying.
+        if not isinstance(payload, list) or not payload:
             return
-        latest_stable = _latest_stable_tag(tags)
+        latest_stable = _latest_stable_tag(payload)
         if latest_stable is None:
             return
 
