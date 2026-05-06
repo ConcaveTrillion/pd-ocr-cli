@@ -293,14 +293,21 @@ def diagnostic_output_paths(json_path: Path, txt_path: Path) -> dict[str, Path]:
 
     Given the existing post-reorganize ``.json`` / ``.txt`` paths, return
     the four new sibling paths the diagnostic export adds.
+
+    ``Path.stem`` strips only the final suffix, so a multi-dot image
+    name like ``page.001.png`` (whose ``txt_path`` is ``page.001.txt``)
+    yields a stem of ``page.001`` — preserving the embedded dot. The
+    earlier implementation used ``Path.with_suffix("")`` followed by
+    a second ``with_suffix(".pure-ocr.json")``, which strips and then
+    *replaces* the last suffix segment, collapsing ``page.001`` to
+    ``page`` and causing every ``page.NNN`` page in a batch to share
+    the same four diagnostic filenames.
     """
-    stem_json = json_path.with_suffix("")  # strip .json
-    stem_txt = txt_path.with_suffix("")  # strip .txt
     return {
-        "pure_ocr_json": stem_json.with_suffix(".pure-ocr.json"),
-        "pure_ocr_txt": stem_txt.with_suffix(".pure-ocr.txt"),
-        "post_noise_json": stem_json.with_suffix(".post-noise.json"),
-        "post_noise_txt": stem_txt.with_suffix(".post-noise.txt"),
+        "pure_ocr_json": json_path.with_name(f"{json_path.stem}.pure-ocr.json"),
+        "pure_ocr_txt": txt_path.with_name(f"{txt_path.stem}.pure-ocr.txt"),
+        "post_noise_json": json_path.with_name(f"{json_path.stem}.post-noise.json"),
+        "post_noise_txt": txt_path.with_name(f"{txt_path.stem}.post-noise.txt"),
     }
 
 

@@ -425,6 +425,27 @@ def test_diagnostic_output_paths_pairs_pure_and_post_noise(tmp_path):
     assert paths["post_noise_txt"] == tmp_path / "page-001.post-noise.txt"
 
 
+def test_diagnostic_output_paths_preserves_multi_dot_stem(tmp_path):
+    """Regression test for B7: image stems with embedded dots
+    (e.g. ``page.001.png`` → ``page.001.txt``) must not collapse into a
+    shared diagnostic filename. Previously ``Path.with_suffix`` stripped
+    ``.001`` from ``page.001`` and every ``page.NNN.png`` overwrote the
+    same diagnostic files.
+    """
+    json_p = tmp_path / "page.001.json"
+    txt_p = tmp_path / "page.001.txt"
+    paths = diagnostic_output_paths(json_p, txt_p)
+    assert paths["pure_ocr_json"] == tmp_path / "page.001.pure-ocr.json"
+    assert paths["pure_ocr_txt"] == tmp_path / "page.001.pure-ocr.txt"
+    assert paths["post_noise_json"] == tmp_path / "page.001.post-noise.json"
+    assert paths["post_noise_txt"] == tmp_path / "page.001.post-noise.txt"
+
+    # And the collision: page.001 vs page.002 must yield distinct diag paths.
+    paths2 = diagnostic_output_paths(tmp_path / "page.002.json", tmp_path / "page.002.txt")
+    assert paths["pure_ocr_txt"] != paths2["pure_ocr_txt"]
+    assert paths["post_noise_json"] != paths2["post_noise_json"]
+
+
 # ---------------------------------------------------------------------------
 # write_diagnostic_snapshots
 # ---------------------------------------------------------------------------

@@ -8,12 +8,18 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B7** — multi-dot-stem image filenames (`page.001.png`) collide in
-`diagnostic_output_paths`. See "Round 2 bugs" below for the rest of the
-fresh batch (B7..B13).
+**B8** — `setup_layout_debug_env` runs outside the per-image `try`, so a
+single bad `--layout-debug-dir` aborts the whole batch instead of being
+recorded as one per-image error.
 
 ### Done
 
+- **B7** — `diagnostic_output_paths` now builds names with
+  `path.with_name(f"{path.stem}.pure-ocr.json")` instead of
+  double-`with_suffix`, preserving multi-dot stems
+  (e.g. `page.001.txt` → `page.001.pure-ocr.txt`); regression test
+  `test_diagnostic_output_paths_preserves_multi_dot_stem` added in
+  `tests/test_pipeline_helpers.py`.
 - **B6** — `check_for_update` now sends an explicit
   `User-Agent: pd-ocr-cli/{VERSION}` header on the GitHub tags request;
   test `test_tags_request_sets_explicit_user_agent` added in
