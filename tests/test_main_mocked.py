@@ -1034,6 +1034,48 @@ def test_main_layout_debug_setup_failure_recorded_per_image_not_batch_abort(
     assert "2 error(s)" in captured.out
 
 
+def test_main_dest_dir_mkdir_failure_recorded_per_image_not_batch_abort(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """A bogus ``-o`` (regular file) must not kill the whole batch.
+
+    Regression for B14: ``dest_dir.mkdir(parents=True, exist_ok=True)``
+    previously ran outside the per-image ``try``, so a single FS failure
+    aborted ``main()`` with an unhandled ``FileExistsError``. The fix
+    moves the mkdir inside the try, so each image records the failure as
+    its own per-image error and the loop keeps going.
+    """
+    img1 = tmp_path / "page-001.png"
+    img2 = tmp_path / "page-002.png"
+    shutil.copy(TITLE_IMAGE, img1)
+    shutil.copy(TITLE_IMAGE, img2)
+
+    # ``-o`` points at a *file* — ``output_dir.mkdir(parents=True, exist_ok=True)``
+    # raises FileExistsError because the path exists and is not a dir.
+    bogus_out = tmp_path / "out-not-a-dir"
+    bogus_out.write_text("file, not directory", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as exc_info:
+        _run_main(
+            monkeypatch,
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(bogus_out),
+            str(img1),
+            str(img2),
+        )
+
+    captured = capsys.readouterr()
+    # Both images must be visited — second wouldn't be touched if the first
+    # mkdir failure aborted main() before re-entering the loop.
+    assert "page-001.png" in (captured.out + captured.err)
+    assert "page-002.png" in (captured.out + captured.err)
+    assert exc_info.value.code == 1
+    assert "2 error(s)" in captured.out
+
+
 def test_main_straight_quotes_normalizes(patched_main, monkeypatch, tmp_path):
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)

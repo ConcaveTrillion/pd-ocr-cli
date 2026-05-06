@@ -8,15 +8,31 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B14** — `dest_dir.mkdir(parents=True, exist_ok=True)` at
-`ocr_to_txt.py:531` runs OUTSIDE the per-image `try`, so a single
-filesystem failure (e.g. `--output-dir` is a regular file or a path
-whose parent is a regular file) aborts the whole batch with an
-unhandled exception. Same defect class as the now-fixed B8. See
+**B15** — `--experimental-drop-layout-words` / `--edl` combined with
+`--no-reorg` silently does nothing — the flag is consumed only inside
+`if do_reorg:` (`ocr_to_txt.py:578-586`). Same silent-no-op family as
+B3/B9/B11. Add a fifth arg-validation warning in the
+`ocr_to_txt.py:434-465` block plus a regression test alongside the
+existing B3 cluster in `tests/test_main_mocked.py`. See
 `## Round 3 bugs` below.
 
 ### Done
 
+- **B14** — `dest_dir.mkdir(parents=True, exist_ok=True)` at
+  `ocr_to_txt.py:531` is now called *inside* the per-image `try` in
+  `ocr_to_txt.py:main()`, so a filesystem failure (e.g. `-o` points at
+  a regular file, or a mirror path collides with an existing file) is
+  recorded as one per-image error and the loop continues to the next
+  image instead of aborting `main()` outright with `FileExistsError`.
+  `out_path`/`json_path` and `setup_layout_debug_env` were also moved
+  inside the try; the existing `finally: clear_layout_debug_env()` and
+  `except` block (which only references `img_path`) remain correct
+  since `debug_file` is still initialised to `None` before the try.
+  Regression test
+  `test_main_dest_dir_mkdir_failure_recorded_per_image_not_batch_abort`
+  added in `tests/test_main_mocked.py`: passes a regular file as `-o`
+  across a 2-image batch and asserts both images are visited and
+  tallied as `2 error(s)`.
 - **B13** — `page is None` branch in `ocr_to_txt.py:main()` now (1)
   prints the closing newline so the `Processing X ...` line is
   terminated before subsequent stdout, (2) names the image in the

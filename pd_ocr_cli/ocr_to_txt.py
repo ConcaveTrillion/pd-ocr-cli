@@ -527,15 +527,20 @@ def main():
 
     errors = 0
     for img_path in images:
-        dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
-        dest_dir.mkdir(parents=True, exist_ok=True)
-
-        out_path, json_path = output_paths_for(img_path, dest_dir)
-
         print(f"Processing {img_path} ...", end=" ", flush=True)
         debug_file = None
+        dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
 
         try:
+            # ``dest_dir.mkdir`` operates on a user-supplied path (``-o`` or
+            # a mirror under it); keep it inside the per-image ``try`` so a
+            # filesystem failure (e.g. ``-o`` is a regular file, or a
+            # mirror collides with an existing file) is recorded as one
+            # per-image error rather than aborting the whole batch. (B14)
+            dest_dir.mkdir(parents=True, exist_ok=True)
+
+            out_path, json_path = output_paths_for(img_path, dest_dir)
+
             # ``setup_layout_debug_env`` calls ``mkdir`` on a user-supplied
             # path; keep it inside the per-image ``try`` so an unwritable
             # ``--layout-debug-dir`` is recorded as one per-image error
