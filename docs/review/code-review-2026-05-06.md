@@ -6,6 +6,21 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ---
 
+## Next item
+
+**B2** — Move `_load_validate_word_preservation()` call out of the per-image
+loop in `pd_ocr_cli/ocr_to_txt.py` (currently around line 540) to before the
+loop alongside the other `_load_*` calls. Restores the monkeypatch contract
+shared by the other `_load_*` helpers.
+
+### Done
+
+- **B1** — `format_noise_drop_warning` `(+N more)` miscount fixed; tests added
+  in `tests/test_pipeline_helpers.py` (`..._no_phantom_more_when_blanks_within_sample`,
+  `..._more_count_reflects_unseen_words`).
+
+---
+
 ## Module Inventory
 
 | File | Purpose |
@@ -21,7 +36,7 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Bugs
 
-### B1 [MAJOR] `format_noise_drop_warning` miscounts `(+N more)` suffix
+### B1 [MAJOR] `format_noise_drop_warning` miscounts `(+N more)` suffix — DONE
 
 **File:** `pd_ocr_cli/_pipeline.py:219`
 

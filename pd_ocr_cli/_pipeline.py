@@ -216,7 +216,11 @@ def format_noise_drop_warning(
     samples = [_word_text(w) for w in dropped_words[:sample_size]]
     samples = [s for s in samples if s]  # drop blank tokens for readability
     sample_str = ", ".join(f'"{s}"' for s in samples) if samples else "(no text)"
-    extra = f" (+{count - len(samples)} more)" if count > len(samples) else ""
+    # ``+N more`` counts words beyond the sample window — not words that
+    # were merely blank-filtered out of ``samples`` for display. Using
+    # ``min(count, sample_size)`` keeps the suffix at zero whenever the
+    # entire population already fit in the window.
+    extra = f" (+{count - min(count, sample_size)} more)" if count > sample_size else ""
     return [
         (
             f"WARNING: {source_name}: dropped {count} word(s) during "

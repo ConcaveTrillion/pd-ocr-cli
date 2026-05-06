@@ -387,6 +387,29 @@ def test_format_noise_drop_warning_handles_blank_token_text():
     assert '"real"' in joined
 
 
+def test_format_noise_drop_warning_no_phantom_more_when_blanks_within_sample():
+    """All words fit within sample_size; blank-filtering must not produce
+    a phantom ``(+N more)`` suffix."""
+    # 2 words total, sample_size default (8). Blank gets filtered for display
+    # but the entire population was already within the sample window, so
+    # no "+N more" hint should appear.
+    words = [_Word(""), _Word("real")]
+    out = format_noise_drop_warning(words, "page.png", "--flag")
+    joined = "\n".join(out)
+    assert "more)" not in joined, f"phantom (+N more) suffix in: {joined!r}"
+
+
+def test_format_noise_drop_warning_more_count_reflects_unseen_words():
+    """When count exceeds sample_size, the suffix counts truly-unseen words,
+    not a number inflated by blank-filtered display tokens."""
+    # 10 words: first 5 blank, next 5 real. sample_size=5 grabs the first 5
+    # (all blank). After blank-filter samples is empty. Total unseen = 5.
+    words = [_Word("") for _ in range(5)] + [_Word(f"w{i}") for i in range(5)]
+    out = format_noise_drop_warning(words, "page.png", "--flag", sample_size=5)
+    joined = "\n".join(out)
+    assert "(+5 more)" in joined, f"expected (+5 more) in: {joined!r}"
+
+
 # ---------------------------------------------------------------------------
 # diagnostic_output_paths
 # ---------------------------------------------------------------------------
