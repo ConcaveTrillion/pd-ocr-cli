@@ -8,13 +8,23 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B9** — `--no-reorg --layout-debug` falsely reports a `layout-debug:`
-artifact path on the success line even though `reorganize_page()` is
-never called and no debug file is written. Sibling silent-no-op of the
-B3 cases.
+**B10** — Dev/pre-release users (e.g. `uv tool install git+...@main`,
+hatch-vcs `.devN+gHASH` suffix) never receive the upgrade notice for
+the matching stable: `_parse_release_prefix` strips dev/local
+suffixes, so `latest > current` becomes False when the stable matches
+the dev's prefix.
 
 ### Done
 
+- **B9** — `--no-reorg --layout-debug` is now treated as a silent
+  no-op identical to the B3 cases: a stderr warning is emitted at
+  arg-validation time, and the success-line `layout-debug: <path>`
+  segment is suppressed by gating on `do_reorg` so the CLI never
+  advertises a file `reorganize_page()` was never going to write.
+  Regression test
+  `test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path`
+  added in `tests/test_main_mocked.py`: asserts both the stderr warn
+  and the absence of `layout-debug:` on stdout.
 - **B8** — `setup_layout_debug_env(args, dest_dir, img_stem)` is now
   called *inside* the per-image `try` in `ocr_to_txt.py:main()`, so an
   unwritable `--layout-debug-dir` (e.g. path that already exists as a

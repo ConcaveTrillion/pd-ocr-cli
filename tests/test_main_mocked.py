@@ -577,6 +577,39 @@ def test_main_layout_none_with_layout_debug_warns(patched_main, monkeypatch, tmp
     assert "warning" in err.lower()
 
 
+def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """B9: ``--no-reorg --layout-debug`` is a silent no-op.
+
+    The layout-debug report is written from inside ``Page.reorganize_page``,
+    which never runs under ``--no-reorg``. The CLI must (a) emit a stderr
+    warning so users understand the flag is ignored, and (b) suppress the
+    misleading ``layout-debug: <path>`` segment on the success line that
+    points at a file that was never written.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--no-reorg",
+        "--layout-debug",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    captured = capsys.readouterr()
+    err = captured.err
+    assert "--no-reorg" in err and "--layout-debug" in err
+    assert "warning" in err.lower()
+    # Success line must not falsely advertise a layout-debug artifact.
+    assert "layout-debug:" not in captured.out
+
+
 def test_main_default_passes_drop_layout_words_false_to_reorganize(
     patched_main, monkeypatch, tmp_path
 ):

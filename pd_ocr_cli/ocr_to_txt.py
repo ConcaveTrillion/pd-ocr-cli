@@ -435,6 +435,13 @@ def main():
             "(no layout model runs, so no debug artifact is written); ignoring.",
             file=sys.stderr,
         )
+    if args.no_reorg and args.layout_debug:
+        print(
+            "warning: --layout-debug has no effect with --no-reorg "
+            "(the debug report is written from inside reorganize_page, "
+            "which is skipped); ignoring.",
+            file=sys.stderr,
+        )
 
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
@@ -594,7 +601,12 @@ def main():
                 for note in notes:
                     print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)
                 extra_paths.extend(str(p) for p in written)
-            if args.layout_debug and debug_file is not None:
+            # Only advertise the layout-debug artifact when reorganize_page
+            # actually ran — that is the codepath in pd-book-tools that
+            # writes the report. With ``--no-reorg`` (or any other reason
+            # ``do_reorg`` is False) the file never materialises, so the
+            # success line must not point at it. (B9)
+            if args.layout_debug and debug_file is not None and do_reorg:
                 extra_paths.append(f"layout-debug: {debug_file}")
 
             if args.extract_illustrations and page_layout is not None and cv2 is not None:
