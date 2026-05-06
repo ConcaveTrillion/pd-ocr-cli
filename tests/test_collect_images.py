@@ -95,3 +95,31 @@ def test_collect_mixed_file_and_directory(tmp_path):
 def test_collect_returns_empty_for_empty_directory(tmp_path):
     (tmp_path / "empty").mkdir()
     assert collect_images([str(tmp_path / "empty")], recursive=False) == []
+
+
+def test_collect_dedupes_file_also_inside_passed_directory(tmp_path):
+    """B12: passing both a directory and a file inside it must not OCR the
+    file twice. Dedup on resolved path; preserve first-seen order."""
+    a = _touch(tmp_path / "a.png")
+    b = _touch(tmp_path / "b.png")
+
+    # User passes the file explicitly first, then the parent dir.
+    result = collect_images([str(b), str(tmp_path)], recursive=False)
+    assert result == [b, a]
+
+    # And the reverse: dir first, then a file already covered by the dir.
+    result2 = collect_images([str(tmp_path), str(a)], recursive=False)
+    assert result2 == [a, b]
+
+
+def test_collect_dedupes_same_file_passed_twice(tmp_path):
+    """B12: same file path repeated on the CLI should still OCR once."""
+    a = _touch(tmp_path / "a.png")
+    assert collect_images([str(a), str(a)], recursive=False) == [a]
+
+
+def test_collect_dedupes_overlapping_directories(tmp_path):
+    """B12: overlapping dir trees must not double-process shared images."""
+    inner = _touch(tmp_path / "sub" / "x.png")
+    result = collect_images([str(tmp_path), str(tmp_path / "sub")], recursive=True)
+    assert result == [inner]

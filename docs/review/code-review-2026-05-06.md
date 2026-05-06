@@ -8,12 +8,21 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B12** — `collect_images` does not deduplicate: passing the same
-image both directly and via a parent dir double-processes it. See
-the B12 section below for `ocr_to_txt.py:392-409` details.
+**B13** — Empty-pages images (`page is None`) are silently dropped
+without incrementing the error counter and the WARNING omits
+`img_path`; also the `Processing X ...` line is left unterminated.
+See the B13 section below for `ocr_to_txt.py:512-515` details.
 
 ### Done
 
+- **B12** — `collect_images` now dedupes by resolved absolute path
+  (first-seen order preserved), so passing a file directly and via a
+  parent directory (or repeating a path / overlapping `-r` trees) no
+  longer double-OCRs the image. Regression tests
+  `test_collect_dedupes_file_also_inside_passed_directory`,
+  `test_collect_dedupes_same_file_passed_twice`, and
+  `test_collect_dedupes_overlapping_directories` added in
+  `tests/test_collect_images.py`.
 - **B11** — `--layout-debug-dir DIR` without `--layout-debug` now
   emits a stderr warning at the top-of-`main` arg-validation block,
   matching the B3 silent-no-op pattern. Regression test
@@ -594,7 +603,7 @@ if args.layout_debug_dir and not args.layout_debug:
 
 ---
 
-### B12 [MINOR] `collect_images` does not deduplicate, double-processing files passed both directly and via a parent dir
+### B12 [MINOR] `collect_images` does not deduplicate, double-processing files passed both directly and via a parent dir — DONE
 
 **File:** `pd_ocr_cli/ocr_to_txt.py:392-409`
 

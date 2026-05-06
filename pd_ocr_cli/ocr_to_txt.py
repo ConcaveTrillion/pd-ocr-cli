@@ -390,20 +390,34 @@ def parse_args():
 
 
 def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
-    """Expand files and directories into a flat list of image paths."""
-    images = []
+    """Expand files and directories into a flat list of image paths.
+
+    Deduplicates by resolved absolute path so passing the same image both
+    directly and via a parent directory (or repeating a path on the CLI)
+    OCRs it only once. First-seen order is preserved (B12).
+    """
+    images: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add(path: Path) -> None:
+        key = path.resolve()
+        if key in seen:
+            return
+        seen.add(key)
+        images.append(path)
+
     for inp in inputs:
         p = Path(inp)
         if p.is_file():
             if p.suffix.lower() in IMAGE_SUFFIXES:
-                images.append(p)
+                _add(p)
             else:
                 print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)
         elif p.is_dir():
             pattern = "**/*" if recursive else "*"
             for child in sorted(p.glob(pattern)):
                 if child.is_file() and child.suffix.lower() in IMAGE_SUFFIXES:
-                    images.append(child)
+                    _add(child)
         else:
             print(f"WARNING: skipping missing path: {p}", file=sys.stderr)
     return images
