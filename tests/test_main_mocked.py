@@ -573,6 +573,39 @@ def test_main_validate_reorg_invokes_validator(patched_main, monkeypatch, tmp_pa
     assert validator.called
 
 
+def test_main_validate_reorg_loader_called_once_across_images(patched_main, monkeypatch, tmp_path):
+    """The ``_load_validate_word_preservation`` loader must be invoked once
+    before the per-image loop — same contract as the other ``_load_*``
+    helpers — so monkeypatched test fakes are honored uniformly across all
+    images in a multi-image run.
+    """
+    img1 = tmp_path / "page1.png"
+    img2 = tmp_path / "page2.png"
+    shutil.copy(TITLE_IMAGE, img1)
+    shutil.copy(TITLE_IMAGE, img2)
+    out = tmp_path / "out"
+
+    loader = MagicMock(return_value=MagicMock(return_value=[]))
+    monkeypatch.setattr(ocr_to_txt, "_load_validate_word_preservation", loader)
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--validate-reorg",
+        "-o",
+        str(out),
+        str(img1),
+        str(img2),
+    )
+
+    assert loader.call_count == 1, (
+        f"loader should be hoisted out of the per-image loop "
+        f"(called {loader.call_count} times for 2 images)"
+    )
+
+
 def test_main_validate_reorg_warns_on_drops(patched_main, monkeypatch, tmp_path, capsys):
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)

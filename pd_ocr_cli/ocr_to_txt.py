@@ -467,6 +467,8 @@ def main():
 
     document_factory = _load_document_factory()
 
+    validate_word_preservation = _load_validate_word_preservation() if args.validate_reorg else None
+
     images = collect_images(args.inputs, args.recursive)
     if not images:
         print("ERROR: no valid image files found.", file=sys.stderr)
@@ -536,8 +538,7 @@ def main():
                     ):
                         print(line, file=sys.stderr)
 
-                if args.validate_reorg:
-                    validate_word_preservation = _load_validate_word_preservation()
+                if args.validate_reorg and validate_word_preservation is not None:
                     drops = validate_word_preservation(pre_reorg_words, list(page.words))
                     for line in format_drops_warning(drops, img_path.name):
                         print(line, file=sys.stderr)

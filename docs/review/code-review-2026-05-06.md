@@ -8,16 +8,20 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B2** — Move `_load_validate_word_preservation()` call out of the per-image
-loop in `pd_ocr_cli/ocr_to_txt.py` (currently around line 540) to before the
-loop alongside the other `_load_*` calls. Restores the monkeypatch contract
-shared by the other `_load_*` helpers.
+**B3** — Emit `print(file=sys.stderr)` warnings for the three silent no-op
+flag combinations in `pd_ocr_cli/ocr_to_txt.py:508–512` and `:485`:
+(1) `--no-reorg --save-reorganize-diagnostics`,
+(2) `--no-reorg --validate-reorg`,
+(3) `--layout-model none --layout-debug`.
 
 ### Done
 
 - **B1** — `format_noise_drop_warning` `(+N more)` miscount fixed; tests added
   in `tests/test_pipeline_helpers.py` (`..._no_phantom_more_when_blanks_within_sample`,
   `..._more_count_reflects_unseen_words`).
+- **B2** — `_load_validate_word_preservation()` hoisted out of the per-image
+  loop; test added in `tests/test_main_mocked.py`
+  (`test_main_validate_reorg_loader_called_once_across_images`).
 
 ---
 

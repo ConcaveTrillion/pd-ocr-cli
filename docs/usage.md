@@ -48,6 +48,45 @@ pd-ocr --em-dash-to-double-hyphen page.png   # also: -ed
 (`‘-‟`). Prime symbols (`′`, `″`) are intentionally left
 alone — they're meaningful in measurements and citations.
 
+### Planned: output normalization (post-OCR)
+
+Not implemented yet — tracked here so users and contributors know it's
+on the roadmap.
+
+**Motivation.** OCR on old-typesetting books (Cló Gaelach, Fraktur,
+early-modern English with long-s) emits Unicode glyphs that faithfully
+reflect the page: `ſ` (long s), `ﬁ`/`ﬂ`/`ﬀ`/`ﬃ`/`ﬄ` (f-ligatures),
+`ſt` (long-s+t ligature), and similar. Faithful Unicode is the right
+default for archival OCR fidelity. But downstream consumers — most
+notably PGDP-style proofreading flows — want ASCII-equivalent text
+(`s`, `fi`, `fl`, `st`, …) so volunteers see the same characters they'd
+type. The user picks per run.
+
+**Proposed flag.**
+
+```sh
+# Default — preserve OCR glyphs exactly as recognized.
+pd-ocr page.png
+
+# Map the standard glyph set (long-s, f-ligatures, st-ligature, …) to
+# their ASCII equivalents before the .txt is written.
+pd-ocr --normalize-output ascii page.png
+```
+
+Flag shape: `--normalize-output {none|ascii|...}`, default `none`.
+Mode names are an open extension point for future locale-specific
+profiles (e.g. a `gaelic` profile that also handles dotted consonants).
+
+**Dependency.** The actual normalization logic + glyph map live in
+`pd-book-tools` as `pd_book_tools.text.normalize` (to be added). The
+CLI is a thin pass-through that runs the normalizer between
+reorganize and disk write. This keeps the same map reusable from
+`pd-ocr-labeler` (page-scope action) and `pd-prep-for-pgdp` (export
+step) without duplication.
+
+**Cross-refs.** Mirrors decision D-025 in
+[`/workspaces/ocr-container/pd-ocr-labeler-spa/specs/17-decisions.md`](/workspaces/ocr-container/pd-ocr-labeler-spa/specs/17-decisions.md).
+
 ## Model selection
 
 By default, `pd-ocr` downloads pinned, fine-tuned weights from
