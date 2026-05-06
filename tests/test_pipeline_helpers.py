@@ -597,20 +597,15 @@ def test_atomic_write_text_failure_preserves_prior_file(tmp_path, monkeypatch):
     target = tmp_path / "page.txt"
     target.write_text("PRIOR GOOD CONTENT", encoding="utf-8")
 
-    real_write_text = Path.write_text
+    real_write = os.write
 
-    def boom(self, *args, **kwargs):  # noqa: ANN001
-        # Simulate the OS killing us mid-write (SIGKILL/OOM/ENOSPC) by
-        # raising AFTER the underlying ``open(..., "w")`` would have
-        # truncated the temp — so we know the helper still leaves the
-        # canonical path untouched.
-        if self.name.endswith(".tmp"):
-            # Touch the temp to mimic a partial flush, then explode.
-            real_write_text(self, "PARTIAL", encoding=kwargs.get("encoding", "utf-8"))
-            raise OSError(28, "No space left on device")
-        return real_write_text(self, *args, **kwargs)
+    def boom(fd, data):  # noqa: ANN001
+        # Simulate ENOSPC mid-write: write a partial chunk so the temp
+        # file is non-empty on disk, then explode.
+        real_write(fd, b"PARTIAL")
+        raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(Path, "write_text", boom)
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", boom)
 
     with pytest.raises(OSError):
         atomic_write_text(target, "NEW CONTENT")
@@ -628,15 +623,13 @@ def test_atomic_write_text_failure_with_no_prior_file_leaves_no_partial(tmp_path
     """
     target = tmp_path / "page.txt"
 
-    real_write_text = Path.write_text
+    real_write = os.write
 
-    def boom(self, *args, **kwargs):  # noqa: ANN001
-        if self.name.endswith(".tmp"):
-            real_write_text(self, "PARTIAL", encoding=kwargs.get("encoding", "utf-8"))
-            raise RuntimeError("simulated SIGKILL between truncate and full flush")
-        return real_write_text(self, *args, **kwargs)
+    def boom(fd, data):  # noqa: ANN001
+        real_write(fd, b"PARTIAL")
+        raise RuntimeError("simulated SIGKILL between truncate and full flush")
 
-    monkeypatch.setattr(Path, "write_text", boom)
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", boom)
 
     with pytest.raises(RuntimeError):
         atomic_write_text(target, "NEW CONTENT")
@@ -648,16 +641,17 @@ def test_atomic_write_text_failure_with_no_prior_file_leaves_no_partial(tmp_path
 
 
 def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path, monkeypatch):
-    """If the underlying ``write_text`` raises *before* the temp file
-    even appears on disk, the helper's defensive ``unlink()`` must
-    swallow ``FileNotFoundError`` and re-raise the original error.
+    """If ``os.open`` itself raises before the temp file appears on disk,
+    nothing is left behind and the original error propagates. (No
+    defensive unlink runs in this path; ``os.open`` failing means the
+    temp never existed.)
     """
     target = tmp_path / "page.txt"
 
-    def boom(self, *args, **kwargs):  # noqa: ANN001
+    def boom(*args, **kwargs):  # noqa: ANN001
         raise RuntimeError("blew up before any byte hit disk")
 
-    monkeypatch.setattr(Path, "write_text", boom)
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.open", boom)
     with pytest.raises(RuntimeError, match="blew up"):
         atomic_write_text(target, "x")
     assert list(tmp_path.iterdir()) == []
@@ -666,10 +660,10 @@ def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path,
 def test_atomic_write_bytes_failure_with_no_tmp_created_swallows_unlink(tmp_path, monkeypatch):
     target = tmp_path / "page.bin"
 
-    def boom(self, *args, **kwargs):  # noqa: ANN001
+    def boom(*args, **kwargs):  # noqa: ANN001
         raise RuntimeError("blew up before any byte hit disk")
 
-    monkeypatch.setattr(Path, "write_bytes", boom)
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.open", boom)
     with pytest.raises(RuntimeError, match="blew up"):
         atomic_write_bytes(target, b"x")
     assert list(tmp_path.iterdir()) == []
@@ -680,15 +674,13 @@ def test_atomic_write_bytes_roundtrip_and_failure(tmp_path, monkeypatch):
     atomic_write_bytes(target, b"\x00\x01\x02")
     assert target.read_bytes() == b"\x00\x01\x02"
 
-    real_write_bytes = Path.write_bytes
+    real_write = os.write
 
-    def boom(self, *args, **kwargs):  # noqa: ANN001
-        if self.name.endswith(".tmp"):
-            real_write_bytes(self, b"PARTIAL")
-            raise OSError("disk full")
-        return real_write_bytes(self, *args, **kwargs)
+    def boom(fd, data):  # noqa: ANN001
+        real_write(fd, b"PARTIAL")
+        raise OSError("disk full")
 
-    monkeypatch.setattr(Path, "write_bytes", boom)
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", boom)
 
     with pytest.raises(OSError):
         atomic_write_bytes(target, b"\xff\xff")
@@ -696,3 +688,101 @@ def test_atomic_write_bytes_roundtrip_and_failure(tmp_path, monkeypatch):
     # Original bytes preserved, no leftover temp.
     assert target.read_bytes() == b"\x00\x01\x02"
     assert list(tmp_path.iterdir()) == [target]
+
+
+# B24: durability — fsync the temp fd before close, fsync the parent dir
+# after replace. Without these, ``os.replace`` is metadata-atomic only
+# and the data + rename can be lost on power loss / kernel panic.
+
+
+def test_atomic_write_text_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch):
+    """``atomic_write_text`` must call ``os.fsync`` on the temp fd before
+    close and on the parent directory fd after ``os.replace``. Right-
+    reason failure before the fix: ``fsync`` was never called, so this
+    asserts the call list explicitly.
+    """
+    target = tmp_path / "page.txt"
+
+    fsynced_fds: list[int] = []
+    real_fsync = os.fsync
+
+    def tracking_fsync(fd):  # noqa: ANN001
+        fsynced_fds.append(fd)
+        return real_fsync(fd)
+
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.fsync", tracking_fsync)
+
+    atomic_write_text(target, "durable\n")
+
+    # At least two fsyncs happened: one on the file fd before close, one
+    # on the parent directory fd after replace. (On Windows the parent-
+    # dir fsync is skipped — but POSIX, where the test runs in CI, must
+    # do both.)
+    assert len(fsynced_fds) >= 2, fsynced_fds
+    assert target.read_text(encoding="utf-8") == "durable\n"
+
+
+def test_atomic_write_bytes_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch):
+    target = tmp_path / "page.bin"
+
+    fsync_calls: list[int] = []
+    real_fsync = os.fsync
+
+    def tracking_fsync(fd):  # noqa: ANN001
+        fsync_calls.append(fd)
+        return real_fsync(fd)
+
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.fsync", tracking_fsync)
+
+    atomic_write_bytes(target, b"\xde\xad\xbe\xef")
+
+    assert len(fsync_calls) >= 2, fsync_calls
+    assert target.read_bytes() == b"\xde\xad\xbe\xef"
+
+
+def test_atomic_write_swallows_filenotfound_on_cleanup(tmp_path, monkeypatch):
+    """If the temp file vanishes between ``os.open`` and the cleanup
+    branch (e.g. another process unlinked it), the helper's defensive
+    ``unlink()`` must swallow ``FileNotFoundError`` and re-raise the
+    original write error rather than masking it.
+    """
+    target = tmp_path / "page.txt"
+
+    def vanishing_write(fd, data):  # noqa: ANN001
+        # Unlink the temp file so the subsequent unlink() in the helper
+        # raises FileNotFoundError, then explode with the "real" error.
+        for entry in tmp_path.iterdir():
+            if entry.name.endswith(".tmp"):
+                entry.unlink()
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", vanishing_write)
+
+    with pytest.raises(OSError, match="No space left"):
+        atomic_write_text(target, "x")
+    # Nothing left behind, no spurious FileNotFoundError surfaced.
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_atomic_write_parent_dir_fsync_skipped_on_windows(tmp_path, monkeypatch):
+    """On ``os.name == "nt"`` the helper must skip the directory fsync
+    (Windows can't open a directory for fsync). Only the temp fd is
+    fsynced there; NTFS journals the rename itself.
+    """
+    target = tmp_path / "page.txt"
+
+    fsync_calls: list[int] = []
+    real_fsync = os.fsync
+
+    def tracking_fsync(fd):  # noqa: ANN001
+        fsync_calls.append(fd)
+        return real_fsync(fd)
+
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.fsync", tracking_fsync)
+    monkeypatch.setattr("pd_ocr_cli._pipeline.os.name", "nt")
+
+    atomic_write_text(target, "x")
+
+    # Only the temp fd fsync — no parent-dir fsync on the Windows branch.
+    assert len(fsync_calls) == 1, fsync_calls
+    assert target.read_text(encoding="utf-8") == "x"

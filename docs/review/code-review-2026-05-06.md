@@ -8,13 +8,44 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-**B24** — `atomic_write_text` / `atomic_write_bytes` skip `fsync`
-before `os.replace`, so the B18 "either the previous file remains
-untouched, or the new one is fully present" claim is not actually
-delivered on power loss / kernel panic. See `## Round 5 bugs` below.
+All Round 5 bugs (B24) done. The loop may stop here or pivot to a
+Round 6 review pass over the same modules — pick up new findings
+that Rounds 1-5 missed (race conditions in concurrent batch runs,
+signal-handling gaps in long batches, locale assumptions in tag
+sorters, etc.).
 
 ### Done
 
+- **B24** — `atomic_write_text` / `atomic_write_bytes` previously
+  wrote a sibling temp via `Path.write_text` / `Path.write_bytes`
+  and called `os.replace` with no `fsync` of the temp fd before
+  close and no `fsync` of the parent directory after rename. POSIX
+  `rename` is metadata-atomic only; on xfs / btrfs / zfs / ext4
+  (`data=writeback`) the temp's data blocks weren't flushed first,
+  so a power loss / kernel panic / hypervisor crash mid-rename
+  could surface a zero-length or partially-populated `.txt` at the
+  canonical name — the exact silent-truncation pattern B18 was
+  meant to eliminate. Refactored both helpers onto a shared
+  `_atomic_write_raw` that opens the temp via low-level
+  `os.open(..., O_WRONLY | O_CREAT | O_TRUNC)`, loops `os.write`
+  until all bytes accept (handles short writes), `os.fsync(fd)`,
+  closes, `os.replace`, then `os.fsync` of the parent directory fd
+  via a new `_fsync_parent_dir` helper. Windows skips the directory
+  fsync (NTFS journals metadata; opening a directory for fsync
+  isn't supported) — branch is gated on `os.name == "nt"`. Three
+  new regressions in `test_pipeline_helpers.py`: (a)
+  `_fsyncs_temp_fd_and_parent_dir` for both text and bytes
+  variants, asserting `os.fsync` is called at least twice (right-
+  reason failure pre-fix: zero calls); (b)
+  `_parent_dir_fsync_skipped_on_windows` patches `os.name` to `nt`
+  and asserts exactly one fsync call; (c) the existing
+  exception-during-write tests were rewritten to monkeypatch
+  `os.write` / `os.open` instead of `Path.write_text` (which the
+  helper no longer uses) so they still exercise the cleanup
+  branches under the new fd-based implementation. Added a
+  `_swallows_filenotfound_on_cleanup` test where the temp vanishes
+  between `os.open` and the `except`-block `unlink()` to keep the
+  defensive `FileNotFoundError` swallow at 100% coverage.
 - **B23** — `compute_mirror_root` previously called
   `os.path.commonpath([d.resolve() for d in input_dirs])` with no
   guard. On Windows, paths on different drives raise

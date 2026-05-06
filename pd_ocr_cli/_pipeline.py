@@ -39,12 +39,14 @@ from pd_ocr_cli._text_normalize import (
 # diff tools, the ``[ -f foo.txt ] || pd-ocr foo.png`` resume idiom).
 #
 # All disk writes from the pipeline therefore go through these helpers:
-# write to a sibling temp file then ``os.replace`` onto the final path.
+# write to a sibling temp file, ``fsync`` the temp's fd so its data + the
+# inode flush hit stable storage, ``os.replace`` onto the final path,
+# then ``fsync`` the parent directory so the rename itself is durable.
 # ``os.replace`` is atomic on POSIX and Windows when source/dest live on
 # the same filesystem (always true here since the temp sits next to the
 # target). On crash either the previous file remains untouched, or the
 # new one is fully present — never a partial write at the canonical
-# name. (Code-review B18.)
+# name. (Code-review B18 + B24.)
 
 
 def _atomic_tmp_path(path: Path) -> Path:
@@ -52,16 +54,45 @@ def _atomic_tmp_path(path: Path) -> Path:
     return path.with_name(f".{path.name}.tmp")
 
 
-def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
-    """Write ``text`` to ``path`` atomically via a sibling temp + ``os.replace``.
+def _fsync_parent_dir(path: Path) -> None:
+    """fsync the directory containing ``path`` so a rename into it is durable.
 
-    On any exception during the temp write the partial temp file is
-    removed and the canonical ``path`` is left untouched (whatever was
-    there before is what remains).
+    POSIX requires the parent directory to be fsynced after ``os.replace``
+    for the rename to survive a power loss / kernel panic. Windows does
+    not support opening a directory for fsync — silently skip there;
+    NTFS journals metadata so the rename is durable on its own.
+    """
+    if os.name == "nt":  # pragma: no cover - Windows-only branch
+        return
+    parent = path.parent
+    dirfd = os.open(parent, os.O_RDONLY)
+    try:
+        os.fsync(dirfd)
+    finally:
+        os.close(dirfd)
+
+
+def _atomic_write_raw(path: Path, data: bytes) -> None:
+    """Write ``data`` to ``path`` atomically with full fsync durability.
+
+    Sequence: open temp -> write -> fsync(tmp_fd) -> close -> os.replace
+    -> fsync(parent_dir). On any exception during the temp write the
+    partial temp file is removed and the canonical ``path`` is left
+    untouched.
     """
     tmp = _atomic_tmp_path(path)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     try:
-        tmp.write_text(text, encoding=encoding)
+        try:
+            # ``os.write`` may short-write on some platforms; loop until
+            # all bytes are accepted.
+            view = memoryview(data)
+            while view:
+                written = os.write(fd, view)
+                view = view[written:]
+            os.fsync(fd)
+        finally:
+            os.close(fd)
     except BaseException:
         try:
             tmp.unlink()
@@ -69,20 +100,23 @@ def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None
             pass
         raise
     os.replace(tmp, path)
+    _fsync_parent_dir(path)
+
+
+def atomic_write_text(path: Path, text: str, *, encoding: str = "utf-8") -> None:
+    """Write ``text`` to ``path`` atomically via a sibling temp + ``os.replace``.
+
+    The temp fd is fsynced before close and the parent directory is
+    fsynced after rename, so the new contents survive power loss / kernel
+    panic. On any exception during the temp write the partial temp file
+    is removed and the canonical ``path`` is left untouched.
+    """
+    _atomic_write_raw(path, text.encode(encoding))
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
     """Write ``data`` to ``path`` atomically. Mirrors :func:`atomic_write_text`."""
-    tmp = _atomic_tmp_path(path)
-    try:
-        tmp.write_bytes(data)
-    except BaseException:
-        try:
-            tmp.unlink()
-        except FileNotFoundError:
-            pass
-        raise
-    os.replace(tmp, path)
+    _atomic_write_raw(path, data)
 
 
 # ---------------------------------------------------------------------------
