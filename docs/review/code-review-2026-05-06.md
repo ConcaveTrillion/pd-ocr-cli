@@ -8,8 +8,10 @@ Intended for Opus iteration: work top-to-bottom, mark each item done as you go.
 
 ## Next item
 
-All round-4 B items (B17–B23) are now done. Trigger round 5 deep
-review for the next batch of findings.
+**B24** — `atomic_write_text` / `atomic_write_bytes` skip `fsync`
+before `os.replace`, so the B18 "either the previous file remains
+untouched, or the new one is fully present" claim is not actually
+delivered on power loss / kernel panic. See `## Round 5 bugs` below.
 
 ### Done
 
@@ -1389,5 +1391,99 @@ unit test that fakes the ValueError (e.g. monkeypatches
 `os.path.commonpath`) and asserts the fall-through returns
 `None`. Optional: emit a one-shot stderr warning so the user
 knows the mirror layout was disabled.
+
+---
+
+## Round 5 bugs
+
+### B24 [MAJOR] `atomic_write_*` skips fsync — B18 durability claim is overpromised — `pd_ocr_cli/_pipeline.py:55-85`
+
+The B18 helpers `atomic_write_text` and `atomic_write_bytes` write
+bytes to a sibling temp via `Path.write_text` / `Path.write_bytes`,
+then call `os.replace(tmp, path)`. The module-level docstring
+(lines 31-47) claims:
+
+> ``os.replace`` is atomic on POSIX and Windows when source/dest
+> live on the same filesystem (always true here since the temp
+> sits next to the target). On crash either the previous file
+> remains untouched, or the new one is fully present — never a
+> partial write at the canonical name.
+
+That guarantee is *not* what `os.replace` provides. POSIX rename
+is metadata-atomic only — it commits the directory-entry change
+to the journal, but **does not** flush the temp file's data
+blocks first. On ext4 (`data=ordered`, the default) you get an
+implicit data-before-metadata ordering as a side effect; on xfs,
+btrfs, zfs, and ext4 with `data=writeback`, you do not. The
+realistic failure mode after a power loss / kernel panic /
+hypervisor crash mid-rename is a zero-length or partially-
+populated `.txt` at the canonical name — exactly the silent-
+truncation pattern B18 was meant to eliminate. Downstream
+consumers that key on `.txt` existence (`[ -f foo.txt ] || pd-ocr
+foo.png` resume idiom, PGDP packagers, training-set diff tools —
+all called out by name in the B18 comment) then proceed against
+the corrupt file.
+
+The existing tests (`test_atomic_write_text_failure_*` etc.)
+only cover *exception-during-write* atomicity. None of them
+exercise the post-`os.replace` durability gap because Python-
+level monkeypatches can't model an asynchronous power loss.
+
+**Repro reasoning:** with default xfs mount options, `cp` →
+`fsync` → `mv` is the textbook safe pattern; `cp` → `mv` (which
+is what these helpers do) is documented as a footgun in the xfs
+FAQ ("Why do I lose recent file data after a crash?"). The
+fault is hardest to demonstrate locally but trivially reproduces
+on a VM you `kill -9 qemu` mid-batch.
+
+**Fix:** open the temp through a low-level descriptor so we can
+fsync it before rename, then fsync the parent directory after
+rename so the directory entry itself is durable. Sketch:
+
+```python
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    tmp = _atomic_tmp_path(path)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        try:
+            os.write(fd, data)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except BaseException:
+        try:
+            tmp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+    os.replace(tmp, path)
+    # Best-effort directory fsync so the rename itself is durable.
+    try:
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(dir_fd)
+    except OSError:
+        pass
+    finally:
+        os.close(dir_fd)
+```
+
+`atomic_write_text` becomes a thin wrapper that encodes once and
+delegates. The directory fsync is best-effort because Windows
+doesn't support fsync on directory handles (and `os.open` on a
+directory returns ERROR_ACCESS_DENIED there) — guard with
+`try/except OSError` and move on.
+
+Also worth adding: a regression test that monkeypatches
+`os.replace` to record call ordering and asserts `os.fsync(fd)`
+was invoked on the temp's fd *before* `os.replace`. That
+catches future refactors that drop the fsync silently.
+
+Update the `_pipeline.py:31-47` block comment to reflect the
+real guarantee delivered (or remove the "never a partial write
+at the canonical name" line if the fsync is judged not worth
+the per-page latency cost on slow disks).
 
 ---
