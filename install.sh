@@ -95,6 +95,51 @@ echo "Latest release: ${RELEASE_TAG:-(unknown tag)}"
 echo "Wheel asset:    ${WHEEL_URL}"
 
 # ---------------------------------------------------------------------------
+# Resolve the pd-book-tools git pin from the release's pyproject.toml.
+# ---------------------------------------------------------------------------
+# pd-book-tools is a sibling pd-* repo published as git tags only — there is
+# no PyPI package and no wheel asset on its own Releases. The wheel built
+# from this repo carries `Requires-Dist: pd-book-tools` with no source URL
+# (PEP 621 wheel METADATA cannot encode `[tool.uv.sources]` git pins), so a
+# bare `uv tool install <wheel>` fails: "pd-book-tools was not found in the
+# package registry".
+#
+# Fix: fetch pyproject.toml from the *release tag* (so the pin matches the
+# wheel exactly, not whatever main currently has) and pass the git ref to
+# uv via `--with 'pd-book-tools @ git+https://...@<tag>'` (PEP 508 direct
+# URL). uv resolves the dependency from git and the install proceeds.
+#
+# The sibling install scripts solve the same problem differently:
+#   - pd-ocr-cli/install.ps1 + pd-ocr-labeler/install.sh install the whole
+#     project with `git+https://...@<tag>`, which gives uv the project
+#     context and `[tool.uv.sources]` activates naturally.
+#   - We keep the wheel-download path here (matches the documented release
+#     contract — see DEVELOPMENT.md / agent-memory release_flow.md) and
+#     supplement it with `--with` for the one git-only transitive dep.
+PYPROJECT_URL="https://raw.githubusercontent.com/${REPO}/${RELEASE_TAG}/pyproject.toml"
+PYPROJECT_RAW=$(curl -sSfL "$PYPROJECT_URL" 2>/dev/null || true)
+
+PD_BOOK_TOOLS_GIT=""
+PD_BOOK_TOOLS_TAG=""
+if [ -n "$PYPROJECT_RAW" ]; then
+    # Match the line:
+    #   pd-book-tools = { git = "https://github.com/.../pd-book-tools.git", tag = "v0.10.0" }
+    PD_BOOK_TOOLS_LINE=$(printf '%s\n' "$PYPROJECT_RAW" | grep -E '^[[:space:]]*pd-book-tools[[:space:]]*=' | head -1)
+    PD_BOOK_TOOLS_GIT=$(printf '%s' "$PD_BOOK_TOOLS_LINE" | sed -n 's/.*git[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+    PD_BOOK_TOOLS_TAG=$(printf '%s' "$PD_BOOK_TOOLS_LINE" | sed -n 's/.*tag[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
+fi
+
+PD_BOOK_TOOLS_WITH=""
+if [ -n "$PD_BOOK_TOOLS_GIT" ] && [ -n "$PD_BOOK_TOOLS_TAG" ]; then
+    PD_BOOK_TOOLS_WITH="pd-book-tools @ git+${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}"
+    echo "pd-book-tools:  ${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}"
+else
+    echo "⚠️  Could not resolve pd-book-tools git pin from ${PYPROJECT_URL}" >&2
+    echo "    The install will likely fail with 'pd-book-tools was not found'." >&2
+    echo "    File a bug at https://github.com/${REPO}/issues" >&2
+fi
+
+# ---------------------------------------------------------------------------
 # Download the wheel to a temp dir and install.
 # ---------------------------------------------------------------------------
 TMPDIR=$(mktemp -d)
@@ -114,12 +159,16 @@ if ! curl -sSfL \
 fi
 
 echo "Installing pd-ocr ${RELEASE_TAG:-} from $(basename "$WHEEL_FILE")..."
-if [ -n "$EXTRA_INDEX" ]; then
-    uv tool install --reinstall "$WHEEL_FILE" \
-        --extra-index-url "$EXTRA_INDEX"
-else
-    uv tool install --reinstall "$WHEEL_FILE"
+# Build the install command incrementally so we only emit `--with` / extra
+# flags when relevant. POSIX sh has no arrays — use `set --` to manage args.
+set -- --reinstall "$WHEEL_FILE"
+if [ -n "$PD_BOOK_TOOLS_WITH" ]; then
+    set -- "$@" --with "$PD_BOOK_TOOLS_WITH"
 fi
+if [ -n "$EXTRA_INDEX" ]; then
+    set -- "$@" --extra-index-url "$EXTRA_INDEX"
+fi
+uv tool install "$@"
 
 echo ""
 echo "Done! Run: pd-ocr page.png"
