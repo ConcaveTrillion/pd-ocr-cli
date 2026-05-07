@@ -1,4 +1,4 @@
-.PHONY: setup refresh-version install uninstall reset remove-venv lint format pre-commit-check test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format pre-commit-check test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
 # [tool.coverage.report] fail_under so any direct `coverage report` run also
@@ -71,6 +71,13 @@ reset: ## Rebuild virtual environment (keeps UV cache)
 	@$(MAKE) --no-print-directory remove-venv
 	@$(MAKE) --no-print-directory setup
 	@echo "✅ Environment Reset!"
+
+upgrade-deps: ## Upgrade dependencies and sync local environment
+	@echo "⬆️ Upgrading dependency lockfile..."
+	uv lock --upgrade
+	@echo "📦 Syncing upgraded dependencies..."
+	uv sync --group dev
+	@echo "✅ Dependencies upgraded and environment synced!"
 
 upgrade-pd-book-tools: ## Upgrade pd-book-tools pin to latest GitHub tag
 	@./scripts/upgrade-pd-book-tools.sh
