@@ -34,80 +34,21 @@ sign-up. For specifics on what the tool downloads and from where, see
 
 ## GPU acceleration (optional)
 
-`pd-ocr` works fine on CPU. Add a GPU and it goes faster — useful
-when you're running through a whole book rather than one page.
+`pd-ocr` works fine on CPU. Add an NVIDIA GPU and it goes faster — worth
+it when you're running through a whole book rather than one page.
 
 > ⚠️ **Heads up — disk space.** The NVIDIA path pulls in the CUDA
-> Toolkit and CUDA-flavored PyTorch wheels. Plan on roughly 10 GB of
-> disk between the two. If that's a lot for your machine, CPU mode is
-> a fine starting point. Apple Silicon and CPU users skip all of
-> this. Full numbers are in
-> [Technical details](#gpu-acceleration-mechanics).
+> Toolkit and CUDA-flavored PyTorch wheels — roughly 10 GB total. CPU
+> mode is a fine starting point if that's tight.
 
-- **NVIDIA card on Linux or Windows.** Run `nvidia-smi` first; if it
-  shows your GPU and a CUDA version (12.4 or newer), you're set —
-  the install script auto-detects CUDA and adds the `[gpu]` extra
-  (CuPy + opencv-cuda) when CUDA ≥ 12.4 is present. CUDA 11.x or
-  CUDA 12.0–12.3 still gets the GPU PyTorch wheels, but the heavy
-  CuPy stack is skipped (CuPy itself requires CUDA ≥ 12.4). If
-  `nvidia-smi` shows nothing, install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
-  for your OS/driver and try again.
-- **Apple Silicon Mac (M1/M2/M3/M4).** GPU acceleration kicks in
-  automatically. Nothing to install.
-  *(Note: this path is unverified — feedback welcome.)*
-- **No GPU.** Nothing to do. CPU is the default and the tool just
-  works.
+- **NVIDIA on Linux/Windows** — install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (12.4 or newer), then run the install script; it auto-detects CUDA.
+- **Apple Silicon Mac** — kicks in automatically, nothing to install. *(Unverified — feedback welcome.)*
+- **No GPU** — nothing to do; CPU is the default.
 
-### Manual opt-in
-
-If you installed CPU-only and want to add the GPU stack without re-running
-the install script, the `[gpu]` extra is the entry point:
-
-```sh
-pip install 'pd-ocr-cli[gpu]'        # NVIDIA + CUDA >= 12.4 only
-```
-
-This forwards to `pd-book-tools[gpu]`, which owns the actual CuPy and
-opencv-cuda dependencies. **Requires CUDA ≥ 12.4** — `pip` will fail to
-install CuPy on older CUDA toolchains.
-
-### "GPU detected but installed CPU-only" nudge
-
-When `pd-ocr` starts, it does a cheap check: if your host has an NVIDIA
-GPU (`nvidia-smi` is on `PATH` and exits 0) but pd-ocr was installed
-without the `[gpu]` extra (CuPy isn't importable), a one-line nudge is
-printed to stderr suggesting the reinstall command. The check is
-fail-soft — any error in the probe is silently swallowed and the OCR
-run proceeds normally.
-
-To silence the nudge persistently (e.g. you've decided CPU-only is the
-right choice on this host), set:
-
-```sh
-export PD_OCR_NO_GPU_NUDGE=1
-```
-
-### When a GPU isn't worth it
-
-For one-off pages, most of the time goes into loading the models, not
-reading the words — CPU feels about the same. The GPU pays off when
-you're processing tens or hundreds of pages in a single run.
-
-### Troubleshooting
-
-- **`nvidia-smi` not found** — NVIDIA driver / toolkit isn't
-  available in your environment.
-- **Running in Docker / devcontainer** — make sure the container
-  was started with `--gpus all` and the NVIDIA Container Toolkit is
-  configured on the host.
-- **Very slow first run** — that's the one-time model download +
-  init. Later runs use the cache.
-- **GPU still not used** — reinstall and retry; the install script
-  re-detects on each run.
-
-For specifics — disk / VRAM budgets, the `cuXXX` PyTorch wheels, what
-the install script actually fetches — see
-[Technical details](#technical-details).
+Already installed without a GPU? Just re-run the install script — it
+swaps the install in place. See the [FAQ](#faq) for switching to GPU,
+the "GPU detected but installed CPU-only" nudge, troubleshooting, and
+when a GPU is (or isn't) worth it.
 
 ---
 
@@ -155,6 +96,80 @@ Full flag reference — quote / em-dash normalization, model pinning,
 layout-detector options, illustration extraction, debug output — in
 [docs/usage.md](docs/usage.md). `pd-ocr --help` lists everything
 authoritatively.
+
+---
+
+## FAQ
+
+### How do I switch from CPU-only to GPU?
+
+Re-run the install script. It re-detects `nvidia-smi` on every run,
+picks the matching `cuXXX` PyTorch wheels, and (when CUDA ≥ 12.4)
+opts into the `pd-book-tools[gpu]` extra (CuPy + opencv-cuda).
+`uv tool install --reinstall` swaps the existing install in place.
+
+```sh
+# Linux / macOS
+curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
+```
+
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.ps1 | iex
+```
+
+CUDA 11.x or 12.0–12.3 still gets the GPU PyTorch wheels, but the
+heavier CuPy stack is skipped (CuPy itself requires CUDA ≥ 12.4).
+
+### Why am I seeing a "GPU detected but installed CPU-only" message?
+
+On startup, `pd-ocr` does a cheap check: if your host has an NVIDIA GPU
+(`nvidia-smi` on `PATH`, exits 0) but pd-ocr was installed without the
+`[gpu]` extra (CuPy isn't importable), it prints a one-line nudge to
+stderr suggesting the reinstall command. The probe is fail-soft — any
+error is swallowed and the OCR run proceeds normally.
+
+To silence it persistently (e.g. you've decided CPU-only is right for
+this host):
+
+```sh
+export PD_OCR_NO_GPU_NUDGE=1
+```
+
+### Is a GPU worth it for my workload?
+
+For one-off pages, most of the time goes into loading the models, not
+reading the words — CPU feels about the same. The GPU pays off when
+you're processing tens or hundreds of pages in a single run.
+
+### The GPU isn't being used — what's wrong?
+
+A few things to check:
+
+- **`nvidia-smi` not found** — NVIDIA driver / toolkit isn't
+  available in your environment. Install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads).
+- **Running in Docker / devcontainer** — make sure the container was
+  started with `--gpus all` and the NVIDIA Container Toolkit is
+  configured on the host (see
+  [Running in a Container](#running-in-a-container-with-nvidia-gpu)).
+- **GPU still not used after that** — re-run the install script; it
+  re-detects on each run.
+
+For the deep mechanics — `cuXXX` wheel selection, what the install
+script does, disk / VRAM budgets — see
+[Technical details](#technical-details).
+
+### Why is the first run so slow?
+
+That's the one-time model download (~150 MB) and initialization.
+Later runs reuse the cache.
+
+### Where are the models cached?
+
+`~/.cache/huggingface/hub` by default; override with `$HF_HOME` or
+`$HF_HUB_CACHE`. See [Network calls](#network-calls-the-tool-makes)
+for what's downloaded and from where, and [Uninstall](#uninstall) for
+how to remove the cache.
 
 ---
 
@@ -226,20 +241,28 @@ further network access is required.
 
 ### The install script
 
-`install.sh` / `install.ps1` are one-time bootstrap helpers. They run:
+`install.sh` / `install.ps1` are bootstrap helpers — re-run them any
+time to upgrade or to switch between CPU and GPU. They:
 
-- A GitHub API call to resolve the latest release tag.
-- `uv tool install git+...` to fetch the published source from GitHub.
-- PyTorch wheels from `https://download.pytorch.org/whl/...` (with the
-  matching `cuXXX` index when CUDA is detected).
+- Install [uv](https://docs.astral.sh/uv/) if it isn't already on PATH.
+- Resolve the latest non-prerelease GitHub Release via the GitHub API
+  (or `gh` if authenticated) and download the published `.whl` asset.
+- Detect NVIDIA CUDA via `nvidia-smi`, pick the matching `cuXXX` PyTorch
+  wheel index, and — when CUDA ≥ 12.4 — add `--with 'pd-book-tools[gpu]'`
+  for CuPy + opencv-cuda.
+- Run `uv tool install --reinstall <wheel>` with `--extra-index-url`
+  pointing at the self-hosted `pd-index` (for `pd-book-tools`) and at
+  PyTorch's CUDA index when applicable.
 
 Once installed, `pd-ocr` itself only does the two outbound requests
 listed above.
 
 ### Manual install
 
-If you'd rather not pipe `curl | sh`, you can run the install steps
-yourself with [uv](https://docs.astral.sh/uv/).
+If you'd rather not pipe `curl | sh`, you can run the install yourself
+with [uv](https://docs.astral.sh/uv/). The install script just wraps
+`uv tool install` against the wheel asset on the latest GitHub Release —
+nothing here uses `pip`.
 
 Install uv first:
 
@@ -253,32 +276,33 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-CPU install:
+CPU install (uses the self-hosted `pd-index` PEP 503 index for
+`pd-book-tools`):
 
 ```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
+uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
+    --extra-index-url https://concavetrillion.github.io/pd-index/simple/
 ```
 
-The CPU install pulls only CPU-friendly dependencies — no CUDA toolkit,
-no `cupy`, no `opencv-cuda`. Plain `pip install pd-ocr-cli` works the
-same way on CPU-only machines.
-
 NVIDIA GPU install — replace `cuXXX` with your CUDA version (e.g.
-`cu124`, `cu130`; **CUDA 12.4 or later required**):
+`cu124`, `cu130`; **CUDA 12.4 or later required** for the `[gpu]`
+extra):
 
 ```sh
-uv tool install 'git+https://github.com/ConcaveTrillion/pd-ocr-cli[gpu]' \
+uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
+    --with 'pd-book-tools[gpu]' \
+    --extra-index-url https://concavetrillion.github.io/pd-index/simple/ \
     --extra-index-url https://download.pytorch.org/whl/cuXXX
 ```
 
-The `[gpu]` extra opts into `cupy-cuda12x` and `opencv-cuda` (forwarded
-through `pd-book-tools[gpu]`). With pip the equivalent is
-`pip install 'pd-ocr-cli[gpu]'`.
-
-Use `nvidia-smi` for your CUDA version, or the
+The `[gpu]` extra on `pd-book-tools` opts into `cupy-cuda12x` and
+`opencv-cuda`. Use `nvidia-smi` to read your CUDA version, or the
 [PyTorch install selector](https://pytorch.org/get-started/locally/).
 Disk / VRAM budgets are below in
 [GPU acceleration mechanics](#gpu-acceleration-mechanics).
+
+In practice, just re-running the install script is simpler — it does
+the detection and assembles these flags for you.
 
 ### GPU acceleration mechanics
 
