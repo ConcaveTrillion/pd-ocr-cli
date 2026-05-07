@@ -54,7 +54,7 @@ Not implemented yet — tracked here so users and contributors know it's
 on the roadmap.
 
 **Motivation.** OCR on old-typesetting books (Cló Gaelach, Fraktur,
-early-modern English with long-s) emits Unicode glyphs that faithfully
+early-modern English with long-s) may emit Unicode glyphs that faithfully
 reflect the page: `ſ` (long s), `ﬁ`/`ﬂ`/`ﬀ`/`ﬃ`/`ﬄ` (f-ligatures),
 `ſt` (long-s+t ligature), and similar. Faithful Unicode is the right
 default for archival OCR fidelity. But downstream consumers — most
@@ -89,8 +89,10 @@ step) without duplication.
 
 ## Model selection
 
-By default, `pd-ocr` downloads pinned, fine-tuned weights from
-`CT2534/pd-ocr-models` on Hugging Face the first time it runs.
+By default, `pd-ocr` downloads fine-tuned weights from
+`CT2534/pd-ocr-models` on Hugging Face the first time it runs, tracking
+the latest revision of that repo. Pass `--model-version <tag>` to pin to
+a specific release.
 
 ```sh
 # Pin to a specific model version (HF Hub revision / tag)
@@ -127,7 +129,8 @@ pd-ocr --layout-model contour page.png
 # Use a fine-tuned PP-DocLayout checkpoint (path or HF repo)
 pd-ocr --layout-checkpoint ~/my-finetuned-layout/ page.png
 
-# Tighten / loosen the confidence threshold (0..1, default 0.5)
+# Tighten / loosen the confidence threshold (0..1, default 0.5).
+# Values outside [0, 1] (and `nan` / `inf`) are rejected at parse time.
 pd-ocr --layout-confidence 0.3 page.png
 
 # Crop figure / decoration / table regions to i_<stem>_<n>.jpg
@@ -205,10 +208,47 @@ pd-ocr --no-update-check page.png
 pd-ocr --help
 ```
 
+### Environment variables
+
+| Variable | Effect |
+| --- | --- |
+| `PD_OCR_NO_UPDATE_CHECK=1` | Skip the background GitHub-tag upgrade-notice request (same as `--no-update-check`). |
+| `PD_OCR_NO_GPU_NUDGE=1` | Silence the one-line "GPU detected but installed CPU-only" message printed on startup when `nvidia-smi` is on `PATH` but the `[gpu]` extra wasn't installed. See the FAQ in [README.md](../README.md#faq) for details. |
+| `PD_OCR_DEBUG=1` | On per-image processing errors, also print the full traceback to stderr. |
+| `PD_OCR_REORGANIZE_STRICT=1` | Read by `pd-book-tools`'s `reorganize_page()`. When set, words dropped during reorganize raise `ReorganizeDroppedWordsError` instead of being re-added with a warning. Useful in CI to fail loudly on pipeline regressions. |
+| `HF_HOME`, `HF_HUB_CACHE` | Override the Hugging Face model cache location (default `~/.cache/huggingface/hub`). Honored by the upstream `huggingface_hub` library — pd-ocr-cli does not read these directly. |
+
+`PD_OCR_LAYOUT_DEBUG` and `PD_OCR_LAYOUT_DEBUG_FILE` are set automatically
+by the CLI as an internal IPC channel to the layout backend (controlled
+via `--layout-debug` / `--layout-debug-dir`) and shouldn't be overridden
+manually.
+
+### Conflicting flags / no-op combinations
+
+When you pass a flag combination that can't take effect, `pd-ocr` emits a
+`warning:` to stderr and proceeds (the redundant flag is ignored, not
+fatal). The current set:
+
+- `--no-reorg` + `--save-reorganize-diagnostics` — diagnostics are produced
+  only when reorganize runs.
+- `--no-reorg` + `--validate-reorg` — validation compares pre/post
+  reorganize word lists.
+- `--layout-model none` + `--layout-debug` — no layout model runs, so no
+  debug artifact is written.
+- `--no-reorg` + `--layout-debug` — the debug report is written from
+  inside `reorganize_page`, which is skipped.
+- `--layout-debug-dir` without `--layout-debug` — the directory is only
+  used when the debug artifact is enabled.
+- `--save-reorganize-diagnostics` without `--save-json` — the diagnostic
+  bundle is written alongside the regular `.json` output, which requires
+  `--save-json`.
+- `--no-reorg` + `--experimental-drop-layout-words` — the drop is applied
+  inside `reorganize_page`, which is skipped.
+
 ## Full flag table
 
 | Flag | Short | Default | Purpose |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `--hf-repo REPO_ID` | | `CT2534/pd-ocr-models` | HF Hub repo for OCR models. |
 | `--model-version TAG` | | latest | HF revision / tag. |
 | `--det-filename PATH` | | `detection/pd-all-detection-model-finetuned.pt` | Detection-model path within the HF repo. |
@@ -227,7 +267,7 @@ pd-ocr --help
 | `--no-update-check` | | off | Skip the background GitHub-tag upgrade-notice request. Also via `PD_OCR_NO_UPDATE_CHECK=1`. |
 | `--layout-model {none,contour,pp-doclayout-plus-l}` | | `pp-doclayout-plus-l` | Layout backend. |
 | `--layout-checkpoint PATH_OR_REPO` | | — | Fine-tuned PP-DocLayout checkpoint. |
-| `--layout-confidence FLOAT` | | `0.5` | Region-confidence threshold (0..1). |
+| `--layout-confidence THRESHOLD` | | `0.5` | Region-confidence threshold (0..1). |
 | `--extract-illustrations` | | off | Crop figure / decoration / table regions. |
 | `--layout-debug` | | off | Write layout debug text. |
 | `--layout-debug-dir DIR` | | output dir | Where layout debug text goes. |

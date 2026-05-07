@@ -59,7 +59,7 @@ If you also want pd-book-tools' own venv (to run its tests):
 ### General
 
 | Target | Purpose |
-|---|---|
+| --- | --- |
 | `setup` | Install dev deps + pre-commit hooks (uses pinned `pd-book-tools` tag). |
 | `refresh-version` | Force-reinstall the editable package so `pd-ocr --version` re-derives from current git state (hatch-vcs bakes the version at install time, not at runtime — run this after `git pull` / new local tags). |
 | `install` | Install `pd-ocr` as a `uv tool` from local source, auto-detecting CUDA. |
@@ -83,7 +83,7 @@ pinned dep with an editable install in the venv (or in the `uv tool`
 install).
 
 | Target | Purpose |
-|---|---|
+| --- | --- |
 | `local-setup` | Clone the sibling if missing, then run `dev-local`. The one-stop entrypoint. |
 | `dev-local` | Install `pd-book-tools` from `../pd-book-tools` as editable into this venv. |
 | `install-local` | Install `pd-ocr` as a `uv tool` with **both** repos editable — `pd-ocr` on your PATH tracks live edits in either tree. |
@@ -111,7 +111,7 @@ curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/inst
 
 ## Project layout
 
-```
+```text
 pd_ocr_cli/
 ├── ocr_to_txt.py        # CLI entrypoint + main() + parse_args()
 ├── _hf_download.py      # generic hf_hub_download wrapper (sidecar opt-in)
@@ -137,8 +137,11 @@ point is `pd_ocr_cli.ocr_to_txt:main` (wired via `[project.scripts]`).
 
    `release-*` only creates a local tag — it does **not** push.
 
-4. The published `install.sh` resolves the latest GitHub tag at install
-   time, so end users get the new release on their next `curl | sh`.
+4. Pushing the tag triggers the release workflow, which builds, attests,
+   and publishes the wheel as a GitHub Release asset. `install.sh` /
+   `install.ps1` resolve the latest non-prerelease GitHub Release and
+   download that wheel, so end users get the new release on their next
+   `curl | sh`.
 
 Versioning is managed by `hatch-vcs` from git tags — `pyproject.toml`
 has no hardcoded version.

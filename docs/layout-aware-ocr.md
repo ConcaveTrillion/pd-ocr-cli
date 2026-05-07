@@ -3,8 +3,6 @@
 `pd-ocr` runs document-layout detection on every page by default. The
 detected regions feed `Page.reorganize_page()` as a hint, which:
 
-- Wraps figure captions so they emit as `[Illustration: ...]` blocks
-  rather than getting folded into surrounding paragraphs.
 - Strips high-confidence headers and footers (running titles, page
   numbers) from the body text.
 - Tags tables and figures so downstream consumers can route them
@@ -84,10 +82,11 @@ consumes layout output:
   `--save-pre-reorg-json`. Useful when comparing pipeline output to raw
   OCR or auditing the noise-drop step.
 - `--validate-reorg` — warn (don't fail) if reorganize drops any words.
-- (always on) — when reorganize drops figure-internal noise words, the CLI
-  prints a warning to stderr
-  identifying the page, count, sample tokens, and the re-run hint for
-  the full diagnostic bundle.
+- _Always-on noise-drop warning_ — when reorganize drops figure-internal
+  noise words, the CLI prints a warning to stderr identifying the page,
+  the count, a sample of the dropped tokens, and a re-run hint pointing
+  at `--save-json --save-reorganize-diagnostics` for the full diagnostic
+  bundle. There is no flag to silence it.
 - `--experimental-drop-layout-words` (alias: `--edl`) — gates BOTH
   figure-internal drop steps (Layout-2b and B2). Default OFF preserves
   every OCR word; the always-on warning's count is then 0 and the
