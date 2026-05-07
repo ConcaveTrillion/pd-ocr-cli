@@ -72,6 +72,8 @@ import sys
 import threading
 from pathlib import Path
 
+from pd_book_tools.image_processing.formats import is_image_file
+
 from pd_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
     DEFAULT_HF_REPO,
@@ -101,8 +103,6 @@ from pd_ocr_cli._pipeline import (
 )
 from pd_ocr_cli._update_check import VERSION as _VERSION
 from pd_ocr_cli._update_check import check_for_update as _check_for_update
-
-IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp"}
 
 
 def _detect_torch_device() -> str:
@@ -533,14 +533,14 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
     for inp in inputs:
         p = Path(inp)
         if p.is_file():
-            if p.suffix.lower() in IMAGE_SUFFIXES:
+            if is_image_file(p):
                 _add(p)
             else:
                 print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)
         elif p.is_dir():
             pattern = "**/*" if recursive else "*"
             for child in sorted(p.glob(pattern)):
-                if child.is_file() and child.suffix.lower() in IMAGE_SUFFIXES:
+                if child.is_file() and is_image_file(child):
                     _add(child)
         else:
             print(f"WARNING: skipping missing path: {p}", file=sys.stderr)

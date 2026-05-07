@@ -4,16 +4,60 @@ Covers file vs directory inputs, recursion, the supported-suffix filter,
 ordering guarantees, and graceful handling of missing paths.
 """
 
+import logging
 from pathlib import Path
 
 import pytest
+from pd_book_tools.image_processing.formats import SUPPORTED_IMAGE_SUFFIXES
 
-from pd_ocr_cli.ocr_to_txt import IMAGE_SUFFIXES, collect_images
+from pd_ocr_cli.ocr_to_txt import collect_images
+
+# Minimal magic-byte headers (>= 16 bytes after padding) for the formats
+# pd-book-tools' is_image_file recognises. Used by _touch to lay down
+# fixtures that pass the gate without involving real image encoders.
+_MAGIC_BY_SUFFIX: dict[str, bytes] = {
+    ".png": b"\x89PNG\r\n\x1a\n",
+    ".jpg": b"\xff\xd8\xff\xe0",
+    ".jpeg": b"\xff\xd8\xff\xe0",
+    ".tif": b"II*\x00",
+    ".tiff": b"II*\x00",
+    ".bmp": b"BM",
+    ".webp": b"RIFF\x00\x00\x00\x00WEBP",
+    ".jp2": b"\x00\x00\x00\x0cjP  \r\n\x87\n",
+    ".j2k": b"\xff\x4f\xff\x51",
+    ".jpf": b"\x00\x00\x00\x0cjP  \r\n\x87\n",
+    ".jpx": b"\x00\x00\x00\x0cjP  \r\n\x87\n",
+    ".gif": b"GIF89a",
+    ".ppm": b"P6\n",
+    ".pgm": b"P5\n",
+    ".pbm": b"P4\n",
+    ".pnm": b"P6\n",
+    # HEIF / AVIF — ISO BMFF ftyp box. The 4-byte size field is unused by
+    # the sniff; brand at offset 8.
+    ".heic": b"\x00\x00\x00\x20ftypheic",
+    ".heif": b"\x00\x00\x00\x20ftypheic",
+    ".avif": b"\x00\x00\x00\x20ftypavif",
+}
+
+
+def _magic_for(suffix: str) -> bytes:
+    """Pad the suffix's magic bytes to 16 so is_image_file accepts it."""
+    suffix = suffix.lower()
+    head = _MAGIC_BY_SUFFIX.get(suffix, b"")
+    if len(head) < 16:
+        head = head + b"\x00" * (16 - len(head))
+    return head
 
 
 def _touch(p: Path) -> Path:
+    """Create *p* with a minimal valid header for its suffix (or empty
+    if the suffix is not an image — e.g. ``.txt``, ``.md``)."""
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_bytes(b"")
+    suffix = p.suffix.lower()
+    if suffix in _MAGIC_BY_SUFFIX:
+        p.write_bytes(_magic_for(suffix))
+    else:
+        p.write_bytes(b"")
     return p
 
 
@@ -71,16 +115,60 @@ def test_collect_preserves_input_order_for_multiple_files(tmp_path):
     assert result == [b, a, c]
 
 
-@pytest.mark.parametrize("suffix", sorted(IMAGE_SUFFIXES))
+@pytest.mark.parametrize("suffix", sorted(SUPPORTED_IMAGE_SUFFIXES))
 def test_collect_accepts_each_supported_suffix(tmp_path, suffix):
     img = _touch(tmp_path / f"page{suffix}")
     assert collect_images([str(img)], recursive=False) == [img]
 
 
-@pytest.mark.parametrize("suffix", [".PNG", ".JPG", ".Jpeg", ".TIFF"])
+@pytest.mark.parametrize("suffix", [".PNG", ".JPG", ".Jpeg", ".TIFF", ".JP2"])
 def test_collect_suffix_match_is_case_insensitive(tmp_path, suffix):
+    # Magic bytes lookup is keyed on the lowercased suffix (handled inside
+    # _touch); is_image_file lowercases the suffix internally too.
     img = _touch(tmp_path / f"page{suffix}")
     assert collect_images([str(img)], recursive=False) == [img]
+
+
+def test_collect_accepts_jp2_with_real_magic_bytes(tmp_path):
+    """A real-world ``.jp2`` book scan must pass the input gate.
+
+    Regression: prior IMAGE_SUFFIXES allowlist hardcoded only PNG/JPEG/
+    TIFF/BMP/WebP, so JPEG 2000 scans were rejected as "non-image".
+    pd-book-tools' is_image_file now decides via extension OR magic.
+    """
+    jp2 = tmp_path / "scan.jp2"
+    # Real JP2 box-format header (12 bytes) + zero padding to clear the
+    # 16-byte head buffer is_image_file reads.
+    jp2.write_bytes(b"\x00\x00\x00\x0cjP  \r\n\x87\n" + b"\x00" * 8)
+    assert collect_images([str(jp2)], recursive=False) == [jp2]
+
+
+def test_collect_accepts_mislabeled_png_with_jp2_bytes_and_warns(tmp_path, capsys, caplog):
+    """A file named ``.png`` whose bytes are JPEG 2000 must (1) still be
+    accepted (it IS a real image, just mislabeled) and (2) produce a
+    visible WARNING so the user knows the extension is wrong.
+
+    The warning is emitted by pd-book-tools'
+    ``pd_book_tools.image_processing.formats`` module logger; pd-ocr-cli's
+    own logging configuration must not silence it.
+    """
+    fake_png = tmp_path / "mislabeled.png"
+    # JP2 box magic + padding; 12 + 8 = 20 bytes total.
+    fake_png.write_bytes(b"\x00\x00\x00\x0cjP  \r\n\x87\n" + b"\x00" * 8)
+
+    with caplog.at_level(logging.WARNING, logger="pd_book_tools.image_processing.formats"):
+        result = collect_images([str(fake_png)], recursive=False)
+
+    assert result == [fake_png], "mislabeled-but-real image must be accepted"
+    # The mismatch warning names the path and identifies the actual format.
+    assert any(
+        "jpeg2000" in rec.getMessage() and str(fake_png) in rec.getMessage()
+        for rec in caplog.records
+    ), f"expected mismatch warning, got: {[r.getMessage() for r in caplog.records]}"
+    # And the user-facing "skipping non-image file" warning must NOT fire,
+    # because the file is accepted.
+    err = capsys.readouterr().err
+    assert "skipping non-image file" not in err
 
 
 def test_collect_mixed_file_and_directory(tmp_path):

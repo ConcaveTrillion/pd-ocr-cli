@@ -13,7 +13,7 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "pd-book-tools>=0.11.0",
+    "pd-book-tools>=0.11.1",
     "huggingface_hub>=0.23",
 ]
 

@@ -190,8 +190,13 @@ dev-local: ## [local-dev] Install pd-book-tools from ../pd-book-tools as editabl
 	else \
 		echo "⚪ No NVIDIA GPU detected (or CI=1) — installing pd-book-tools without [gpu] extra."; \
 	fi
-	UV_LINK_MODE=copy uv sync --group dev
-	UV_LINK_MODE=copy uv pip install -e "$(PEER_BOOK_TOOLS)" $(GPU_EXTRA)
+	@# Install pd-book-tools editable FIRST so its in-tree version satisfies
+	@# any pd-ocr-cli pin that may exceed what's currently published in
+	@# pd-index. Then install pd-ocr-cli + dev group without re-resolving
+	@# pd-book-tools against the index.
+	UV_LINK_MODE=copy uv pip install -e "$(PEER_BOOK_TOOLS_SPEC)"
+	UV_LINK_MODE=copy uv pip install -e . --no-deps
+	UV_LINK_MODE=copy uv pip install --group dev
 	@$(MAKE) --no-print-directory check-local-editable
 	@echo "✅ Local editable pd-book-tools is active in the venv."
 
