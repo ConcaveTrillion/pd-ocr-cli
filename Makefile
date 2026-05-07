@@ -19,6 +19,12 @@ PEER_BOOK_TOOLS_PATH := ../pd-book-tools
 PEER_BOOK_TOOLS_REPO := https://github.com/ConcaveTrillion/pd-book-tools.git
 PEER_BOOK_TOOLS := $(realpath $(PEER_BOOK_TOOLS_PATH))
 
+# Auto-detect a usable NVIDIA GPU (skipped under CI). When detected, the
+# *-local targets pull pd-book-tools' [gpu] extra (CuPy) so the editable
+# install matches what `make install` does via scripts/install-uv-tool.sh.
+GPU_EXTRA := $(shell [ -z "$$CI" ] && command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1 && echo --extra gpu)
+PEER_BOOK_TOOLS_SPEC := $(if $(GPU_EXTRA),$(PEER_BOOK_TOOLS)[gpu],$(PEER_BOOK_TOOLS))
+
 define _require_peer_book_tools
 	@if [ -z "$(PEER_BOOK_TOOLS)" ]; then \
 		echo "❌ Peer repo not found at $(PEER_BOOK_TOOLS_PATH)."; \
@@ -172,15 +178,25 @@ local-setup: ## [local-dev] Clone ../pd-book-tools if missing and set up the edi
 
 dev-local: ## [local-dev] Install pd-book-tools from ../pd-book-tools as editable in the venv
 	$(call _require_peer_book_tools)
+	@if [ -n "$(GPU_EXTRA)" ]; then \
+		echo "🟢 NVIDIA GPU detected — installing pd-book-tools with [gpu] extra (CuPy)."; \
+	else \
+		echo "⚪ No NVIDIA GPU detected (or CI=1) — installing pd-book-tools without [gpu] extra."; \
+	fi
 	UV_LINK_MODE=copy uv sync --group dev
-	UV_LINK_MODE=copy uv pip install -e "$(PEER_BOOK_TOOLS)"
+	UV_LINK_MODE=copy uv pip install -e "$(PEER_BOOK_TOOLS)" $(GPU_EXTRA)
 	@$(MAKE) --no-print-directory check-local-editable
 	@echo "✅ Local editable pd-book-tools is active in the venv."
 
 install-local: ## [local-dev] Install pd-ocr as a uv tool with both pd-ocr-cli and ../pd-book-tools editable
 	$(call _require_peer_book_tools)
+	@if [ -n "$(GPU_EXTRA)" ]; then \
+		echo "🟢 NVIDIA GPU detected — installing pd-book-tools with [gpu] extra (CuPy)."; \
+	else \
+		echo "⚪ No NVIDIA GPU detected (or CI=1) — installing pd-book-tools without [gpu] extra."; \
+	fi
 	@echo "📦 Installing pd-ocr as a uv tool from local editable sources..."
-	UV_LINK_MODE=copy uv tool install --force --reinstall --no-sources --editable . --with-editable "$(PEER_BOOK_TOOLS)"
+	UV_LINK_MODE=copy uv tool install --force --reinstall --no-sources --editable . --with-editable "$(PEER_BOOK_TOOLS_SPEC)"
 	@echo "✅ 'pd-ocr' is on PATH and tracks ./ + $(PEER_BOOK_TOOLS) live."
 	@echo "   To revert: make uninstall-local && curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh"
 
