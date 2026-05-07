@@ -928,15 +928,6 @@ wheels = [
 ]
 
 [[package]]
-name = "isort"
-version = "8.0.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ef/7c/ec4ab396d31b3b395e2e999c8f46dec78c5e29209fac49d1f4dace04041d/isort-8.0.1.tar.gz", hash = "sha256:171ac4ff559cdc060bcfff550bc8404a486fee0caab245679c2abe7cb253c78d", size = 769592, upload-time = "2026-02-28T10:08:20.685Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3e/95/c7c34aa53c16353c56d0b802fba48d5f5caa2cdee7958acbcb795c830416/isort-8.0.1-py3-none-any.whl", hash = "sha256:28b89bc70f751b559aeca209e6120393d43fbe2490de0559662be7a9787e3d75", size = 89733, upload-time = "2026-02-28T10:08:19.466Z" },
-]
-
-[[package]]
 name = "jedi"
 version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1995,21 +1986,17 @@ wheels = [
 
 [[package]]
 name = "pd-book-tools"
-version = "0.10.0"
-source = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0#011b7ec5e8d24f91b74c60f292b011c352db3bbd" }
+version = "0.11.0"
+source = { registry = "https://concavetrillion.github.io/pd-index/simple/" }
 dependencies = [
-    { name = "cupy-cuda12x" },
     { name = "huggingface-hub" },
     { name = "ipython", version = "8.39.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "ipython", version = "9.13.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "ipywidgets" },
-    { name = "isort" },
     { name = "matplotlib" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "opencv-contrib-python" },
-    { name = "opencv-cuda" },
-    { name = "opencv-python" },
     { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pytesseract" },
@@ -2022,6 +2009,16 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
+sdist = { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.11.0/pd_book_tools-0.11.0.tar.gz" }
+wheels = [
+    { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.11.0/pd_book_tools-0.11.0-py3-none-any.whl" },
+]
+
+[package.optional-dependencies]
+gpu = [
+    { name = "cupy-cuda12x" },
+    { name = "opencv-cuda" },
+]
 
 [[package]]
 name = "pd-ocr-cli"
@@ -2033,7 +2030,7 @@ dependencies = [
 
 [package.optional-dependencies]
 gpu = [
-    { name = "pd-book-tools" },
+    { name = "pd-book-tools", extra = ["gpu"] },
 ]
 
 [package.dev-dependencies]
@@ -2048,8 +2045,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0" },
-    { name = "pd-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0" },
+    { name = "pd-book-tools", specifier = ">=0.11.0", index = "https://concavetrillion.github.io/pd-index/simple/" },
+    { name = "pd-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", index = "https://concavetrillion.github.io/pd-index/simple/" },
 ]
 provides-extras = ["gpu"]
 
@@ -2441,8 +2438,8 @@ wheels = [
 
 [[package]]
 name = "python-doctr"
-version = "1.0.2a0"
-source = { git = "https://github.com/mindee/doctr.git#a8694b80b4e8ed067ec8299efd0f1374f0b08936" }
+version = "1.0.1"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyascii" },
     { name = "defusedxml" },
@@ -2464,6 +2461,10 @@ dependencies = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "validators" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1f/aa/35afe5b4f2e601557f9a617411896df0a5e092caac44a7ab78caec1e7fcd/python_doctr-1.0.1.tar.gz", hash = "sha256:6fc54316ea7915e1fa96bf58e9434b16e1511c3c61dff16d0802f18c71a5d9c6", size = 223224, upload-time = "2026-02-04T15:05:51.862Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/1d/83cfd3f35e6f83553b3effc951a45813a794da2f6ffc5c0e8f3557f4cead/python_doctr-1.0.1-py3-none-any.whl", hash = "sha256:a54028bc59df98816059fb038265c787ca971098ee78a2af2514267e6c71ce7e", size = 288861, upload-time = "2026-02-04T15:05:48.783Z" },
 ]
 
 [[package]]

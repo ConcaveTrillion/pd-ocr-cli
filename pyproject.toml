@@ -13,7 +13,7 @@ readme = "README.md"
 license = { text = "Unlicense" }
 requires-python = ">=3.10,<4.0"
 dependencies = [
-    "pd-book-tools",
+    "pd-book-tools>=0.11.0",
     "huggingface_hub>=0.23",
 ]
 
@@ -44,19 +44,13 @@ dev = [
     "ruff>=0.12.5",
 ]
 
+[[tool.uv.index]]
+name = "pd-index"
+url = "https://concavetrillion.github.io/pd-index/simple/"
+explicit = true
+
 [tool.uv.sources]
-# v0.10.0 still ships cupy-cuda12x + opencv-cuda as mandatory deps, so
-# the [gpu] extra above is a placeholder until pd-book-tools v0.11.0 is
-# tagged — that release moves CUDA deps into an optional [gpu] extra.
-#
-# READY-TO-APPLY (gated on pd-book-tools v0.11.0): bump the tag below to
-# "v0.11.0". The install.sh / install.ps1 GPU-auto-enable branches AND the
-# CLI's runtime CuPy-missing nudge are already wired up in the working
-# tree and will go live the moment this pin is bumped. Until then a CUDA
-# host running install.sh will emit a benign uv warning ("package does
-# not have an extra named gpu") — see the precondition block at the top
-# of each install script.
-pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.10.0" }
+pd-book-tools = { index = "pd-index" }
 
 [tool.hatch.version]
 source = "vcs"
