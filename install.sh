@@ -8,15 +8,15 @@ set -e
 # `gh` if available (and authenticated); otherwise falls back to the
 # public GitHub Releases API via curl.
 #
-# PRECONDITION (GPU auto-enable):
-#   The CUDA >= 12.4 branch below appends `[gpu]` to the pd-book-tools
-#   install spec. That extra exists only in pd-book-tools >= v0.11.0 (the
-#   release that moves cupy-cuda12x + opencv-cuda from mandatory deps into
-#   an optional [gpu] extra). Until pyproject.toml is repinned to
-#   pd-book-tools v0.11.0+ via `make upgrade-pd-book-tools`, sourcing this
-#   script on a CUDA host will produce a "package does not have an extra
-#   named gpu" warning from uv. The install still completes, but the warning
-#   is noisy. DO NOT MERGE this branch until the pin is bumped.
+# GPU auto-enable:
+#   The CUDA >= 12.4 branch below passes `--with pd-book-tools[gpu]` to
+#   pull in the optional CuPy + opencv-cuda extras.  That extra exists only
+#   in pd-book-tools >= v0.11.0 (the release that moved those heavy deps
+#   from mandatory into an optional [gpu] group).
+#
+# pd-book-tools is published on a self-hosted PEP 503 index (pd-index) so
+# the wheel's Requires-Dist entry resolves automatically when we pass
+# --extra-index-url to uv — no manual git-pin fetch needed.
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
@@ -32,6 +32,7 @@ fi
 
 EXTRA_INDEX=""
 PD_BOOK_TOOLS_EXTRAS=""
+PD_INDEX_URL="https://concavetrillion.github.io/pd-index/simple/"
 
 # Auto-detect NVIDIA CUDA
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -118,55 +119,7 @@ fi
 
 echo "Latest release: ${RELEASE_TAG:-(unknown tag)}"
 echo "Wheel asset:    ${WHEEL_URL}"
-
-# ---------------------------------------------------------------------------
-# Resolve the pd-book-tools git pin from the release's pyproject.toml.
-# ---------------------------------------------------------------------------
-# pd-book-tools is a sibling pd-* repo published as git tags only — there is
-# no PyPI package and no wheel asset on its own Releases. The wheel built
-# from this repo carries `Requires-Dist: pd-book-tools` with no source URL
-# (PEP 621 wheel METADATA cannot encode `[tool.uv.sources]` git pins), so a
-# bare `uv tool install <wheel>` fails: "pd-book-tools was not found in the
-# package registry".
-#
-# Fix: fetch pyproject.toml from the *release tag* (so the pin matches the
-# wheel exactly, not whatever main currently has) and pass the git ref to
-# uv via `--with 'pd-book-tools @ git+https://...@<tag>'` (PEP 508 direct
-# URL). uv resolves the dependency from git and the install proceeds.
-#
-# The sibling install scripts solve the same problem differently:
-#   - pd-ocr-cli/install.ps1 + pd-ocr-labeler/install.sh install the whole
-#     project with `git+https://...@<tag>`, which gives uv the project
-#     context and `[tool.uv.sources]` activates naturally.
-#   - We keep the wheel-download path here (matches the documented release
-#     contract — see DEVELOPMENT.md / agent-memory release_flow.md) and
-#     supplement it with `--with` for the one git-only transitive dep.
-PYPROJECT_URL="https://raw.githubusercontent.com/${REPO}/${RELEASE_TAG}/pyproject.toml"
-PYPROJECT_RAW=$(curl -sSfL "$PYPROJECT_URL" 2>/dev/null || true)
-
-PD_BOOK_TOOLS_GIT=""
-PD_BOOK_TOOLS_TAG=""
-if [ -n "$PYPROJECT_RAW" ]; then
-    # Match the line:
-    #   pd-book-tools = { git = "https://github.com/.../pd-book-tools.git", tag = "v0.10.0" }
-    PD_BOOK_TOOLS_LINE=$(printf '%s\n' "$PYPROJECT_RAW" | grep -E '^[[:space:]]*pd-book-tools[[:space:]]*=' | head -1)
-    PD_BOOK_TOOLS_GIT=$(printf '%s' "$PD_BOOK_TOOLS_LINE" | sed -n 's/.*git[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
-    PD_BOOK_TOOLS_TAG=$(printf '%s' "$PD_BOOK_TOOLS_LINE" | sed -n 's/.*tag[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p')
-fi
-
-PD_BOOK_TOOLS_WITH=""
-if [ -n "$PD_BOOK_TOOLS_GIT" ] && [ -n "$PD_BOOK_TOOLS_TAG" ]; then
-    # ``$PD_BOOK_TOOLS_EXTRAS`` is empty unless the CUDA-detect branch
-    # above set it to ``[gpu]`` (NVIDIA + CUDA >= 12.4). In every other
-    # case the extras suffix collapses to nothing and uv installs plain
-    # ``pd-book-tools``.
-    PD_BOOK_TOOLS_WITH="pd-book-tools${PD_BOOK_TOOLS_EXTRAS} @ git+${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}"
-    echo "pd-book-tools:  ${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}${PD_BOOK_TOOLS_EXTRAS}"
-else
-    echo "⚠️  Could not resolve pd-book-tools git pin from ${PYPROJECT_URL}" >&2
-    echo "    The install will likely fail with 'pd-book-tools was not found'." >&2
-    echo "    File a bug at https://github.com/${REPO}/issues" >&2
-fi
+echo "pd-index:       ${PD_INDEX_URL}"
 
 # ---------------------------------------------------------------------------
 # Download the wheel to a temp dir and install.
@@ -188,11 +141,16 @@ if ! curl -sSfL \
 fi
 
 echo "Installing pd-ocr ${RELEASE_TAG:-} from $(basename "$WHEEL_FILE")..."
-# Build the install command incrementally so we only emit `--with` / extra
-# flags when relevant. POSIX sh has no arrays — use `set --` to manage args.
-set -- --reinstall "$WHEEL_FILE"
-if [ -n "$PD_BOOK_TOOLS_WITH" ]; then
-    set -- "$@" --with "$PD_BOOK_TOOLS_WITH"
+# Build the install command incrementally so we only emit flags when relevant.
+# POSIX sh has no arrays — use `set --` to manage args.
+#
+# pd-book-tools is published on the self-hosted pd-index (GitHub Pages PEP 503
+# index); pass --extra-index-url so uv can resolve the Requires-Dist entry
+# that the wheel's METADATA carries.  When CUDA >= 12.4 was detected above,
+# $PD_BOOK_TOOLS_EXTRAS is "[gpu]"; we pass --with to pull that extra in.
+set -- --reinstall "$WHEEL_FILE" --extra-index-url "$PD_INDEX_URL"
+if [ -n "$PD_BOOK_TOOLS_EXTRAS" ]; then
+    set -- "$@" --with "pd-book-tools${PD_BOOK_TOOLS_EXTRAS}"
 fi
 if [ -n "$EXTRA_INDEX" ]; then
     set -- "$@" --extra-index-url "$EXTRA_INDEX"

@@ -1,27 +1,45 @@
 #!/usr/bin/env bash
-# upgrade-pd-book-tools.sh — repin pd-book-tools to its latest GitHub tag.
+# upgrade-pd-book-tools.sh — repin pd-book-tools to its latest published version.
 #
-# Fetches the most recent tag from the ConcaveTrillion/pd-book-tools repo's
-# tags API, rewrites the matching git-source line in pyproject.toml to use
-# that tag, then runs `uv sync --group dev` so the lock + venv update.
+# pd-book-tools is published on the self-hosted pd-index PEP 503 index at
+# https://concavetrillion.github.io/pd-index/simple/. This script fetches
+# the index page, extracts the highest version from the wheel filenames, and
+# rewrites the version lower-bound in pyproject.toml, then runs `uv sync`
+# so the lock + venv update.
 #
 # Usage: scripts/upgrade-pd-book-tools.sh
 
 set -euo pipefail
 
-echo "🔍 Fetching latest pd-book-tools tag..."
-LATEST_TAG=$(curl -sSf "https://api.github.com/repos/ConcaveTrillion/pd-book-tools/tags" \
-    | grep '"name"' | head -1 | sed 's/.*"name": "\(.*\)".*/\1/')
+PD_INDEX_URL="https://concavetrillion.github.io/pd-index/simple/pd-book-tools/"
 
-if [ -z "$LATEST_TAG" ]; then
-    echo "❌ Could not fetch latest tag."
+echo "Fetching pd-book-tools versions from pd-index..."
+INDEX_HTML=$(curl -sSf "$PD_INDEX_URL" 2>/dev/null || true)
+
+if [ -z "$INDEX_HTML" ]; then
+    echo "❌ Could not reach pd-index at ${PD_INDEX_URL}" >&2
     exit 1
 fi
 
-echo "📌 Pinning to $LATEST_TAG..."
-sed -i "s|pd-book-tools = { git = \"https://github.com/ConcaveTrillion/pd-book-tools.git\", tag = \".*\" }|pd-book-tools = { git = \"https://github.com/ConcaveTrillion/pd-book-tools.git\", tag = \"$LATEST_TAG\" }|" pyproject.toml
+# Extract version numbers from wheel filenames, e.g.:
+#   pd_book_tools-0.12.0-py3-none-any.whl  →  0.12.0
+LATEST_VERSION=$(printf '%s\n' "$INDEX_HTML" \
+    | grep -oE 'pd_book_tools-[0-9]+\.[0-9]+\.[0-9]+-' \
+    | sed 's/pd_book_tools-//;s/-$//' \
+    | sort -t. -k1,1n -k2,2n -k3,3n \
+    | tail -1)
 
-echo "📦 Syncing..."
+if [ -z "$LATEST_VERSION" ]; then
+    echo "❌ Could not parse any version from ${PD_INDEX_URL}" >&2
+    exit 1
+fi
+
+echo "Pinning to >=${LATEST_VERSION}..."
+
+# Update the version lower-bound: pd-book-tools>=<old>  →  pd-book-tools>=<new>
+sed -i "s|\"pd-book-tools>=[0-9][^\"]*\"|\"pd-book-tools>=${LATEST_VERSION}\"|g" pyproject.toml
+
+echo "Syncing..."
 uv sync --group dev
 
-echo "✅ pd-book-tools upgraded to $LATEST_TAG!"
+echo "pd-book-tools upgraded to >=${LATEST_VERSION}!"
