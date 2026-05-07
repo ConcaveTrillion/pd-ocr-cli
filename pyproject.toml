@@ -17,6 +17,17 @@ dependencies = [
     "huggingface_hub>=0.23",
 ]
 
+[project.optional-dependencies]
+# GPU acceleration is opt-in. Plain `pip install pd-ocr-cli` works on
+# CPU-only machines; users with an NVIDIA GPU can install the heavy
+# CUDA stack (cupy-cuda12x, opencv-cuda) via:
+#   pip install pd-ocr-cli[gpu]
+# This forwards to pd-book-tools' own [gpu] extra, which owns the
+# actual CUDA dependency list.
+gpu = [
+    "pd-book-tools[gpu]",
+]
+
 [project.scripts]
 pd-ocr = "pd_ocr_cli.ocr_to_txt:main"
 
@@ -34,6 +45,17 @@ dev = [
 ]
 
 [tool.uv.sources]
+# v0.10.0 still ships cupy-cuda12x + opencv-cuda as mandatory deps, so
+# the [gpu] extra above is a placeholder until pd-book-tools v0.11.0 is
+# tagged — that release moves CUDA deps into an optional [gpu] extra.
+#
+# READY-TO-APPLY (gated on pd-book-tools v0.11.0): bump the tag below to
+# "v0.11.0". The install.sh / install.ps1 GPU-auto-enable branches AND the
+# CLI's runtime CuPy-missing nudge are already wired up in the working
+# tree and will go live the moment this pin is bumped. Until then a CUDA
+# host running install.sh will emit a benign uv warning ("package does
+# not have an extra named gpu") — see the precondition block at the top
+# of each install script.
 pd-book-tools = { git = "https://github.com/ConcaveTrillion/pd-book-tools.git", tag = "v0.10.0" }
 
 [tool.hatch.version]

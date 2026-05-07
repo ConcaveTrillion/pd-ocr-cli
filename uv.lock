@@ -2031,6 +2031,11 @@ dependencies = [
     { name = "pd-book-tools" },
 ]
 
+[package.optional-dependencies]
+gpu = [
+    { name = "pd-book-tools" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "coverage" },
@@ -2044,7 +2049,9 @@ dev = [
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "pd-book-tools", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0" },
+    { name = "pd-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", git = "https://github.com/ConcaveTrillion/pd-book-tools.git?tag=v0.10.0" },
 ]
+provides-extras = ["gpu"]
 
 [package.metadata.requires-dev]
 dev = [
