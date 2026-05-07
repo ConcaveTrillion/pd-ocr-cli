@@ -153,3 +153,7 @@ has no hardcoded version.
   and `transformers.utils` as unresolved. Those are intentional lazy
   imports (heavy deps loaded only when needed). Point your IDE at
   `.venv/bin/python` to silence them.
+- `pytest` prints a `DeprecationWarning: defusedxml.cElementTree is deprecated`
+  originating from `defusedxml/__init__.py`. This is a bug in `defusedxml`
+  itself — its own `__init__.py` imports the deprecated submodule. Watch for
+  a `defusedxml` release that fixes it and bump the pin when one appears.
