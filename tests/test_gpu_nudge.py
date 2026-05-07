@@ -212,7 +212,9 @@ def test_maybe_print_emits_to_stderr_when_nudging(monkeypatch, capsys):
 
     err = capsys.readouterr().err
     assert "NVIDIA GPU detected" in err
-    assert "pd-ocr-cli[gpu]" in err
+    # The canonical install path is the install script (not pip); the
+    # nudge points the user at re-running install.sh to swap CPU→GPU.
+    assert "install.sh" in err
     assert "PD_OCR_NO_GPU_NUDGE" in err
 
 

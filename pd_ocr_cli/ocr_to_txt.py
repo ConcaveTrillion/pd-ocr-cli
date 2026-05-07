@@ -267,8 +267,9 @@ def _maybe_print_gpu_nudge() -> None:
         if _should_nudge_gpu_install():
             print(
                 "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
-                "        Reinstall with `pip install pd-ocr-cli[gpu]` "
-                "(requires CUDA >= 12.4) for GPU acceleration.\n"
+                "        Re-run the install script to switch to GPU "
+                "(requires CUDA >= 12.4):\n"
+                "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"
                 "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message.",
                 file=sys.stderr,
             )
