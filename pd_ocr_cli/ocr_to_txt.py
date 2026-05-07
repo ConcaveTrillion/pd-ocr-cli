@@ -66,6 +66,8 @@ subsequent runs.
 import argparse
 import math
 import os
+import shutil
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -178,6 +180,101 @@ def _start_update_check_thread(disabled: bool) -> threading.Thread | None:
 def _env_truthy(name: str) -> bool:
     """True if the env var is set to a truthy value (1/true/yes/on, case-insensitive)."""
     return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+# ---------------------------------------------------------------------------
+# GPU-availability nudge
+# ---------------------------------------------------------------------------
+# Process-cached so a test or a caller invoking ``main()`` repeatedly never
+# re-runs the (potentially) blocking ``nvidia-smi`` subprocess. The cache
+# is busted across processes (CLI restart) — that's the right granularity
+# because hardware doesn't change mid-run.
+_GPU_NUDGE_CACHE: dict[str, bool] = {}
+
+
+def _should_nudge_gpu_install() -> bool:
+    """Return True if a one-line "GPU available, but installed CPU-only" nudge should fire.
+
+    Logic:
+    1. ``PD_OCR_NO_GPU_NUDGE=1`` short-circuits to False (user opt-out).
+    2. If ``cupy`` imports cleanly, the GPU stack is already wired up — no nudge.
+    3. Otherwise, check whether ``nvidia-smi`` exists AND exits 0 within 2s.
+       If yes, the host has a GPU but pd-ocr was installed CPU-only → nudge.
+    4. Any unexpected error in the probe path swallows silently and returns
+       False — a printing-helper bug must never break ``pd-ocr`` itself.
+
+    The result is cached for the life of the process (see ``_GPU_NUDGE_CACHE``)
+    so that callers invoking ``main()`` more than once (e.g. in a test loop)
+    do not re-spawn ``nvidia-smi``.
+    """
+    if "result" in _GPU_NUDGE_CACHE:
+        return _GPU_NUDGE_CACHE["result"]
+
+    def _probe() -> bool:
+        if _env_truthy("PD_OCR_NO_GPU_NUDGE"):
+            return False
+        try:
+            import cupy  # noqa: F401
+        except ImportError:
+            # The expected case for the nudge: CuPy not installed.
+            pass
+        except BaseException:
+            # CuPy installed but broken (segfaulting native lib, etc.) —
+            # not our problem to diagnose. Stay silent.
+            return False
+        else:
+            # CuPy importable → GPU mode already active (or at least the
+            # user has explicitly installed the GPU stack); no nudge.
+            return False
+
+        # ``shutil.which`` is cheap and short-circuits the no-GPU case
+        # for free — only NVIDIA hosts (or hosts with the toolkit
+        # installed) will cause us to spawn the subprocess below.
+        if shutil.which("nvidia-smi") is None:
+            return False
+        try:
+            proc = subprocess.run(
+                ["nvidia-smi"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            # PATH lied, kernel module missing, hung process, etc. —
+            # treat as "no usable GPU" and stay silent.
+            return False
+        return proc.returncode == 0
+
+    try:
+        result = _probe()
+    except BaseException:
+        # Defensive: nothing in the probe should leak past the inner
+        # ``try`` blocks, but a blanket guard makes the contract
+        # explicit — the nudge helper must not raise.
+        result = False
+    _GPU_NUDGE_CACHE["result"] = result
+    return result
+
+
+def _maybe_print_gpu_nudge() -> None:
+    """Print the one-line GPU-install nudge to stderr when applicable.
+
+    Wraps ``_should_nudge_gpu_install`` so the print site is also
+    bullet-proof against unexpected errors (it never raises).
+    """
+    try:
+        if _should_nudge_gpu_install():
+            print(
+                "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
+                "        Reinstall with `pip install pd-ocr-cli[gpu]` "
+                "(requires CUDA >= 12.4) for GPU acceleration.\n"
+                "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message.",
+                file=sys.stderr,
+            )
+    except BaseException:
+        # A bug in the nudge must never break pd-ocr's actual job.
+        pass
 
 
 def _confidence_threshold(s: str) -> float:
@@ -506,6 +603,14 @@ def main():
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
     update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")
     _update_thread = _start_update_check_thread(disabled=update_check_disabled)
+
+    # One-line nudge for users who have an NVIDIA GPU but installed
+    # pd-ocr without the [gpu] extra — surfaces the opt-in path so the
+    # GPU isn't silently left on the table. Suppressible via
+    # PD_OCR_NO_GPU_NUDGE=1. The probe itself is bullet-proof: any
+    # error (missing nvidia-smi, hung subprocess, broken CuPy) is
+    # swallowed so the nudge never breaks the actual OCR run.
+    _maybe_print_gpu_nudge()
 
     print("Resolving model files...", flush=True)
     det_path, reco_path = resolve_ocr_models(args)

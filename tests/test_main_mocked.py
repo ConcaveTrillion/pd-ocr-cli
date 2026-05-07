@@ -137,6 +137,12 @@ def patched_main(monkeypatch, tmp_path):
     monkeypatch.setattr(ocr_to_txt, "_check_for_update", lambda: None)
     monkeypatch.setattr(ocr_to_txt, "_start_update_check_thread", lambda disabled: None)
 
+    # Suppress the GPU-install nudge in the fast-test fixture so individual
+    # tests don't have to assert against unrelated stderr noise. The nudge
+    # itself is exercised by tests/test_gpu_nudge.py against
+    # ``_should_nudge_gpu_install`` directly.
+    monkeypatch.setattr(ocr_to_txt, "_should_nudge_gpu_install", lambda: False)
+
     # Fake model files (just need paths that exist for descriptor formatting).
     fake_det = tmp_path / "fake-det.pt"
     fake_reco = tmp_path / "fake-reco.pt"
