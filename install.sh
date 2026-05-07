@@ -8,6 +8,16 @@ set -e
 # `gh` if available (and authenticated); otherwise falls back to the
 # public GitHub Releases API via curl.
 #
+# PRECONDITION (GPU auto-enable):
+#   The CUDA >= 12.4 branch below appends `[gpu]` to the pd-book-tools
+#   install spec. That extra exists only in pd-book-tools >= v0.11.0 (the
+#   release that moves cupy-cuda12x + opencv-cuda from mandatory deps into
+#   an optional [gpu] extra). Until pyproject.toml is repinned to
+#   pd-book-tools v0.11.0+ via `make upgrade-pd-book-tools`, sourcing this
+#   script on a CUDA host will produce a "package does not have an extra
+#   named gpu" warning from uv. The install still completes, but the warning
+#   is noisy. DO NOT MERGE this branch until the pin is bumped.
+#
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
 
@@ -21,6 +31,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 EXTRA_INDEX=""
+PD_BOOK_TOOLS_EXTRAS=""
 
 # Auto-detect NVIDIA CUDA
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -29,6 +40,20 @@ if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
         CUDA_TAG="cu$(echo "$CUDA_VER" | tr -d '.')"
         EXTRA_INDEX="https://download.pytorch.org/whl/${CUDA_TAG}"
         echo "Detected CUDA ${CUDA_VER} — will install PyTorch with ${CUDA_TAG} support."
+
+        # CuPy (cupy-cuda12x) requires CUDA >= 12.4. Only opt into the
+        # pd-book-tools[gpu] extra when that minimum is satisfied;
+        # otherwise the [gpu] resolve fails with a CuPy version error
+        # and a working CPU-only install would have been preferable.
+        # POSIX-sh version compare — no `sort -V`, no `awk`.
+        CUDA_MAJOR=${CUDA_VER%.*}
+        CUDA_MINOR=${CUDA_VER#*.}
+        if [ "$CUDA_MAJOR" -gt 12 ] || { [ "$CUDA_MAJOR" -eq 12 ] && [ "$CUDA_MINOR" -ge 4 ]; }; then
+            PD_BOOK_TOOLS_EXTRAS="[gpu]"
+            echo "CUDA ${CUDA_VER} >= 12.4 — enabling pd-book-tools[gpu] (CuPy + opencv-cuda)."
+        else
+            echo "CUDA ${CUDA_VER} < 12.4 — installing CPU-only book-tools (cupy-cuda12x needs >= 12.4)."
+        fi
     else
         echo "nvidia-smi found but could not detect CUDA version — falling back to CPU."
     fi
@@ -131,8 +156,12 @@ fi
 
 PD_BOOK_TOOLS_WITH=""
 if [ -n "$PD_BOOK_TOOLS_GIT" ] && [ -n "$PD_BOOK_TOOLS_TAG" ]; then
-    PD_BOOK_TOOLS_WITH="pd-book-tools @ git+${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}"
-    echo "pd-book-tools:  ${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}"
+    # ``$PD_BOOK_TOOLS_EXTRAS`` is empty unless the CUDA-detect branch
+    # above set it to ``[gpu]`` (NVIDIA + CUDA >= 12.4). In every other
+    # case the extras suffix collapses to nothing and uv installs plain
+    # ``pd-book-tools``.
+    PD_BOOK_TOOLS_WITH="pd-book-tools${PD_BOOK_TOOLS_EXTRAS} @ git+${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}"
+    echo "pd-book-tools:  ${PD_BOOK_TOOLS_GIT}@${PD_BOOK_TOOLS_TAG}${PD_BOOK_TOOLS_EXTRAS}"
 else
     echo "⚠️  Could not resolve pd-book-tools git pin from ${PYPROJECT_URL}" >&2
     echo "    The install will likely fail with 'pd-book-tools was not found'." >&2
