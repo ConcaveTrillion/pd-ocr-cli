@@ -46,14 +46,46 @@ when you're running through a whole book rather than one page.
 
 - **NVIDIA card on Linux or Windows.** Run `nvidia-smi` first; if it
   shows your GPU and a CUDA version (12.4 or newer), you're set —
-  the install script handles the rest. If `nvidia-smi` shows
-  nothing, install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
+  the install script auto-detects CUDA and adds the `[gpu]` extra
+  (CuPy + opencv-cuda) when CUDA ≥ 12.4 is present. CUDA 11.x or
+  CUDA 12.0–12.3 still gets the GPU PyTorch wheels, but the heavy
+  CuPy stack is skipped (CuPy itself requires CUDA ≥ 12.4). If
+  `nvidia-smi` shows nothing, install the [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads)
   for your OS/driver and try again.
 - **Apple Silicon Mac (M1/M2/M3/M4).** GPU acceleration kicks in
   automatically. Nothing to install.
   *(Note: this path is unverified — feedback welcome.)*
 - **No GPU.** Nothing to do. CPU is the default and the tool just
   works.
+
+### Manual opt-in
+
+If you installed CPU-only and want to add the GPU stack without re-running
+the install script, the `[gpu]` extra is the entry point:
+
+```sh
+pip install 'pd-ocr-cli[gpu]'        # NVIDIA + CUDA >= 12.4 only
+```
+
+This forwards to `pd-book-tools[gpu]`, which owns the actual CuPy and
+opencv-cuda dependencies. **Requires CUDA ≥ 12.4** — `pip` will fail to
+install CuPy on older CUDA toolchains.
+
+### "GPU detected but installed CPU-only" nudge
+
+When `pd-ocr` starts, it does a cheap check: if your host has an NVIDIA
+GPU (`nvidia-smi` is on `PATH` and exits 0) but pd-ocr was installed
+without the `[gpu]` extra (CuPy isn't importable), a one-line nudge is
+printed to stderr suggesting the reinstall command. The check is
+fail-soft — any error in the probe is silently swallowed and the OCR
+run proceeds normally.
+
+To silence the nudge persistently (e.g. you've decided CPU-only is the
+right choice on this host), set:
+
+```sh
+export PD_OCR_NO_GPU_NUDGE=1
+```
 
 ### When a GPU isn't worth it
 
@@ -227,13 +259,21 @@ CPU install:
 uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
 ```
 
+The CPU install pulls only CPU-friendly dependencies — no CUDA toolkit,
+no `cupy`, no `opencv-cuda`. Plain `pip install pd-ocr-cli` works the
+same way on CPU-only machines.
+
 NVIDIA GPU install — replace `cuXXX` with your CUDA version (e.g.
 `cu124`, `cu130`; **CUDA 12.4 or later required**):
 
 ```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
+uv tool install 'git+https://github.com/ConcaveTrillion/pd-ocr-cli[gpu]' \
     --extra-index-url https://download.pytorch.org/whl/cuXXX
 ```
+
+The `[gpu]` extra opts into `cupy-cuda12x` and `opencv-cuda` (forwarded
+through `pd-book-tools[gpu]`). With pip the equivalent is
+`pip install 'pd-ocr-cli[gpu]'`.
 
 Use `nvidia-smi` for your CUDA version, or the
 [PyTorch install selector](https://pytorch.org/get-started/locally/).
