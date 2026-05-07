@@ -66,3 +66,28 @@ A small integration test against the real reorg path is preferable
 to a pure unit test here — the placeholder emission lives deep in
 `associate_captions` and the value of this test is that the CLI flag
 actually reaches it.
+
+## Open — developer workflow
+
+### dev-local-aware `upgrade-deps` (and friends)
+
+`make upgrade-deps` currently ends in `uv sync --group dev`, which
+silently reverts a `dev-local` venv (editable in-tree pd-book-tools,
+GPU extras, doctr-from-git) back to the canonical published/CPU
+baseline. Spec for the fix lives in
+[`docs/dev-local-upgrade-flow.md`](./dev-local-upgrade-flow.md).
+
+Implementation pass should:
+
+- Add detection (probe `uv pip show pd-book-tools` for
+  `Editable project location:`; fall back to a `.venv/`-anchored
+  marker; last-resort `PD_DEV_LOCAL=1` opt-in).
+- Make `upgrade-deps` refuse by default when dev-local is detected,
+  pointing at a new `upgrade-deps-local` recipe that does lock + sync
+  + dev-local restore in one shot.
+- Audit sibling recipes that also rebuild the venv (`setup`, `reset`,
+  `ci`, `ci-slow`) — they may need the same guard. Out of scope for
+  the first pass; track separately.
+- Coordinate with the `pd-book-tools` agent: the editable-marker
+  contract is cross-repo, and the same fix is landing in every `pd-*`
+  repo's Makefile in lockstep.
