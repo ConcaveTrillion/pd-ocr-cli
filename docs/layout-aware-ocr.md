@@ -3,11 +3,16 @@
 `pd-ocr` runs document-layout detection on every page by default. The
 detected regions feed `Page.reorganize_page()` as a hint, which:
 
-- Strips high-confidence headers and footers (running titles, page
-  numbers) from the body text.
+- Detects high-confidence running titles and page numbers, role-labels
+  them as page headers / footers, and weaves them back into the page
+  at the boundaries (header band at the front, footer band at the
+  back) so they don't bleed into body paragraphs. Words are preserved,
+  not dropped.
 - Tags tables and figures so downstream consumers can route them
   separately.
-- Drops marginalia (sidenotes, abandoned regions) from the main flow.
+- Routes marginalia (sidenotes, abandoned regions) so they don't fold
+  into the main reading flow — left-margin notes sort before the body,
+  right-margin notes after. The words remain on the page.
 
 The default detector is
 [`PaddlePaddle/PP-DocLayout_plus-L`](https://huggingface.co/CT2534/PP-DocLayout_plus-L)

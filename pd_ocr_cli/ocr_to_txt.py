@@ -454,8 +454,9 @@ def parse_args():
         help=(
             "Layout-detector backend. Layout detection always runs (its "
             "output is fed into Page.reorganize_page() as a hint so captions "
-            "get wrapped, high-confidence headers/footers get stripped, "
-            "and tables/figures get tagged). Pass `--layout-model none` to "
+            "get wrapped, high-confidence headers/footers get role-labeled "
+            "and woven into the page boundaries (not dropped), and "
+            "tables/figures get tagged). Pass `--layout-model none` to "
             "skip layout detection. Default: pp-doclayout-plus-l."
         ),
     )
