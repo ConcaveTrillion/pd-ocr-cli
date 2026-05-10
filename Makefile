@@ -43,7 +43,7 @@ setup: ## Set up development environment (sync deps + pre-commit hooks + refresh
 	@echo "📦 Installing dependencies..."
 	uv sync --group dev
 	@echo "🪝 Setting up pre-commit hooks..."
-	uv run pre-commit install
+	@[ -f .git/hooks/pre-commit ] || uv run pre-commit install
 	@$(MAKE) --no-print-directory refresh-version
 	@echo "✅ Setup complete!"
 
