@@ -63,7 +63,7 @@ def resolve_ocr_models(args) -> tuple[Path, Path]:
     """
     if bool(args.detection) != bool(args.recognition):
         which = "--detection" if args.detection else "--recognition"
-        print(
+        print(  # noqa: T201  # CLI output
             f"ERROR: {which} requires its counterpart. Provide both --detection and --recognition.",
             file=sys.stderr,
         )
@@ -82,7 +82,7 @@ def resolve_ocr_models(args) -> tuple[Path, Path]:
             recognition_path=reco,
         )
     except FileNotFoundError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
 
 

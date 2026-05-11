@@ -568,7 +568,7 @@ def test_write_diagnostic_snapshots_partial_one_missing(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# atomic_write_text / atomic_write_bytes (B18)
+# atomic_write_text / atomic_write_bytes (B18)  # noqa: ERA001  # section header, not dead code
 # ---------------------------------------------------------------------------
 
 
@@ -599,7 +599,7 @@ def test_atomic_write_text_failure_preserves_prior_file(tmp_path, monkeypatch):
 
     real_write = os.write
 
-    def boom(fd, data):  # noqa: ANN001
+    def boom(fd, data):
         # Simulate ENOSPC mid-write: write a partial chunk so the temp
         # file is non-empty on disk, then explode.
         real_write(fd, b"PARTIAL")
@@ -625,7 +625,7 @@ def test_atomic_write_text_failure_with_no_prior_file_leaves_no_partial(tmp_path
 
     real_write = os.write
 
-    def boom(fd, data):  # noqa: ANN001
+    def boom(fd, data):
         real_write(fd, b"PARTIAL")
         raise RuntimeError("simulated SIGKILL between truncate and full flush")
 
@@ -648,7 +648,7 @@ def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path,
     """
     target = tmp_path / "page.txt"
 
-    def boom(*args, **kwargs):  # noqa: ANN001
+    def boom(*args, **kwargs):
         raise RuntimeError("blew up before any byte hit disk")
 
     monkeypatch.setattr("pd_ocr_cli._pipeline.os.open", boom)
@@ -660,7 +660,7 @@ def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path,
 def test_atomic_write_bytes_failure_with_no_tmp_created_swallows_unlink(tmp_path, monkeypatch):
     target = tmp_path / "page.bin"
 
-    def boom(*args, **kwargs):  # noqa: ANN001
+    def boom(*args, **kwargs):
         raise RuntimeError("blew up before any byte hit disk")
 
     monkeypatch.setattr("pd_ocr_cli._pipeline.os.open", boom)
@@ -676,7 +676,7 @@ def test_atomic_write_bytes_roundtrip_and_failure(tmp_path, monkeypatch):
 
     real_write = os.write
 
-    def boom(fd, data):  # noqa: ANN001
+    def boom(fd, data):
         real_write(fd, b"PARTIAL")
         raise OSError("disk full")
 
@@ -706,7 +706,7 @@ def test_atomic_write_text_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch):
     fsynced_fds: list[int] = []
     real_fsync = os.fsync
 
-    def tracking_fsync(fd):  # noqa: ANN001
+    def tracking_fsync(fd):
         fsynced_fds.append(fd)
         return real_fsync(fd)
 
@@ -728,7 +728,7 @@ def test_atomic_write_bytes_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch)
     fsync_calls: list[int] = []
     real_fsync = os.fsync
 
-    def tracking_fsync(fd):  # noqa: ANN001
+    def tracking_fsync(fd):
         fsync_calls.append(fd)
         return real_fsync(fd)
 
@@ -748,7 +748,7 @@ def test_atomic_write_swallows_filenotfound_on_cleanup(tmp_path, monkeypatch):
     """
     target = tmp_path / "page.txt"
 
-    def vanishing_write(fd, data):  # noqa: ANN001
+    def vanishing_write(fd, data):
         # Unlink the temp file so the subsequent unlink() in the helper
         # raises FileNotFoundError, then explode with the "real" error.
         for entry in tmp_path.iterdir():
@@ -774,7 +774,7 @@ def test_atomic_write_parent_dir_fsync_skipped_on_windows(tmp_path, monkeypatch)
     fsync_calls: list[int] = []
     real_fsync = os.fsync
 
-    def tracking_fsync(fd):  # noqa: ANN001
+    def tracking_fsync(fd):
         fsync_calls.append(fd)
         return real_fsync(fd)
 

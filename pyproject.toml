@@ -58,6 +58,18 @@ source = "vcs"
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "SIM", "UP", "RUF", "ERA", "T20"]
+
+
+[tool.pyright]
+include = ["pd_ocr_cli", "tests"]
+typeCheckingMode = "basic"
+
+[[tool.pyright.executionEnvironments]]
+root = "pd_ocr_cli"
+typeCheckingMode = "strict"
+
 [tool.pytest.ini_options]
 markers = [
     "slow: end-to-end tests that download a pinned model and run the OCR pipeline (opt in with --run-slow).",

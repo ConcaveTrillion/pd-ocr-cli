@@ -13,11 +13,13 @@ exceptions back into CLI return codes — tests use ``pytest.raises(SystemExit)`
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 from pd_ocr_cli._text_normalize import (
     normalize_curly_quotes as _normalize_curly_quotes,
@@ -94,10 +96,8 @@ def _atomic_write_raw(path: Path, data: bytes) -> None:
         finally:
             os.close(fd)
     except BaseException:
-        try:
+        with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
-        except FileNotFoundError:
-            pass
         raise
     os.replace(tmp, path)
     _fsync_parent_dir(path)
@@ -132,7 +132,7 @@ def validate_extract_illustrations(args) -> None:
     """
     layout_enabled = args.layout_model != "none"
     if args.extract_illustrations and not layout_enabled:
-        print(
+        print(  # noqa: T201  # CLI output
             "ERROR: --extract-illustrations requires a layout model; drop --layout-model none.",
             file=sys.stderr,
         )
@@ -168,7 +168,7 @@ def compute_mirror_root(inputs: Iterable[str], output_dir: Path | None) -> Path 
         # instead of aborting with an unhandled traceback before any image is
         # processed. ``resolve_dest_dir`` then writes every page directly
         # under ``output_dir``.
-        print(
+        print(  # noqa: T201  # CLI output
             "WARNING: input directories have no common ancestor; "
             "writing outputs flat under --output-dir instead of mirroring.",
             file=sys.stderr,
