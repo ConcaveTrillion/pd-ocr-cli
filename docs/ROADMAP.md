@@ -11,6 +11,8 @@ This file is the standing list of open priorities. Items move out
 when they ship (link the PR / commit and drop a brief "Done" entry at
 the bottom if useful).
 
+> Shipped items live in [`ROADMAP-shipped.md`](ROADMAP-shipped.md).
+
 ## Open — layout output
 
 ### Opt-in flag to skip illustration placeholder blocks

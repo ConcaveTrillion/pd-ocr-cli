@@ -64,6 +64,7 @@ subsequent runs.
 """
 
 import argparse
+import contextlib
 import math
 import os
 import shutil
@@ -214,7 +215,7 @@ def _should_nudge_gpu_install() -> bool:
         if _env_truthy("PD_OCR_NO_GPU_NUDGE"):
             return False
         try:
-            import cupy  # noqa: F401
+            import cupy  # noqa: F401  # import-only probe: success means GPU stack active
         except ImportError:
             # The expected case for the nudge: CuPy not installed.
             pass
@@ -265,11 +266,11 @@ def _maybe_print_gpu_nudge() -> None:
     """
     try:
         if _should_nudge_gpu_install():
-            print(
+            print(  # noqa: T201  # CLI output
                 "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
                 "        Re-run the install script to switch to GPU "
                 "(requires CUDA >= 12.4):\n"
-                "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"
+                "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"  # noqa: E501  # URL cannot be broken
                 "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message.",
                 file=sys.stderr,
             )
@@ -290,10 +291,10 @@ def _confidence_threshold(s: str) -> float:
     """
     try:
         v = float(s)
-    except ValueError:
+    except ValueError as exc:
         raise argparse.ArgumentTypeError(
             f"--layout-confidence must be a finite number in [0, 1]; got {s!r}"
-        )
+        ) from exc
     if not math.isfinite(v) or not 0.0 <= v <= 1.0:
         raise argparse.ArgumentTypeError(
             f"--layout-confidence must be a finite number in [0, 1]; got {s!r}"
@@ -324,13 +325,15 @@ def parse_args():
         "--det-filename",
         metavar="PATH",
         default=DEFAULT_DET_FILENAME,
-        help=f"Filename within the HF repo for the detection model (default: {DEFAULT_DET_FILENAME}).",
+        help=f"Filename within the HF repo for the detection model "
+        f"(default: {DEFAULT_DET_FILENAME}).",
     )
     src.add_argument(
         "--reco-filename",
         metavar="PATH",
         default=DEFAULT_RECO_FILENAME,
-        help=f"Filename within the HF repo for the recognition model (default: {DEFAULT_RECO_FILENAME}).",
+        help=f"Filename within the HF repo for the recognition model "
+        f"(default: {DEFAULT_RECO_FILENAME}).",
     )
     src.add_argument(
         "--detection",
@@ -536,14 +539,14 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
             if is_image_file(p):
                 _add(p)
             else:
-                print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)
+                print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)  # noqa: T201  # CLI output
         elif p.is_dir():
             pattern = "**/*" if recursive else "*"
             for child in sorted(p.glob(pattern)):
                 if child.is_file() and is_image_file(child):
                     _add(child)
         else:
-            print(f"WARNING: skipping missing path: {p}", file=sys.stderr)
+            print(f"WARNING: skipping missing path: {p}", file=sys.stderr)  # noqa: T201  # CLI output
     return images
 
 
@@ -556,46 +559,46 @@ def main():
     # Surface flag combinations that are silent no-ops so users do not chase
     # missing output (B3 — see docs/review/code-review-2026-05-06.md).
     if args.no_reorg and args.save_reorganize_diagnostics:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --save-reorganize-diagnostics has no effect with --no-reorg "
             "(diagnostics are produced only when reorganize runs); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.validate_reorg:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --validate-reorg has no effect with --no-reorg "
             "(validation compares pre/post reorganize word lists); ignoring.",
             file=sys.stderr,
         )
     if not layout_enabled and args.layout_debug:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --layout-debug has no effect with --layout-model none "
             "(no layout model runs, so no debug artifact is written); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.layout_debug:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --layout-debug has no effect with --no-reorg "
             "(the debug report is written from inside reorganize_page, "
             "which is skipped); ignoring.",
             file=sys.stderr,
         )
     if args.layout_debug_dir and not args.layout_debug:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --layout-debug-dir has no effect without --layout-debug "
             "(the directory is only used when the debug artifact is enabled); "
             "ignoring.",
             file=sys.stderr,
         )
     if args.save_reorganize_diagnostics and not args.save_json:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --save-reorganize-diagnostics has no effect without --save-json "
             "(the diagnostic bundle is written alongside the regular .json output, "
             "which requires --save-json); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.experimental_drop_layout_words:
-        print(
+        print(  # noqa: T201  # CLI output
             "warning: --experimental-drop-layout-words has no effect with --no-reorg "
             "(the drop is applied inside reorganize_page, which is skipped); ignoring.",
             file=sys.stderr,
@@ -614,7 +617,7 @@ def main():
     # swallowed so the nudge never breaks the actual OCR run.
     _maybe_print_gpu_nudge()
 
-    print("Resolving model files...", flush=True)
+    print("Resolving model files...", flush=True)  # noqa: T201  # CLI output
     det_path, reco_path = resolve_ocr_models(args)
 
     layout_repo: str | None = None
@@ -627,32 +630,32 @@ def main():
 
     output_dir = Path(args.output_dir) if args.output_dir else None
 
-    print("Importing deep-learning runtime (PyTorch + DocTR)...", flush=True)
+    print("Importing deep-learning runtime (PyTorch + DocTR)...", flush=True)  # noqa: T201  # CLI output
     device = _detect_torch_device()
 
-    print("Loading OCR models (detection + recognition)...", flush=True)
+    print("Loading OCR models (detection + recognition)...", flush=True)  # noqa: T201  # CLI output
     try:
         predictor = _load_predictor(det_path, reco_path)
     except ImportError as e:
-        print(f"ERROR: pd_book_tools not importable: {e}", file=sys.stderr)
+        print(f"ERROR: pd_book_tools not importable: {e}", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
     if predictor is None:
-        print("ERROR: failed to load models.", file=sys.stderr)
+        print("ERROR: failed to load models.", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
-    print(f"Detection model loaded:   {det_source_descriptor(args, det_path)} (device={device})")
-    print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")
+    print(f"Detection model loaded:   {det_source_descriptor(args, det_path)} (device={device})")  # noqa: T201  # CLI output
+    print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")  # noqa: T201  # CLI output
 
     layout_detector = None
     if layout_enabled:
-        print("Loading layout model...", flush=True)
+        print("Loading layout model...", flush=True)  # noqa: T201  # CLI output
         try:
             layout_detector = _load_layout_detector(args, device)
         except (ImportError, ValueError) as e:
-            print(f"ERROR: {e}", file=sys.stderr)
+            print(f"ERROR: {e}", file=sys.stderr)  # noqa: T201  # CLI output
             sys.exit(1)
-        print(f"Layout model loaded:      {layout_descriptor} (device={device})")
+        print(f"Layout model loaded:      {layout_descriptor} (device={device})")  # noqa: T201  # CLI output
     else:
-        print("Layout detection disabled (--layout-model none).")
+        print("Layout detection disabled (--layout-model none).")  # noqa: T201  # CLI output
 
     cv2 = None
     crop_types: set = set()
@@ -665,7 +668,7 @@ def main():
 
     images = collect_images(args.inputs, args.recursive)
     if not images:
-        print("ERROR: no valid image files found.", file=sys.stderr)
+        print("ERROR: no valid image files found.", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
 
     mirror_root = compute_mirror_root(args.inputs, output_dir)
@@ -674,7 +677,7 @@ def main():
     processed = 0
     interrupted = False
     for img_path in images:
-        print(f"Processing {img_path} ...", end=" ", flush=True)
+        print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
         debug_file = None
         dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
 
@@ -701,15 +704,15 @@ def main():
                 # doesn't concatenate onto it. Tally as a per-image
                 # error so an all-empty batch exits non-zero rather
                 # than misleading shell scripts that branch on $?.
-                print()
-                print(f"WARNING: no pages in result for {img_path}", file=sys.stderr)
+                print()  # noqa: T201  # CLI output
+                print(f"WARNING: no pages in result for {img_path}", file=sys.stderr)  # noqa: T201  # CLI output
                 errors += 1
                 continue
 
             page_layout = None
             if layout_detector is not None:
                 page_layout = layout_detector.detect(img_path)
-                print(
+                print(  # noqa: T201  # CLI output
                     f"  layout: {len(page_layout.regions)} regions ({page_layout.inference_ms} ms)",
                     flush=True,
                 )
@@ -749,12 +752,12 @@ def main():
                         img_path.name,
                         diagnostic_flag_name="--save-json --save-reorganize-diagnostics",
                     ):
-                        print(line, file=sys.stderr)
+                        print(line, file=sys.stderr)  # noqa: T201  # CLI output
 
                 if args.validate_reorg and validate_word_preservation is not None:
                     drops = validate_word_preservation(pre_reorg_words, list(page.words))
                     for line in format_drops_warning(drops, img_path.name):
-                        print(line, file=sys.stderr)
+                        print(line, file=sys.stderr)  # noqa: T201  # CLI output
 
             text = apply_text_normalizations(
                 page.text,
@@ -762,7 +765,7 @@ def main():
                 em_dash_to_double_hyphen=args.em_dash_to_double_hyphen,
             )
             if not text:
-                print(f"WARNING: empty text result for {img_path}", file=sys.stderr)
+                print(f"WARNING: empty text result for {img_path}", file=sys.stderr)  # noqa: T201  # CLI output
 
             # The canonical ``.txt`` is written *last* (after the json
             # sidecar, diagnostic snapshots, and illustration crops) so
@@ -784,10 +787,8 @@ def main():
                 try:
                     doc.to_json_file(json_tmp)
                 except BaseException:
-                    try:
+                    with contextlib.suppress(FileNotFoundError):
                         json_tmp.unlink()
-                    except FileNotFoundError:
-                        pass
                     raise
                 os.replace(json_tmp, json_path)
                 extra_paths.append(str(json_path))
@@ -801,7 +802,7 @@ def main():
                     post_noise_txt=diag_paths["post_noise_txt"],
                 )
                 for note in notes:
-                    print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)
+                    print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)  # noqa: T201  # CLI output
                 extra_paths.extend(str(p) for p in written)
             # Only advertise the layout-debug artifact when reorganize_page
             # actually ran — that is the codepath in pd-book-tools that
@@ -814,7 +815,7 @@ def main():
             if args.extract_illustrations and page_layout is not None and cv2 is not None:
                 source_img = cv2.imread(str(img_path))
                 if source_img is None:
-                    print(
+                    print(  # noqa: T201  # CLI output
                         f"WARNING: could not re-read {img_path} for illustration crops",
                         file=sys.stderr,
                     )
@@ -836,11 +837,9 @@ def main():
                         crop_tmp = crop_path.with_name(f".{crop_path.stem}.tmp{crop_path.suffix}")
                         ok = cv2.imwrite(str(crop_tmp), crop)
                         if not ok:
-                            try:
+                            with contextlib.suppress(FileNotFoundError):
                                 crop_tmp.unlink()
-                            except FileNotFoundError:
-                                pass
-                            print(
+                            print(  # noqa: T201  # CLI output
                                 f"WARNING: cv2.imwrite failed for {crop_path}",
                                 file=sys.stderr,
                             )
@@ -856,9 +855,9 @@ def main():
 
             tag = " (no-reorg)" if args.no_reorg else ""
             if extra_paths:
-                print(f"-> {out_path}, {', '.join(extra_paths)}{tag}")
+                print(f"-> {out_path}, {', '.join(extra_paths)}{tag}")  # noqa: T201  # CLI output
             else:
-                print(f"-> {out_path}{tag}")
+                print(f"-> {out_path}{tag}")  # noqa: T201  # CLI output
             processed += 1
         except KeyboardInterrupt:
             # ``KeyboardInterrupt`` inherits from ``BaseException`` and so
@@ -866,7 +865,7 @@ def main():
             # this branch, Ctrl-C mid-batch escapes the for-loop entirely,
             # skipping the end-of-batch summary, the update-thread join, and
             # the deterministic exit code. (B20)
-            print()  # close the unterminated ``Processing X ...`` line
+            print()  # close the unterminated ``Processing X ...`` line  # noqa: T201  # CLI output
             interrupted = True
             break
         except Exception as e:
@@ -877,8 +876,8 @@ def main():
             # gluing onto this one. The ``page is None`` and
             # ``KeyboardInterrupt`` siblings already do this; this
             # branch had been the one gap. (B17)
-            print()
-            print(f"ERROR processing {img_path}: {e}", file=sys.stderr)
+            print()  # noqa: T201  # CLI output
+            print(f"ERROR processing {img_path}: {e}", file=sys.stderr)  # noqa: T201  # CLI output
             if _env_truthy("PD_OCR_DEBUG"):
                 import traceback
 
@@ -890,15 +889,15 @@ def main():
     if _update_thread is not None:
         _update_thread.join(timeout=3)
     if interrupted:
-        print(
+        print(  # noqa: T201  # CLI output
             f"Interrupted after {processed}/{len(images)} image(s); {errors} error(s) so far.",
             file=sys.stderr,
         )
         sys.exit(130)
     if errors:
-        print(f"Done ({errors} error(s)).")
+        print(f"Done ({errors} error(s)).")  # noqa: T201  # CLI output
         sys.exit(1)
-    print("Done.")
+    print("Done.")  # noqa: T201  # CLI output
 
 
 if __name__ == "__main__":

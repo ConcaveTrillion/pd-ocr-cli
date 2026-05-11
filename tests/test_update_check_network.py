@@ -285,7 +285,8 @@ def test_tags_request_sets_explicit_user_agent(monkeypatch):
 
     ua = captured.get("ua")
     assert ua is not None, (
-        f"Request must set an explicit User-Agent header (headers seen: {captured.get('headers')!r})"
+        f"Request must set an explicit User-Agent header "
+        f"(headers seen: {captured.get('headers')!r})"
     )
     assert "pd-ocr-cli" in ua, f"User-Agent must identify pd-ocr-cli (got: {ua!r})"
     assert "0.5.0" in ua, f"User-Agent must include the package version (got: {ua!r})"
