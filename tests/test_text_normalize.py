@@ -28,7 +28,7 @@ from pd_ocr_cli._text_normalize import normalize_curly_quotes, normalize_em_dash
 
 @pytest.mark.parametrize(
     "src",
-    ["’", "’", "‚", "‛"],  # noqa: RUF001
+    ["\u2018", "\u2019", "\u201a", "\u201b"],  # U+2018/9/201A/B curly single quotes
 )
 def test_normalize_curly_single_quotes(src):
     assert normalize_curly_quotes(src) == "'"
@@ -67,7 +67,7 @@ def test_normalize_em_dash_multiple():
 
 def test_normalize_em_dash_no_dash():
     # U+2013 en dash is intentionally left alone (only U+2014 em dash is replaced).
-    src = "no dashes here, just hyphens - and en-dashes –"  # noqa: RUF001
+    src = "no dashes here, just hyphens - and en-dashes \u2013"  # U+2013 EN DASH
     assert normalize_em_dash(src) == src
 
 
