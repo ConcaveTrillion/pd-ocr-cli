@@ -40,3 +40,9 @@ Full target list: `make help`. Full dev setup: [`DEVELOPMENT.md`](DEVELOPMENT.md
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — open priorities.
 - [`docs/layout-aware-ocr.md`](docs/layout-aware-ocr.md) — layout-aware OCR behavior.
 - [`docs/usage.md`](docs/usage.md) — end-user usage reference.
+
+## Spec lifecycle
+
+Design spec files (`docs/specs/<date>-<topic>-design.md`) live in `docs/specs/` while the
+milestone's chore issues are open. When the last chore closes and the implementation ships,
+move the file to `docs/architecture/` and commit. See workspace `docs/conventions.md`.
