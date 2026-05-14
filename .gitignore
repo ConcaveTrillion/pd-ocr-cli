@@ -24,3 +24,6 @@ Makefile.local
 
 # Hourly-regenerated spec-chain dashboard — workspace-only artifact, not source.
 docs/spec-chain-report.md
+
+# AI=1 make output capture log
+.ci-ai.log

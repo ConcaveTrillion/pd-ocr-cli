@@ -1,3 +1,17 @@
+AI ?=
+LOG := .ci-ai.log
+
+ifdef AI
+_goals := $(or $(MAKECMDGOALS),ci)
+.PHONY: $(_goals)
+$(_goals):
+	@rm -f $(LOG)
+	@$(MAKE) --no-print-directory AI= $@ > $(LOG) 2>&1 \
+		&& echo "✅ $@ passed (log: $(LOG))" \
+		|| (echo "❌ $@ failed:"; uv run scripts/ai-filter-log.py $(LOG); echo "(full log: $(LOG))"; exit 1)
+
+else
+
 .PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format pre-commit-check test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
@@ -231,3 +245,5 @@ run-local: check-local-editable ## [local-dev] Run pd-ocr against the local edit
 
 python-local: check-local-editable ## [local-dev] Run python against the local editable workspace; pass ARGS="..."
 	env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run python $(ARGS)
+
+endif
