@@ -1,13 +1,5 @@
 name: ci
 
-# Fast safety net for PRs and pushes to main. Mirrors the local
-# `make ci` flow: lint + format check + fast pytest suite + build sanity.
-#
-# The slow integration suite (`make ci-slow`) is NOT run in CI — it
-# downloads ~150 MB of OCR models from Hugging Face and is too flaky /
-# expensive to run on every PR. The release flow gates the slow suite
-# locally via `scripts/do-release.sh` before any tag is created.
-
 on:
   push:
     branches: [main]
@@ -18,35 +10,17 @@ permissions:
   contents: read
 
 jobs:
-  lint-and-test:
-    name: lint + fast tests
+  ci:
+    name: ci
     runs-on: ubuntu-latest
+    env:
+      UV_PYTHON: "3.13"
+      CUDA_VISIBLE_DEVICES: ""
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # hatch-vcs needs git history to derive the version
-
-      # astral-sh/setup-uv stopped publishing floating major/minor tags from v8
-      # onward (immutable-release policy, see v8.0.0 notes), so this pins to a
-      # specific release rather than `@v8`. Bump manually when upgrading.
-      - uses: astral-sh/setup-uv@v8.1.0
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v4
         with:
           version: latest
-
-      - name: Set up Python
-        run: uv python install 3.12
-
-      - name: Sync deps
-        run: uv sync --group dev
-
-      - name: Lint (ruff check)
-        run: uv run ruff check
-
-      - name: Format check (ruff format --check)
-        run: uv run ruff format --check
-
-      - name: Fast pytest suite
-        run: uv run pytest tests/ -v
-
-      - name: Build sanity-check (wheel + sdist)
-        run: uv build
+      - run: make ci
