@@ -20,10 +20,10 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | `make release-{patch,minor,major}` | tag locally; `git push --tags` triggers release workflow |
 | `make refresh-version` | re-derive `pd-ocr --version` after tag changes (hatch-vcs) |
 
-AI output capture is **on by default** — verbose output goes to `.ci-ai.log`;
-stdout shows `✅ <target> passed` on success or filtered failure sections on
-error. Pass `AI=` explicitly only if you need full verbose output for
-debugging: `make ci AI=`.
+Always pass `AI=1` to make targets: `make ci AI=1`, `make test AI=1`, etc.
+This captures verbose output to `.ci-ai.log` and prints only `✅ <target>
+passed` on success or filtered failure sections on error. Remove `AI=1` only
+if you need full verbose output for debugging.
 
 Full target list: `make help`. Full dev setup: [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
