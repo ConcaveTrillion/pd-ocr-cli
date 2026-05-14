@@ -1,4 +1,4 @@
-AI ?=
+AI ?= 1  # pass AI= to get full verbose output
 LOG := .ci-ai.log
 
 ifdef AI
