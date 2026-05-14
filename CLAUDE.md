@@ -20,6 +20,11 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | `make release-{patch,minor,major}` | tag locally; `git push --tags` triggers release workflow |
 | `make refresh-version` | re-derive `pd-ocr --version` after tag changes (hatch-vcs) |
 
+Append `AI=1` to any target for agent-friendly output — verbose output is
+captured to `.ci-ai.log`; stdout shows `✅ <target> passed` on success or
+filtered failure sections on error. Works for every target: `make ci AI=1`,
+`make test AI=1`, etc.
+
 Full target list: `make help`. Full dev setup: [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
 ## Rules
