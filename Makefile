@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format pre-commit-check test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
 # [tool.coverage.report] fail_under so any direct `coverage report` run also
@@ -110,6 +110,9 @@ pre-commit-check: ## Run pre-commit on all files
 	@echo "🪝 Running pre-commit on all files..."
 	uv run pre-commit run --all-files
 
+typecheck: ## Run basedpyright at recommended mode (workspace canonical)
+	uv run basedpyright pd_ocr_cli --level error
+
 test: ## Run the pytest suite (skips @pytest.mark.slow integration tests)
 	@echo "🧪 Running tests..."
 	uv run pytest tests/ -v
@@ -132,10 +135,11 @@ build: ## Build the project
 	@echo "🔨 Building project..."
 	uv build
 
-ci: ## Run fast CI pipeline (setup → pre-commit → coverage → build); enforces COV_FAIL_UNDER (default 100)
+ci: ## Run fast CI pipeline (setup → pre-commit → typecheck → coverage → build); enforces COV_FAIL_UNDER (default 100)
 	@echo "🚀 Running fast CI pipeline..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check
+	@$(MAKE) --no-print-directory typecheck
 	@$(MAKE) --no-print-directory coverage
 	@$(MAKE) --no-print-directory build
 	@echo "✅ CI pipeline complete!"

@@ -162,7 +162,7 @@ def _load_validate_word_preservation() -> Any:
     return validate_word_preservation
 
 
-def _load_illustration_deps() -> tuple[Any, set]:
+def _load_illustration_deps() -> tuple[Any, set[Any]]:
     """Return ``(cv2_module, crop_types_set)`` used during illustration cropping."""
     import cv2 as _cv2
     from pd_book_tools.layout.types import RegionType
@@ -661,7 +661,7 @@ def main() -> None:
         print("Layout detection disabled (--layout-model none).")  # noqa: T201  # CLI output
 
     cv2: Any | None = None
-    crop_types: set = set()
+    crop_types: set[Any] = set()
     if args.extract_illustrations:
         cv2, crop_types = _load_illustration_deps()
 
@@ -729,7 +729,7 @@ def main() -> None:
             want_diagnostic_export = (
                 do_reorg and args.save_json and args.save_reorganize_diagnostics
             )
-            pre_reorg_words: list = []
+            pre_reorg_words: list[Any] = []
             if do_reorg and args.validate_reorg:
                 pre_reorg_words = list(page.words)
 

@@ -8,9 +8,11 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 
 try:
-    VERSION = _pkg_version("pd-ocr-cli")
+    _detected_version: str = _pkg_version("pd-ocr-cli")
 except PackageNotFoundError:  # pragma: no cover - only fires if package metadata is missing
-    VERSION = "unknown"
+    _detected_version = "unknown"
+
+VERSION: str = _detected_version
 
 _GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
 _INSTALL_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/install.sh"
@@ -36,7 +38,7 @@ def _parse_release_prefix(version: str) -> tuple[int, int, int] | None:
     return a, b, c
 
 
-def _latest_stable_tag(tags: list[dict]) -> tuple[str, tuple[int, int, int]] | None:
+def _latest_stable_tag(tags: list[dict[str, str]]) -> tuple[str, tuple[int, int, int]] | None:
     """Return (tag_name, parsed_version) for the highest stable semver tag."""
     best: tuple[str, tuple[int, int, int]] | None = None
     for tag in tags:
