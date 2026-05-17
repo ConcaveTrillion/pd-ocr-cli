@@ -69,14 +69,14 @@ def check_for_update() -> None:
         # Identify ourselves explicitly. urllib's default ``Python-urllib/3.x``
         # User-Agent is generic and GitHub may rate-limit it more aggressively;
         # a clear application UA also helps GitHub diagnose abuse if it occurs.
-        req = urllib.request.Request(
+        req = urllib.request.Request(  # noqa: S310  # https:// URL only; no file:// risk
             url,
             headers={
                 "Accept": "application/vnd.github+json",
                 "User-Agent": f"pd-ocr-cli/{VERSION}",
             },
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310  # https:// URL only
             payload = json.loads(resp.read())
         # GitHub error responses (rate-limit, auth required, repo unavailable)
         # return a JSON *dict* like ``{"message": "API rate limit exceeded ...",
@@ -113,5 +113,5 @@ def check_for_update() -> None:
                 f"    curl -sSL {_INSTALL_URL} | sh\n",
                 file=sys.stderr,
             )
-    except Exception:
+    except Exception:  # noqa: BLE001 S110  # update check is best-effort; any failure is safe to swallow
         pass  # Version check is best-effort

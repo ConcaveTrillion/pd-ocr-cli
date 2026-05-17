@@ -11,6 +11,10 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import argparse
 
 from pd_book_tools.hf import (
     DEFAULT_DET_FILENAME,
@@ -54,7 +58,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-def resolve_ocr_models(args) -> tuple[Path, Path]:
+def resolve_ocr_models(args: argparse.Namespace) -> tuple[Path, Path]:
     """Return ``(det_path, reco_path)`` from argparse-shaped CLI args.
 
     Validates the partial-input case (one of ``--detection``/``--recognition``
@@ -86,14 +90,14 @@ def resolve_ocr_models(args) -> tuple[Path, Path]:
         sys.exit(1)
 
 
-def det_source_descriptor(args, det_path: Path) -> str:
+def det_source_descriptor(args: argparse.Namespace, det_path: Path) -> str:
     """Human-readable source string for the detection model."""
     if args.detection:
         return str(det_path)
     return f"{args.hf_repo}/{args.det_filename}@{short_revision(args.model_version)}"
 
 
-def reco_source_descriptor(args, reco_path: Path) -> str:
+def reco_source_descriptor(args: argparse.Namespace, reco_path: Path) -> str:
     """Human-readable source string for the recognition model."""
     if args.recognition:
         return str(reco_path)
@@ -105,6 +109,6 @@ def reco_source_descriptor(args, reco_path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def resolve_layout_source(args) -> tuple[str | None, str | None, str]:
+def resolve_layout_source(args: argparse.Namespace) -> tuple[str | None, str | None, str]:
     """Return ``(repo, revision, descriptor)`` from argparse-shaped args."""
     return _resolve_layout_source_kwargs(args.layout_model, args.layout_checkpoint)

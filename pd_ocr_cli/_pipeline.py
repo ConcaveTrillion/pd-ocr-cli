@@ -17,9 +17,8 @@ import contextlib
 import json
 import os
 import sys
-from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pd_ocr_cli._text_normalize import (
     normalize_curly_quotes as _normalize_curly_quotes,
@@ -27,6 +26,10 @@ from pd_ocr_cli._text_normalize import (
 from pd_ocr_cli._text_normalize import (
     normalize_em_dash as _normalize_em_dash,
 )
+
+if TYPE_CHECKING:
+    import argparse
+    from collections.abc import Iterable, Iterator
 
 # ---------------------------------------------------------------------------
 # Atomic file writes
@@ -124,7 +127,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 # ---------------------------------------------------------------------------
 
 
-def validate_extract_illustrations(args) -> None:
+def validate_extract_illustrations(args: argparse.Namespace) -> None:
     """Exit if ``--extract-illustrations`` is paired with ``--layout-model none``.
 
     Cropping illustration regions needs a real layout model — refuse the
@@ -244,7 +247,7 @@ _LAYOUT_DEBUG_ENV = "PD_OCR_LAYOUT_DEBUG"
 _LAYOUT_DEBUG_FILE_ENV = "PD_OCR_LAYOUT_DEBUG_FILE"
 
 
-def setup_layout_debug_env(args, dest_dir: Path, img_stem: str) -> Path | None:
+def setup_layout_debug_env(args: argparse.Namespace, dest_dir: Path, img_stem: str) -> Path | None:
     """Configure the layout-debug env vars and return the debug file path.
 
     Returns ``None`` when ``--layout-debug`` was not passed. The caller is
@@ -282,8 +285,7 @@ def format_drops_warning(drops: list[str], source_name: str, *, max_lines: int =
     if not drops:
         return []
     lines = [f"WARNING: reorganize dropped {len(drops)} word(s) in {source_name}:"]
-    for entry in drops[:max_lines]:
-        lines.append(f"  {entry}")
+    lines.extend(f"  {entry}" for entry in drops[:max_lines])
     if len(drops) > max_lines:
         lines.append(f"  ... ({len(drops) - max_lines} more)")
     return lines

@@ -128,14 +128,14 @@ def _detect_torch_device() -> str:
 # ---------------------------------------------------------------------------
 
 
-def _load_predictor(det_path: Path, reco_path: Path):
+def _load_predictor(det_path: Path, reco_path: Path) -> Any:
     """Import doctr support and build the fine-tuned predictor."""
     from pd_book_tools.ocr.doctr_support import get_finetuned_torch_doctr_predictor
 
     return get_finetuned_torch_doctr_predictor(det_path, reco_path)
 
 
-def _load_layout_detector(args, device: str):
+def _load_layout_detector(args: argparse.Namespace, device: str) -> Any:
     """Import the layout module and instantiate the configured detector."""
     silence_transformers_load_chatter()
     from pd_book_tools.layout import get_detector
@@ -148,14 +148,14 @@ def _load_layout_detector(args, device: str):
     )
 
 
-def _load_document_factory():
+def _load_document_factory() -> Any:
     """Return the ``Document.from_image_ocr_via_doctr`` callable."""
     from pd_book_tools.ocr.document import Document
 
     return Document.from_image_ocr_via_doctr
 
 
-def _load_validate_word_preservation():
+def _load_validate_word_preservation() -> Any:
     """Return the ``validate_word_preservation`` reorganize-checker."""
     from pd_book_tools.ocr.reorganize_page_utils import validate_word_preservation
 
@@ -220,7 +220,7 @@ def _should_nudge_gpu_install() -> bool:
         except ImportError:
             # The expected case for the nudge: CuPy not installed.
             pass
-        except BaseException:
+        except BaseException:  # noqa: BLE001  # broken CuPy (native segfault) — must stay silent
             # CuPy installed but broken (segfaulting native lib, etc.) —
             # not our problem to diagnose. Stay silent.
             return False
@@ -236,7 +236,7 @@ def _should_nudge_gpu_install() -> bool:
             return False
         try:
             proc = subprocess.run(
-                ["nvidia-smi"],
+                ["nvidia-smi"],  # noqa: S607  # partial path: nvidia-smi is always on PATH when present
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
                 timeout=2,
@@ -250,7 +250,7 @@ def _should_nudge_gpu_install() -> bool:
 
     try:
         result = _probe()
-    except BaseException:
+    except BaseException:  # noqa: BLE001  # outer safety net — nudge helper must never raise
         # Defensive: nothing in the probe should leak past the inner
         # ``try`` blocks, but a blanket guard makes the contract
         # explicit — the nudge helper must not raise.
@@ -271,17 +271,17 @@ def _maybe_print_gpu_nudge() -> None:
                 "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
                 "        Re-run the install script to switch to GPU "
                 "(requires CUDA >= 12.4):\n"
-                "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"  # noqa: E501  # URL cannot be broken
+                "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"  # URL cannot be broken
                 "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message.",
                 file=sys.stderr,
             )
-    except BaseException:
+    except BaseException:  # noqa: BLE001 S110  # nudge must never crash pd-ocr; silent pass is correct
         # A bug in the nudge must never break pd-ocr's actual job.
         pass
 
 
 def _confidence_threshold(s: str) -> float:
-    """argparse type for --layout-confidence: finite float in [0.0, 1.0].
+    """Argparse type for --layout-confidence: finite float in [0.0, 1.0].
 
     Plain ``type=float`` happily accepts ``nan``, ``inf``, ``-inf``,
     negatives, and values >1. ``nan`` silently disables the crop
@@ -303,7 +303,8 @@ def _confidence_threshold(s: str) -> float:
     return v
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
+    """Parse and return the CLI arguments for ``pd-ocr``."""
     p = argparse.ArgumentParser(
         description="OCR images to .txt using fine-tuned detection + recognition models."
     )
@@ -551,7 +552,8 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
     return images
 
 
-def main():
+def main() -> None:
+    """Entry point for the ``pd-ocr`` CLI command."""
     args = parse_args()
 
     validate_extract_illustrations(args)
@@ -869,7 +871,7 @@ def main():
             print()  # close the unterminated ``Processing X ...`` line  # noqa: T201  # CLI output
             interrupted = True
             break
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001  # per-image error: catch all, report, continue batch
             # Close the unterminated ``Processing X ...`` stdout line
             # (printed with ``end=" "``) before the stderr message so
             # the next image's ``Processing`` line — and the eventual
