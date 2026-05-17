@@ -166,7 +166,18 @@ root = "tests"
 markers = [
     "slow: end-to-end tests that download a pinned model and run the OCR pipeline (opt in with --run-slow).",
 ]
-addopts = "--cov=pd_ocr_cli --cov-report=term-missing:skip-covered"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=pd_ocr_cli",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+]
+filterwarnings = [
+    "error",
+    # Add ignores below as new warnings surface -- each with a comment.
+]
 
 [tool.coverage.run]
 source = ["pd_ocr_cli"]
