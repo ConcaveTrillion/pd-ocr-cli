@@ -85,8 +85,8 @@ Implementation pass should:
   `Editable project location:`; fall back to a `.venv/`-anchored
   marker; last-resort `PD_DEV_LOCAL=1` opt-in).
 - Make `upgrade-deps` refuse by default when dev-local is detected,
-  pointing at a new `upgrade-deps-local` recipe that does lock + sync
-  + dev-local restore in one shot.
+  pointing at a new `upgrade-deps-local` recipe that does
+  lock + sync + dev-local restore in one shot.
 - Audit sibling recipes that also rebuild the venv (`setup`, `reset`,
   `ci`, `ci-slow`) — they may need the same guard. Out of scope for
   the first pass; track separately.

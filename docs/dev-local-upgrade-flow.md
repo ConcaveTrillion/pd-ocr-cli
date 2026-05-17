@@ -17,7 +17,7 @@ A `dev-local` venv is materially different from the canonical one:
 - The `[gpu]` extras of `pd-book-tools` (CuPy etc.) may be present.
 
 `uv sync` doesn't know any of that; it resolves against `pyproject.toml`
-+ `uv.lock` and rewrites the venv to match. The user loses their
+and `uv.lock` and rewrites the venv to match. The user loses their
 in-tree editable, the GPU extras, and any non-pinned `doctr`. The
 breakage is silent — the next `pd-ocr` invocation just quietly runs
 against the canonical pin.
@@ -56,7 +56,7 @@ this doc captures the contract on the `pd-ocr-cli` side.
 
    Approximate message shape:
 
-   ```
+   ```text
    ⚠️  Detected dev-local venv (pd-book-tools editable at ../pd-book-tools).
        Running `uv sync` here would revert the venv to the canonical baseline.
        Use:  make upgrade-deps-local   (lock + sync + restore dev-local)
