@@ -427,10 +427,10 @@ def diagnostic_output_paths(json_path: Path, txt_path: Path) -> dict[str, Path]:
 
 
 def iter_crop_regions(
-    regions: Iterable,
+    regions: Iterable[Any],
     confidence_threshold: float,
-    crop_types: set,
-) -> Iterator[tuple[int, object]]:
+    crop_types: set[Any],
+) -> Iterator[tuple[int, Any]]:
     """Yield ``(1-based_index, region)`` pairs for regions worth cropping.
 
     Filters by region type (must be in ``crop_types``) and minimum

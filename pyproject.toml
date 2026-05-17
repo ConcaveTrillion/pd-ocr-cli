@@ -37,6 +37,7 @@ Repository = "https://github.com/ConcaveTrillion/pd-ocr-cli"
 
 [dependency-groups]
 dev = [
+    "basedpyright>=1.39.4",
     "pre-commit>=4.6.0",
     "pytest>=8.3",
     "pytest-cov>=7.0.0",
@@ -65,13 +66,15 @@ select = ["E", "F", "W", "I", "N", "B", "SIM", "UP", "RUF", "ERA", "T20"]
 # CLI scripts and fixture scripts — print() is the output mechanism
 "scripts/*.py" = ["T201"]
 
-[tool.pyright]
+[tool.basedpyright]
 include = ["pd_ocr_cli", "tests"]
-typeCheckingMode = "basic"
+exclude = ["**/__pycache__", "**/.venv", "**/node_modules"]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
 
-[[tool.pyright.executionEnvironments]]
-root = "pd_ocr_cli"
-typeCheckingMode = "strict"
+[[tool.basedpyright.executionEnvironments]]
+root = "tests"
 
 [tool.pytest.ini_options]
 markers = [

@@ -72,6 +72,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from typing import Any
 
 from pd_book_tools.image_processing.formats import is_image_file
 
@@ -161,7 +162,7 @@ def _load_validate_word_preservation():
     return validate_word_preservation
 
 
-def _load_illustration_deps() -> tuple[object, set]:
+def _load_illustration_deps() -> tuple[Any, set]:
     """Return ``(cv2_module, crop_types_set)`` used during illustration cropping."""
     import cv2 as _cv2
     from pd_book_tools.layout.types import RegionType
@@ -215,7 +216,7 @@ def _should_nudge_gpu_install() -> bool:
         if _env_truthy("PD_OCR_NO_GPU_NUDGE"):
             return False
         try:
-            import cupy  # noqa: F401  # import-only probe: success means GPU stack active
+            import cupy  # noqa: F401  # import-only probe: success means GPU stack active  # pyright: ignore[reportMissingImports]  # optional GPU dep
         except ImportError:
             # The expected case for the nudge: CuPy not installed.
             pass
@@ -657,7 +658,7 @@ def main():
     else:
         print("Layout detection disabled (--layout-model none).")  # noqa: T201  # CLI output
 
-    cv2 = None
+    cv2: Any | None = None
     crop_types: set = set()
     if args.extract_illustrations:
         cv2, crop_types = _load_illustration_deps()

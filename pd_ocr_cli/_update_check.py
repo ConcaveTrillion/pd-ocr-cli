@@ -23,7 +23,8 @@ def _parse_stable_tag(version: str) -> tuple[int, int, int] | None:
     match = _STABLE_TAG_RE.match(version.strip())
     if not match:
         return None
-    return tuple(int(part) for part in match.groups())
+    a, b, c = (int(p) for p in match.groups())
+    return a, b, c
 
 
 def _parse_release_prefix(version: str) -> tuple[int, int, int] | None:
@@ -31,7 +32,8 @@ def _parse_release_prefix(version: str) -> tuple[int, int, int] | None:
     match = _RELEASE_PREFIX_RE.match(version.strip())
     if not match:
         return None
-    return tuple(int(part) for part in match.groups())
+    a, b, c = (int(p) for p in match.groups())
+    return a, b, c
 
 
 def _latest_stable_tag(tags: list[dict]) -> tuple[str, tuple[int, int, int]] | None:
