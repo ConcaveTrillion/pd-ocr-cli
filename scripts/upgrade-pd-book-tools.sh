@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # upgrade-pd-book-tools.sh — repin pd-book-tools to its latest published version.
 #
-# pd-book-tools is published on the self-hosted pd-index PEP 503 index at
-# https://concavetrillion.github.io/pd-index/simple/. This script fetches
+# pd-book-tools is published on the self-hosted pd-index-pip PEP 503 index at
+# https://concavetrillion.github.io/pd-index-pip/simple/. This script fetches
 # the index page, extracts the highest version from the wheel filenames, and
 # rewrites the version lower-bound in pyproject.toml, then runs `uv sync`
 # so the lock + venv update.
@@ -11,13 +11,13 @@
 
 set -euo pipefail
 
-PD_INDEX_URL="https://concavetrillion.github.io/pd-index/simple/pd-book-tools/"
+PD_INDEX_URL="https://concavetrillion.github.io/pd-index-pip/simple/pd-book-tools/"
 
-echo "Fetching pd-book-tools versions from pd-index..."
+echo "Fetching pd-book-tools versions from pd-index-pip..."
 INDEX_HTML=$(curl -sSf "$PD_INDEX_URL" 2>/dev/null || true)
 
 if [ -z "$INDEX_HTML" ]; then
-    echo "❌ Could not reach pd-index at ${PD_INDEX_URL}" >&2
+    echo "❌ Could not reach pd-index-pip at ${PD_INDEX_URL}" >&2
     exit 1
 fi
 

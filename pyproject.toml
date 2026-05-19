@@ -49,12 +49,12 @@ dev = [
 ]
 
 [[tool.uv.index]]
-name = "pd-index"
-url = "https://concavetrillion.github.io/pd-index/simple/"
+name = "pd-index-pip"
+url = "https://concavetrillion.github.io/pd-index-pip/simple/"
 explicit = true
 
 [tool.uv.sources]
-pd-book-tools = { index = "pd-index" }
+pd-book-tools = { index = "pd-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"

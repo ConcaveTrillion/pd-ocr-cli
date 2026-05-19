@@ -68,13 +68,13 @@ jobs:
             dist/*.tar.gz
           fail_on_unmatched_files: true
 
-      # Notify ConcaveTrillion/pd-index so it regenerates the PEP 503
+      # Notify ConcaveTrillion/pd-index-pip so it regenerates the PEP 503
       # simple index right away. Without this, the index catches up via
       # its 15-min cron — fine, just slower for downstream installers.
       #
       # Requires repo secret PD_INDEX_DISPATCH_TOKEN (fine-grained PAT
       # with `Contents: read` + `Metadata: read` on
-      # ConcaveTrillion/pd-index — repository_dispatch on a foreign repo
+      # ConcaveTrillion/pd-index-pip — repository_dispatch on a foreign repo
       # needs Contents read/write per GitHub docs; create the PAT with
       # the minimum scope that makes the dispatch succeed).
       #
@@ -88,8 +88,8 @@ jobs:
             echo "::warning::PD_INDEX_DISPATCH_TOKEN is not set; index will catch up via 15-min cron"
             exit 0
           fi
-          gh api -X POST /repos/ConcaveTrillion/pd-index/dispatches \
+          gh api -X POST /repos/ConcaveTrillion/pd-index-pip/dispatches \
             -f event_type=pd-release-published \
             -F 'client_payload[repo]=pd-ocr-cli' \
             -F "client_payload[tag]=${{ github.ref_name }}" || \
-            echo "::warning::pd-index dispatch failed; index will catch up via 15-min cron"
+            echo "::warning::pd-index-pip dispatch failed; index will catch up via 15-min cron"

@@ -14,7 +14,7 @@ set -e
 #   in pd-book-tools >= v0.11.0 (the release that moved those heavy deps
 #   from mandatory into an optional [gpu] group).
 #
-# pd-book-tools is published on a self-hosted PEP 503 index (pd-index) so
+# pd-book-tools is published on a self-hosted PEP 503 index (pd-index-pip) so
 # the wheel's Requires-Dist entry resolves automatically when we pass
 # --extra-index-url to uv — no manual git-pin fetch needed.
 #
@@ -32,7 +32,7 @@ fi
 
 EXTRA_INDEX=""
 PD_BOOK_TOOLS_EXTRAS=""
-PD_INDEX_URL="https://concavetrillion.github.io/pd-index/simple/"
+PD_INDEX_URL="https://concavetrillion.github.io/pd-index-pip/simple/"
 
 # Auto-detect NVIDIA CUDA
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -119,7 +119,7 @@ fi
 
 echo "Latest release: ${RELEASE_TAG:-(unknown tag)}"
 echo "Wheel asset:    ${WHEEL_URL}"
-echo "pd-index:       ${PD_INDEX_URL}"
+echo "pd-index-pip:       ${PD_INDEX_URL}"
 
 # ---------------------------------------------------------------------------
 # Download the wheel to a temp dir and install.
@@ -144,7 +144,7 @@ echo "Installing pd-ocr ${RELEASE_TAG:-} from $(basename "$WHEEL_FILE")..."
 # Build the install command incrementally so we only emit flags when relevant.
 # POSIX sh has no arrays — use `set --` to manage args.
 #
-# pd-book-tools is published on the self-hosted pd-index (GitHub Pages PEP 503
+# pd-book-tools is published on the self-hosted pd-index-pip (GitHub Pages PEP 503
 # index); pass --extra-index-url so uv can resolve the Requires-Dist entry
 # that the wheel's METADATA carries.  When CUDA >= 12.4 was detected above,
 # $PD_BOOK_TOOLS_EXTRAS is "[gpu]"; we pass --with to pull that extra in.
