@@ -155,7 +155,7 @@ fi
 if [ -n "$EXTRA_INDEX" ]; then
     set -- "$@" --extra-index-url "$EXTRA_INDEX"
 fi
-uv tool install "$@"
+uv tool install --python 3.13 "$@"
 
 echo ""
 echo "Done! Run: pd-ocr page.png"

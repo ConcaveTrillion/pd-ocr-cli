@@ -93,9 +93,9 @@ if ($BookToolsExtras) {
 }
 
 if ($ExtraIndex) {
-    uv tool install --reinstall $InstallRef --extra-index-url $ExtraIndex
+    uv tool install --python 3.13 --reinstall $InstallRef --extra-index-url $ExtraIndex
 } else {
-    uv tool install --reinstall $InstallRef
+    uv tool install --python 3.13 --reinstall $InstallRef
 }
 
 Write-Host ""
