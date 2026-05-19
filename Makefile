@@ -115,7 +115,7 @@ typecheck: ## Run basedpyright at recommended mode (workspace canonical)
 
 test: ## Run the pytest suite (skips @pytest.mark.slow integration tests)
 	@echo "🧪 Running tests..."
-	uv run pytest tests/ -v
+	uv run pytest tests/ -v -n auto
 
 test-slow: ## Run the full pytest suite including slow integration tests (downloads pinned model on first run)
 	@echo "🧪 Running tests (including slow)..."
