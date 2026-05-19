@@ -216,10 +216,13 @@ def test_ocr_save_reorganize_diagnostics_writes_full_bundle(
     post_noise_txt = tmp_path / "title_page_001.post-noise.txt"
 
     assert txt.exists()
-    assert json_.exists() and json_.stat().st_size > 0
-    assert pure_ocr_json.exists() and pure_ocr_json.stat().st_size > 0
+    assert json_.exists()
+    assert json_.stat().st_size > 0
+    assert pure_ocr_json.exists()
+    assert pure_ocr_json.stat().st_size > 0
     assert pure_ocr_txt.exists()
-    assert post_noise_json.exists() and post_noise_json.stat().st_size > 0
+    assert post_noise_json.exists()
+    assert post_noise_json.stat().st_size > 0
     assert post_noise_txt.exists()
 
 

@@ -640,7 +640,9 @@ def test_main_noise_drop_warning_always_fires(patched_main, monkeypatch, tmp_pat
     err = capsys.readouterr().err
     assert "page.png" in err
     assert "dropped 3 word(s)" in err
-    assert '"foo"' in err and '"bar"' in err and '"baz"' in err
+    assert '"foo"' in err
+    assert '"bar"' in err
+    assert '"baz"' in err
     # Hint references the current flag name (plus --save-json which it requires).
     assert "--save-reorganize-diagnostics" in err
 
@@ -785,7 +787,8 @@ def test_main_no_reorg_with_save_diag_warns(patched_main, monkeypatch, tmp_path,
     )
 
     err = capsys.readouterr().err
-    assert "--no-reorg" in err and "--save-reorganize-diagnostics" in err
+    assert "--no-reorg" in err
+    assert "--save-reorganize-diagnostics" in err
     assert "warning" in err.lower()
 
 
@@ -813,7 +816,8 @@ def test_main_no_reorg_with_validate_reorg_warns(patched_main, monkeypatch, tmp_
     )
 
     err = capsys.readouterr().err
-    assert "--no-reorg" in err and "--validate-reorg" in err
+    assert "--no-reorg" in err
+    assert "--validate-reorg" in err
     assert "warning" in err.lower()
 
 
@@ -840,7 +844,8 @@ def test_main_layout_none_with_layout_debug_warns(patched_main, monkeypatch, tmp
     )
 
     err = capsys.readouterr().err
-    assert "--layout-model none" in err and "--layout-debug" in err
+    assert "--layout-model none" in err
+    assert "--layout-debug" in err
     assert "warning" in err.lower()
 
 
@@ -871,7 +876,8 @@ def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
 
     captured = capsys.readouterr()
     err = captured.err
-    assert "--no-reorg" in err and "--layout-debug" in err
+    assert "--no-reorg" in err
+    assert "--layout-debug" in err
     assert "warning" in err.lower()
     # Success line must not falsely advertise a layout-debug artifact.
     assert "layout-debug:" not in captured.out
@@ -903,7 +909,8 @@ def test_main_layout_debug_dir_without_layout_debug_warns(
     )
 
     err = capsys.readouterr().err
-    assert "--layout-debug-dir" in err and "--layout-debug" in err
+    assert "--layout-debug-dir" in err
+    assert "--layout-debug" in err
     assert "warning" in err.lower()
 
 
@@ -933,7 +940,8 @@ def test_main_no_reorg_with_experimental_drop_layout_words_warns(
     )
 
     err = capsys.readouterr().err
-    assert "--no-reorg" in err and "--experimental-drop-layout-words" in err
+    assert "--no-reorg" in err
+    assert "--experimental-drop-layout-words" in err
     assert "warning" in err.lower()
 
 
@@ -963,7 +971,8 @@ def test_main_save_reorganize_diagnostics_without_save_json_warns(
     )
 
     err = capsys.readouterr().err
-    assert "--save-reorganize-diagnostics" in err and "--save-json" in err
+    assert "--save-reorganize-diagnostics" in err
+    assert "--save-json" in err
     assert "warning" in err.lower()
 
 
@@ -1798,7 +1807,6 @@ def test_main_update_check_thread_disabled_via_flag(patched_main, monkeypatch, t
 
     def fake_starter(disabled):
         calls.append(disabled)
-        return None
 
     monkeypatch.setattr(ocr_to_txt, "_start_update_check_thread", fake_starter)
 

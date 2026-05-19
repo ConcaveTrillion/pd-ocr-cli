@@ -53,7 +53,7 @@ def test_no_update_check_flag_set():
 
 # --- Gate behavior -----------------------------------------------------------
 # The actual gate lives inside main() as:
-#     update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")  # noqa: ERA001 E501
+#     update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")  # noqa: ERA001
 # These tests exercise the equivalent compound condition end-to-end.
 
 

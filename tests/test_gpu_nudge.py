@@ -21,7 +21,6 @@ from pd_ocr_cli import ocr_to_txt
 def _reset_nudge_cache(monkeypatch):
     """Clear the process-level cache between tests so each one starts fresh."""
     monkeypatch.setattr(ocr_to_txt, "_GPU_NUDGE_CACHE", {})
-    yield
 
 
 # ---------------------------------------------------------------------------

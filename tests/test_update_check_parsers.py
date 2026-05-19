@@ -17,7 +17,7 @@ from pd_ocr_cli._update_check import (
 
 
 @pytest.mark.parametrize(
-    "tag,expected",
+    ("tag", "expected"),
     [
         ("v1.2.3", (1, 2, 3)),
         ("1.2.3", (1, 2, 3)),
@@ -48,7 +48,7 @@ def test_parse_stable_tag_rejects(tag):
 
 
 @pytest.mark.parametrize(
-    "version,expected",
+    ("version", "expected"),
     [
         ("1.2.3", (1, 2, 3)),
         ("v1.2.3", (1, 2, 3)),

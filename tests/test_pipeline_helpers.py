@@ -34,12 +34,12 @@ from pd_ocr_cli._pipeline import (
 
 
 def _ns(**overrides) -> SimpleNamespace:
-    base = dict(
-        layout_model="pp-doclayout-plus-l",
-        extract_illustrations=False,
-        layout_debug=False,
-        layout_debug_dir=None,
-    )
+    base = {
+        "layout_model": "pp-doclayout-plus-l",
+        "extract_illustrations": False,
+        "layout_debug": False,
+        "layout_debug_dir": None,
+    }
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -396,7 +396,9 @@ def test_format_noise_drop_warning_includes_count_and_sample_and_hint():
     joined = "\n".join(out)
     assert "page.png" in joined
     assert "dropped 3 word(s)" in joined
-    assert '"foo"' in joined and '"bar"' in joined and '"baz"' in joined
+    assert '"foo"' in joined
+    assert '"bar"' in joined
+    assert '"baz"' in joined
     assert "--save-reorganize-diagnostics" in joined
 
 

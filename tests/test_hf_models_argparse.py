@@ -30,16 +30,16 @@ from pd_ocr_cli._hf_models import (
 
 def _ns(**overrides) -> SimpleNamespace:
     """Build an argparse-shaped namespace with sensible defaults."""
-    base = dict(
-        hf_repo=DEFAULT_HF_REPO,
-        model_version=None,
-        det_filename=DEFAULT_DET_FILENAME,
-        reco_filename=DEFAULT_RECO_FILENAME,
-        detection=None,
-        recognition=None,
-        layout_model="pp-doclayout-plus-l",
-        layout_checkpoint=None,
-    )
+    base = {
+        "hf_repo": DEFAULT_HF_REPO,
+        "model_version": None,
+        "det_filename": DEFAULT_DET_FILENAME,
+        "reco_filename": DEFAULT_RECO_FILENAME,
+        "detection": None,
+        "recognition": None,
+        "layout_model": "pp-doclayout-plus-l",
+        "layout_checkpoint": None,
+    }
     base.update(overrides)
     return SimpleNamespace(**base)
 
