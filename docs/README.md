@@ -3,7 +3,7 @@
 How documentation is organized in this repo.
 
 | Folder | Purpose | Use when |
-|---|---|---|
+| --- | --- | --- |
 | `architecture/` | Durable reference — how the system works today. | Capturing current shape (modules, data flow, contracts, current-state diagrams). |
 | `archive/` | Cold storage. Mirrors the nine active folders. | A doc is no longer in force (shipped, superseded, abandoned). |
 | `decisions/` | ADRs — dated, append-only "we chose X because Y." | Recording a specific design choice with context, alternatives, consequences. |
