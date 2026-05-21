@@ -1,9 +1,9 @@
 # Full usage options
 
 This page covers every `pd-ocr` flag, grouped by what you'd use it for.
-For the friendly walkthrough, see the [README](../README.md). For
+For the friendly walkthrough, see the [README](../../README.md). For
 layout-detector specifics (the bulk of the layout flags below), see
-[layout-aware-ocr.md](layout-aware-ocr.md). `pd-ocr --help` is always
+[layout-aware-ocr.md](../architecture/layout-aware-ocr.md). `pd-ocr --help` is always
 authoritative.
 
 ## Inputs and outputs
@@ -116,7 +116,7 @@ files exist next to them, they're picked up automatically.
 ## Layout detection
 
 Layout detection runs by default and feeds the reorganize step. See
-[layout-aware-ocr.md](layout-aware-ocr.md) for the full picture.
+[layout-aware-ocr.md](../architecture/layout-aware-ocr.md) for the full picture.
 
 ```sh
 # Skip layout detection entirely (faster, lower-quality reorg on

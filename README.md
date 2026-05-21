@@ -20,7 +20,7 @@ plain OCR:
   `--experimental-drop-layout-words` (`--edl`) allows for
   noise inside of figures to be dropped, and a warning is always emitted
   if this happens. More in
-  [docs/layout-aware-ocr.md](docs/layout-aware-ocr.md).
+  [docs/architecture/layout-aware-ocr.md](docs/architecture/layout-aware-ocr.md).
 - **Auto-rotation.** If a page was scanned sideways or upside down,
   `pd-ocr` re-runs the OCR at 90° / 180° / 270° and keeps the
   orientation that reads best.
@@ -94,7 +94,7 @@ pd-ocr --version
 
 Full flag reference — quote / em-dash normalization, model pinning,
 layout-detector options, illustration extraction, debug output — in
-[docs/usage.md](docs/usage.md). `pd-ocr --help` lists everything
+[docs/usage/cli-usage.md](docs/usage/cli-usage.md). `pd-ocr --help` lists everything
 authoritatively.
 
 ---
