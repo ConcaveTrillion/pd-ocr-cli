@@ -35,6 +35,7 @@ def test_defaults_with_single_input():
     assert args.straight_quotes is False
     assert args.em_dash_to_double_hyphen is False
     assert args.extract_illustrations is False
+    assert args.no_illustration_placeholders is False
     assert args.layout_debug is False
     assert args.layout_debug_dir is None
     assert args.layout_model == "pp-doclayout-plus-l"
@@ -181,6 +182,16 @@ def test_extract_illustrations_flag():
     with _argv("--extract-illustrations", "page.png"):
         args = parse_args()
     assert args.extract_illustrations is True
+
+
+def test_no_illustration_placeholders_flag():
+    """``--no-illustration-placeholders`` parses and flips the attribute."""
+    with _argv("--no-illustration-placeholders", "page.png"):
+        args = parse_args()
+    assert args.no_illustration_placeholders is True
+    # The flag only flips its own attribute.
+    assert args.no_reorg is False
+    assert args.extract_illustrations is False
 
 
 def test_layout_debug_with_explicit_dir():

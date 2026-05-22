@@ -1034,6 +1034,89 @@ def test_main_experimental_drop_layout_words_passes_true_to_reorganize(
     assert kwargs.get("drop_layout_words") is True
 
 
+def test_main_default_emits_illustration_placeholders(patched_main, monkeypatch, tmp_path):
+    """Default invocation forwards emit_illustration_placeholders=True.
+
+    The placeholder block stays on by default so pd-prep-for-pgdp can
+    anchor [Illustration: ...] serialisation.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    fake_doc = patched_main.captured_docs[0]
+    fake_doc.pages[0].reorganize_page.assert_called_once()
+    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
+    assert kwargs.get("emit_illustration_placeholders") is True
+
+
+def test_main_no_illustration_placeholders_passes_false_to_reorganize(
+    patched_main, monkeypatch, tmp_path
+):
+    """``--no-illustration-placeholders`` forwards emit_illustration_placeholders=False.
+
+    Suppresses only the placeholder block; caption words are preserved by
+    the library (no-silent-drops invariant).
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--layout-model",
+        "none",
+        "--no-illustration-placeholders",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    fake_doc = patched_main.captured_docs[0]
+    fake_doc.pages[0].reorganize_page.assert_called_once()
+    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
+    assert kwargs.get("emit_illustration_placeholders") is False
+
+
+def test_main_no_illustration_placeholders_with_no_reorg_warns(
+    patched_main, monkeypatch, tmp_path, capsys
+):
+    """``--no-illustration-placeholders --no-reorg`` is a silent no-op; warn.
+
+    Placeholder emission happens inside reorganize_page, which is skipped
+    under --no-reorg. Match the B3 no-op-warning pattern.
+    """
+    img = tmp_path / "page.png"
+    shutil.copy(TITLE_IMAGE, img)
+    out = tmp_path / "out"
+
+    _run_main(
+        monkeypatch,
+        "--no-update-check",
+        "--no-reorg",
+        "--no-illustration-placeholders",
+        "-o",
+        str(out),
+        str(img),
+    )
+
+    err = capsys.readouterr().err
+    assert "--no-illustration-placeholders" in err
+    assert "--no-reorg" in err
+    assert "warning" in err.lower()
+
+
 def test_main_validate_reorg_invokes_validator(patched_main, monkeypatch, tmp_path):
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)
