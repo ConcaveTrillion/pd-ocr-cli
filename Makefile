@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps upgrade-deps-local lint format pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
 # [tool.coverage.report] fail_under so any direct `coverage report` run also
@@ -86,12 +86,43 @@ reset: ## Rebuild virtual environment (keeps UV cache)
 	@$(MAKE) --no-print-directory setup
 	@echo "✅ Environment Reset!"
 
-upgrade-deps: ## Upgrade dependencies and sync local environment
+# ---------------------------------------------------------------------------
+# Dev-local detection for upgrade-deps guard
+# ---------------------------------------------------------------------------
+# Three-tier probe: uv pip show → marker file → env var (last resort).
+# The shell function _is_dev_local exits 0 when dev-local mode is active.
+# It is intentionally compat with POSIX sh (no bash-isms).
+define _is_dev_local
+	( uv pip show pd-book-tools 2>/dev/null | grep -q "^Editable project location:" ) \
+	|| [ -f .venv/.pd-dev-local ] \
+	|| [ "$${PD_DEV_LOCAL:-0}" = "1" ]
+endef
+
+upgrade-deps: ## Upgrade dependencies and sync (refuses when dev-local is active; use upgrade-deps-local instead)
+	@if $(call _is_dev_local); then \
+		echo ""; \
+		echo "⚠️  Detected dev-local venv (pd-book-tools editable at ../pd-book-tools)."; \
+		echo "    Running 'uv sync' here would revert the venv to the canonical baseline."; \
+		echo "    Use:  make upgrade-deps-local   (lock + sync + restore dev-local)"; \
+		echo "    Or:   PD_DEV_LOCAL=0 make upgrade-deps   (canonical mode, intentional clobber)"; \
+		echo ""; \
+		exit 1; \
+	fi
 	@echo "⬆️ Upgrading dependency lockfile..."
 	uv lock --upgrade
 	@echo "📦 Syncing upgraded dependencies..."
 	uv sync --group dev
 	@echo "✅ Dependencies upgraded and environment synced!"
+
+upgrade-deps-local: ## [local-dev] Upgrade lock + sync + restore dev-local editable in one shot
+	$(call _require_peer_book_tools)
+	@echo "⬆️ Upgrading dependency lockfile..."
+	uv lock --upgrade
+	@echo "📦 Syncing upgraded dependencies (canonical baseline first)..."
+	uv sync --group dev
+	@echo "🔧 Restoring dev-local editable pd-book-tools..."
+	@$(MAKE) --no-print-directory dev-local
+	@echo "✅ Dependencies upgraded and dev-local venv restored!"
 
 upgrade-pd-book-tools: ## Upgrade pd-book-tools pin to latest GitHub tag
 	@./scripts/upgrade-pd-book-tools.sh
@@ -216,6 +247,7 @@ dev-local: ## [local-dev] Install pd-book-tools from ../pd-book-tools as editabl
 	UV_LINK_MODE=copy uv pip install -e . --no-deps
 	UV_LINK_MODE=copy uv pip install --group dev
 	@$(MAKE) --no-print-directory check-local-editable
+	@touch .venv/.pd-dev-local
 	@echo "✅ Local editable pd-book-tools is active in the venv."
 
 install-local: ## [local-dev] Install pd-ocr as a uv tool with both pd-ocr-cli and ../pd-book-tools editable

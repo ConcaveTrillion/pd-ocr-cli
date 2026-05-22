@@ -1,6 +1,6 @@
 # dev-local-aware `upgrade-deps` flow
 
-**Status:** spec / roadmap entry. Not yet implemented in the Makefile.
+**Status:** Implemented in `Makefile` (`upgrade-deps` guard + `upgrade-deps-local` recipe).
 
 ## Problem
 

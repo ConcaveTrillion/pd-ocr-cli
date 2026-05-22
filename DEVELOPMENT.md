@@ -72,6 +72,8 @@ If you also want pd-book-tools' own venv (to run its tests):
 | `ci` | `setup` → `pre-commit-check` → `test` → `build`. |
 | `clean` | Remove caches and `dist/`. |
 | `reset` | `clean` + remove `.venv` + `setup`. |
+| `upgrade-deps` | Upgrade the lockfile and sync the venv. **Refuses when a dev-local venv is detected** — use `upgrade-deps-local` instead (or set `PD_DEV_LOCAL=0` to intentionally clobber). |
+| `upgrade-deps-local` | Upgrade the lockfile, sync to canonical baseline, then restore the dev-local editable install — all in one shot. |
 | `upgrade-pd-book-tools` | Bump the `pd-book-tools` pin to the latest GitHub tag. |
 | `release-{patch,minor,major}` | Tag a new release locally (push with `git push --tags`). |
 
