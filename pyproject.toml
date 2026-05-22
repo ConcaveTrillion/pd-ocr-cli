@@ -162,10 +162,10 @@ exclude = ["**/__pycache__", "**/.venv", "**/node_modules"]
 # Catches unannotated functions, inferred-Any propagation, untyped decorators,
 # and missing return types that "standard" mode skips.
 typeCheckingMode = "recommended"
-# NOTE: failOnWarnings deferred -- recommended mode surfaces warnings from
-# optional stubs (cupy probe, DocTR, etc.) that lag runtime. Enable
-# incrementally as stub coverage improves.
-# failOnWarnings = true
+# Warnings are gated via a baseline file (.basedpyright/baseline.json) that grandfathers
+# the existing warnings from CuPy/cv2/DocTR stub gaps. New warnings beyond the
+# baseline will fail CI. Regenerate the baseline with: uv run basedpyright pd_ocr_cli --writebaseline
+failOnWarnings = true
 
 # Import cycles are structural and resolved via TYPE_CHECKING guards.
 reportImportCycles = "none"
