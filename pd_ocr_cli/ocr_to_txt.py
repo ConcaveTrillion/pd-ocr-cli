@@ -57,6 +57,10 @@ Options
 --layout-checkpoint PATH     Fine-tuned PP-DocLayout checkpoint (path or HF repo).
 --layout-confidence THRESH   Region confidence threshold (default 0.5).
 --extract-illustrations      Crop figure/decoration/table regions to i_<stem>_<n>.jpg.
+--no-illustration-placeholders
+                             Suppress empty figure/decoration/table placeholder
+                             blocks in the reorganized output (caption text is
+                             still preserved). No effect with --no-reorg.
 --layout-debug[-dir]         Write layout debug text alongside outputs.
 
 Downloaded models are cached in ~/.cache/huggingface/hub and reused on
@@ -492,6 +496,21 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
+        "--no-illustration-placeholders",
+        action="store_true",
+        default=False,
+        help=(
+            "Suppress the empty placeholder block that each high-confidence "
+            "figure / decoration / table region otherwise contributes to the "
+            "reorganized output (a stray blank paragraph in the .txt; an "
+            "[Illustration: ...] wrapper downstream). Caption text is NOT "
+            "dropped — caption words are preserved alongside the surrounding "
+            "body text. Default OFF: placeholders are emitted so "
+            "pd-prep-for-pgdp can anchor [Illustration: ...] serialisation. "
+            "Has no effect with --no-reorg."
+        ),
+    )
+    p.add_argument(
         "--layout-debug",
         action="store_true",
         default=False,
@@ -604,6 +623,13 @@ def main() -> None:
         print(  # noqa: T201  # CLI output
             "warning: --experimental-drop-layout-words has no effect with --no-reorg "
             "(the drop is applied inside reorganize_page, which is skipped); ignoring.",
+            file=sys.stderr,
+        )
+    if args.no_reorg and args.no_illustration_placeholders:
+        print(  # noqa: T201  # CLI output
+            "warning: --no-illustration-placeholders has no effect with --no-reorg "
+            "(placeholder emission happens inside reorganize_page, which is "
+            "skipped); ignoring.",
             file=sys.stderr,
         )
 
@@ -735,13 +761,18 @@ def main() -> None:
 
             if do_reorg:
                 drop_layout_words = args.experimental_drop_layout_words
+                emit_illustration_placeholders = not args.no_illustration_placeholders
                 if page_layout is not None:
                     page.reorganize_page(
                         layout=page_layout,
                         drop_layout_words=drop_layout_words,
+                        emit_illustration_placeholders=emit_illustration_placeholders,
                     )
                 else:
-                    page.reorganize_page(drop_layout_words=drop_layout_words)
+                    page.reorganize_page(
+                        drop_layout_words=drop_layout_words,
+                        emit_illustration_placeholders=emit_illustration_placeholders,
+                    )
 
                 # Always-on noise-drop warning. The library populates
                 # ``diagnostic_noise_dropped_*`` regardless of whether the

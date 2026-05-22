@@ -32,7 +32,7 @@ Full target list: `make help`. Full dev setup: [`DEVELOPMENT.md`](DEVELOPMENT.md
 - Make targets first; fall back to `uv run …` only when no target exists.
 - Never `python -m pytest`. Always `uv run pytest -n auto` or `make test`. Bare `python`/`python3`/`.venv/bin/python` miss the venv.
 - Never silently drop OCR words. Reorg, caption suppression, and all output paths must preserve every word — roles may change, words may not disappear.
-- `--no-illustration-placeholders` (planned) suppresses the placeholder block, not caption text. Caption words must survive in the output.
+- `--no-illustration-placeholders` suppresses the placeholder block, not caption text. Caption words must survive in the output.
 - `pd-book-tools` is upstream for OCR/layout/image primitives; coordinate with that agent before adding logic that belongs in the library.
 - `pd-book-tools` is pinned in `pyproject.toml`; upgrade with `make upgrade-pd-book-tools`.
 - Version is derived from git tags via `hatch-vcs` — no hardcoded version in `pyproject.toml`.

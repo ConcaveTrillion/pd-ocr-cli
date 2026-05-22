@@ -136,6 +136,10 @@ pd-ocr --layout-confidence 0.3 page.png
 # Crop figure / decoration / table regions to i_<stem>_<n>.jpg
 pd-ocr --extract-illustrations page.png
 
+# Suppress empty figure / decoration / table placeholder blocks in the
+# reorganized .txt (caption text is still preserved)
+pd-ocr --no-illustration-placeholders page.png
+
 # Per-step layout debug text (see layout-aware-ocr.md)
 pd-ocr --layout-debug page.png
 pd-ocr --layout-debug --layout-debug-dir debug/ page.png
@@ -244,6 +248,8 @@ fatal). The current set:
   `--save-json`.
 - `--no-reorg` + `--experimental-drop-layout-words` — the drop is applied
   inside `reorganize_page`, which is skipped.
+- `--no-reorg` + `--no-illustration-placeholders` — placeholder emission
+  happens inside `reorganize_page`, which is skipped.
 
 ## Full flag table
 
@@ -269,6 +275,7 @@ fatal). The current set:
 | `--layout-checkpoint PATH_OR_REPO` | | — | Fine-tuned PP-DocLayout checkpoint. |
 | `--layout-confidence THRESHOLD` | | `0.5` | Region-confidence threshold (0..1). |
 | `--extract-illustrations` | | off | Crop figure / decoration / table regions. |
+| `--no-illustration-placeholders` | | off | Suppress empty figure / decoration / table placeholder blocks in the reorganized output. Caption text is preserved. No effect with `--no-reorg`. |
 | `--layout-debug` | | off | Write layout debug text. |
 | `--layout-debug-dir DIR` | | output dir | Where layout debug text goes. |
 | `--version` | | — | Print version and exit. |
