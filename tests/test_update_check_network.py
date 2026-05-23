@@ -219,6 +219,29 @@ def test_github_error_dict_body_does_not_reach_latest_stable_tag(monkeypatch, ca
     )
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        ["v1.2.3"],
+        [{"name": 123}],
+    ],
+)
+def test_malformed_tag_list_does_not_reach_latest_stable_tag(monkeypatch, capsys, payload):
+    monkeypatch.setattr(_update_check, "VERSION", "0.5.0")
+    calls: list = []
+
+    def _spy(tags):
+        calls.append(tags)
+
+    monkeypatch.setattr(_update_check, "_latest_stable_tag", _spy)
+
+    with patch("urllib.request.urlopen", _fake_urlopen(payload)):
+        _update_check.check_for_update()
+    err = capsys.readouterr().err
+    assert err == ""
+    assert calls == []
+
+
 def test_swallows_malformed_json(monkeypatch, capsys):
     """Non-JSON response should be swallowed at the json.loads boundary."""
     monkeypatch.setattr(_update_check, "VERSION", "0.5.0")
