@@ -1808,7 +1808,7 @@ wheels = [
 
 [[package]]
 name = "pd-book-tools"
-version = "0.12.0"
+version = "0.14.1"
 source = { registry = "https://concavetrillion.github.io/pd-index-pip/simple/" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -1835,9 +1835,9 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-sdist = { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.12.0/pd_book_tools-0.12.0.tar.gz" }
+sdist = { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.14.1/pd_book_tools-0.14.1.tar.gz" }
 wheels = [
-    { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.12.0/pd_book_tools-0.12.0-py3-none-any.whl" },
+    { url = "https://github.com/ConcaveTrillion/pd-book-tools/releases/download/v0.14.1/pd_book_tools-0.14.1-py3-none-any.whl" },
 ]
 
 [package.optional-dependencies]
@@ -1875,7 +1875,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pd-book-tools", specifier = ">=0.12.0", index = "https://concavetrillion.github.io/pd-index-pip/simple/" },
+    { name = "pd-book-tools", specifier = ">=0.14.1", index = "https://concavetrillion.github.io/pd-index-pip/simple/" },
     { name = "pd-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", index = "https://concavetrillion.github.io/pd-index-pip/simple/" },
 ]
 provides-extras = ["gpu"]
