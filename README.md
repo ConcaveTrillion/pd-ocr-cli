@@ -251,7 +251,7 @@ time to upgrade or to switch between CPU and GPU. They:
   wheel index, and — when CUDA ≥ 12.4 — add `--with 'pd-book-tools[gpu]'`
   for CuPy + opencv-cuda.
 - Run `uv tool install --reinstall <wheel>` with `--extra-index-url`
-  pointing at the self-hosted `pd-index` (for `pd-book-tools`) and at
+  pointing at the self-hosted `pd-index-pip` (for `pd-book-tools`) and at
   PyTorch's CUDA index when applicable.
 
 Once installed, `pd-ocr` itself only does the two outbound requests
@@ -276,12 +276,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-CPU install (uses the self-hosted `pd-index` PEP 503 index for
+CPU install (uses the self-hosted `pd-index-pip` PEP 503 index for
 `pd-book-tools`):
 
 ```sh
 uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
-    --extra-index-url https://concavetrillion.github.io/pd-index/simple/
+    --extra-index-url https://concavetrillion.github.io/pd-index-pip/simple/
 ```
 
 NVIDIA GPU install — replace `cuXXX` with your CUDA version (e.g.
@@ -291,7 +291,7 @@ extra):
 ```sh
 uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
     --with 'pd-book-tools[gpu]' \
-    --extra-index-url https://concavetrillion.github.io/pd-index/simple/ \
+    --extra-index-url https://concavetrillion.github.io/pd-index-pip/simple/ \
     --extra-index-url https://download.pytorch.org/whl/cuXXX
 ```
 
