@@ -9,31 +9,70 @@ target for non-CLI callers.
 
 from __future__ import annotations
 
+import importlib
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Protocol, cast
 
-if TYPE_CHECKING:
-    import argparse
 
-from pd_book_tools.hf import (
-    DEFAULT_DET_FILENAME,
-    DEFAULT_HF_REPO,
-    DEFAULT_RECO_FILENAME,
-    LAYOUT_MODEL_FILES,
-    OCR_MODEL_SIDECARS,
-    hf_download,
-    prefetch_layout_files,
-    short_revision,
-    silence_transformers_load_chatter,
-    suppress_hf_unauth_warning,
-)
-from pd_book_tools.hf import (
-    resolve_layout_source as _resolve_layout_source_kwargs,
-)
-from pd_book_tools.hf import (
-    resolve_ocr_models as _resolve_ocr_models_kwargs,
-)
+class _HfArgs(Protocol):
+    detection: str | None
+    recognition: str | None
+    hf_repo: str
+    model_version: str | None
+    det_filename: str
+    reco_filename: str
+    layout_model: str
+    layout_checkpoint: str | None
+
+
+class _PdBookToolsHfModule(Protocol):
+    DEFAULT_DET_FILENAME: str
+    DEFAULT_HF_REPO: str
+    DEFAULT_RECO_FILENAME: str
+    LAYOUT_MODEL_FILES: tuple[str, ...]
+    OCR_MODEL_SIDECARS: tuple[str, ...]
+
+    def hf_download(self, *args: object, **kwargs: object) -> object: ...
+
+    def prefetch_layout_files(self, *args: object, **kwargs: object) -> object: ...
+
+    def resolve_layout_source(
+        self, layout_model: str, layout_checkpoint: str | None = None
+    ) -> tuple[str | None, str | None, str]: ...
+
+    def resolve_ocr_models(
+        self,
+        *,
+        repo: str = "CT2534/pd-ocr-models",
+        revision: str | None = None,
+        det_filename: str = "detection/pd-all-detection-model-finetuned.pt",
+        reco_filename: str = "recognition/pd-all-recognition-model-finetuned.pt",
+        detection_path: Path | None = None,
+        recognition_path: Path | None = None,
+    ) -> tuple[Path, Path]: ...
+
+    def short_revision(self, rev: str | None) -> str: ...
+
+    def silence_transformers_load_chatter(self, *args: object, **kwargs: object) -> object: ...
+
+    def suppress_hf_unauth_warning(self, *args: object, **kwargs: object) -> object: ...
+
+
+_HF = cast("_PdBookToolsHfModule", cast("object", importlib.import_module("pd_book_tools.hf")))
+
+DEFAULT_DET_FILENAME = _HF.DEFAULT_DET_FILENAME
+DEFAULT_HF_REPO = _HF.DEFAULT_HF_REPO
+DEFAULT_RECO_FILENAME = _HF.DEFAULT_RECO_FILENAME
+LAYOUT_MODEL_FILES = _HF.LAYOUT_MODEL_FILES
+OCR_MODEL_SIDECARS = _HF.OCR_MODEL_SIDECARS
+hf_download = _HF.hf_download
+prefetch_layout_files = _HF.prefetch_layout_files
+short_revision = _HF.short_revision
+silence_transformers_load_chatter = _HF.silence_transformers_load_chatter
+suppress_hf_unauth_warning = _HF.suppress_hf_unauth_warning
+_resolve_layout_source_kwargs = _HF.resolve_layout_source
+_resolve_ocr_models_kwargs = _HF.resolve_ocr_models
 
 __all__ = [
     "DEFAULT_DET_FILENAME",
@@ -58,7 +97,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
-def resolve_ocr_models(args: argparse.Namespace) -> tuple[Path, Path]:
+def resolve_ocr_models(args: _HfArgs) -> tuple[Path, Path]:
     """Return ``(det_path, reco_path)`` from argparse-shaped CLI args.
 
     Validates the partial-input case (one of ``--detection``/``--recognition``
@@ -90,14 +129,14 @@ def resolve_ocr_models(args: argparse.Namespace) -> tuple[Path, Path]:
         sys.exit(1)
 
 
-def det_source_descriptor(args: argparse.Namespace, det_path: Path) -> str:
+def det_source_descriptor(args: _HfArgs, det_path: Path) -> str:
     """Human-readable source string for the detection model."""
     if args.detection:
         return str(det_path)
     return f"{args.hf_repo}/{args.det_filename}@{short_revision(args.model_version)}"
 
 
-def reco_source_descriptor(args: argparse.Namespace, reco_path: Path) -> str:
+def reco_source_descriptor(args: _HfArgs, reco_path: Path) -> str:
     """Human-readable source string for the recognition model."""
     if args.recognition:
         return str(reco_path)
@@ -109,6 +148,6 @@ def reco_source_descriptor(args: argparse.Namespace, reco_path: Path) -> str:
 # ---------------------------------------------------------------------------
 
 
-def resolve_layout_source(args: argparse.Namespace) -> tuple[str | None, str | None, str]:
+def resolve_layout_source(args: _HfArgs) -> tuple[str | None, str | None, str]:
     """Return ``(repo, revision, descriptor)`` from argparse-shaped args."""
     return _resolve_layout_source_kwargs(args.layout_model, args.layout_checkpoint)
