@@ -23,6 +23,7 @@ Makefile.local
 .claude/
 
 # Local git worktrees created for repo-scoped agent work.
+.worktree/
 .worktrees/
 
 

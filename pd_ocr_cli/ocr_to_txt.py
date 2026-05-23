@@ -112,8 +112,14 @@ from pd_ocr_cli._update_check import VERSION as _VERSION
 from pd_ocr_cli._update_check import check_for_update as _check_for_update
 
 
-@dataclass(frozen=True)
+@dataclass
 class _CliArgs:
+    detection: str | None
+    recognition: str | None
+    hf_repo: str
+    model_version: str | None
+    det_filename: str
+    reco_filename: str
     output_dir: str | None
     save_json: bool
     no_reorg: bool
@@ -155,6 +161,8 @@ class _LayoutDetectorLike(Protocol):
 class _PageLike(Protocol):
     text: str | None
     words: Sequence[object]
+    diagnostic_pure_ocr: object
+    diagnostic_post_noise_removal: object
 
     def reorganize_page(
         self,
@@ -242,6 +250,12 @@ _IS_IMAGE_FILE = _load_is_image_file()
 
 def _coerce_cli_args(args: argparse.Namespace) -> _CliArgs:
     return _CliArgs(
+        detection=cast("str | None", args.detection),
+        recognition=cast("str | None", args.recognition),
+        hf_repo=cast("str", args.hf_repo),
+        model_version=cast("str | None", args.model_version),
+        det_filename=cast("str", args.det_filename),
+        reco_filename=cast("str", args.reco_filename),
         output_dir=cast("str | None", args.output_dir),
         save_json=cast("bool", args.save_json),
         no_reorg=cast("bool", args.no_reorg),
@@ -301,7 +315,7 @@ def _load_predictor(det_path: Path, reco_path: Path) -> object:
 
 def _load_layout_detector(args: _CliArgs, device: str) -> _LayoutDetectorLike:
     """Import the layout module and instantiate the configured detector."""
-    silence_transformers_load_chatter()
+    _ = silence_transformers_load_chatter()
     module = cast(
         "_LayoutModuleLike", cast("object", importlib.import_module("pd_book_tools.layout"))
     )
@@ -749,7 +763,7 @@ def main() -> None:
     raw_args = parse_args()
     args = _coerce_cli_args(raw_args)
 
-    validate_extract_illustrations(raw_args)
+    validate_extract_illustrations(args)
     layout_enabled = args.layout_model != "none"
 
     # Surface flag combinations that are silent no-ops so users do not chase
@@ -809,15 +823,15 @@ def main() -> None:
     _maybe_print_gpu_nudge()
 
     print("Resolving model files...", flush=True)  # noqa: T201  # CLI output
-    det_path, reco_path = resolve_ocr_models(raw_args)
+    det_path, reco_path = resolve_ocr_models(args)
 
     layout_repo: str | None = None
     layout_revision: str | None = None
     layout_descriptor = ""
     if layout_enabled:
-        layout_repo, layout_revision, layout_descriptor = resolve_layout_source(raw_args)
+        layout_repo, layout_revision, layout_descriptor = resolve_layout_source(args)
         if layout_repo is not None:
-            prefetch_layout_files(layout_repo, layout_revision)
+            _ = prefetch_layout_files(layout_repo, layout_revision)
 
     output_dir = Path(args.output_dir) if args.output_dir else None
 
@@ -833,8 +847,8 @@ def main() -> None:
     if predictor is None:
         print("ERROR: failed to load models.", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
-    print(f"Detection model loaded:   {det_source_descriptor(raw_args, det_path)} (device={device})")  # noqa: T201  # CLI output
-    print(f"Recognition model loaded: {reco_source_descriptor(raw_args, reco_path)} (device={device})")  # noqa: T201  # CLI output
+    print(f"Detection model loaded:   {det_source_descriptor(args, det_path)} (device={device})")  # noqa: T201  # CLI output
+    print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")  # noqa: T201  # CLI output
 
     layout_detector = None
     if layout_enabled:
@@ -886,7 +900,7 @@ def main() -> None:
             # path; keep it inside the per-image ``try`` so an unwritable
             # ``--layout-debug-dir`` is recorded as one per-image error
             # rather than aborting the whole batch.
-            debug_file = setup_layout_debug_env(raw_args, dest_dir, img_path.stem)
+            debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
             doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
             page = doc.pages[0] if doc.pages else None
             if page is None:
