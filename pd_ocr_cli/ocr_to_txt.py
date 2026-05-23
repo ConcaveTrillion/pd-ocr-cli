@@ -69,16 +69,17 @@ subsequent runs.
 
 import argparse
 import contextlib
+import importlib
 import math
 import os
 import shutil
 import subprocess
 import sys
 import threading
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
-
-from pd_book_tools.image_processing.formats import is_image_file
+from typing import Protocol, cast
 
 from pd_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
@@ -111,16 +112,173 @@ from pd_ocr_cli._update_check import VERSION as _VERSION
 from pd_ocr_cli._update_check import check_for_update as _check_for_update
 
 
+@dataclass(frozen=True)
+class _CliArgs:
+    output_dir: str | None
+    save_json: bool
+    no_reorg: bool
+    save_reorganize_diagnostics: bool
+    validate_reorg: bool
+    experimental_drop_layout_words: bool
+    recursive: bool
+    straight_quotes: bool
+    em_dash_to_double_hyphen: bool
+    extract_illustrations: bool
+    no_illustration_placeholders: bool
+    layout_debug: bool
+    layout_debug_dir: str | None
+    layout_model: str
+    layout_checkpoint: str | None
+    layout_confidence: float
+    no_update_check: bool
+    inputs: list[str]
+
+
+class _RegionLike(Protocol):
+    L: int
+    R: int
+    T: int
+    B: int
+    type: object
+    confidence: float
+
+
+class _PageLayoutLike(Protocol):
+    regions: Sequence[_RegionLike]
+    inference_ms: int | float
+
+
+class _LayoutDetectorLike(Protocol):
+    def detect(self, img_path: Path) -> _PageLayoutLike: ...
+
+
+class _PageLike(Protocol):
+    text: str | None
+    words: Sequence[object]
+
+    def reorganize_page(
+        self,
+        *,
+        layout: _PageLayoutLike | None = ...,
+        drop_layout_words: bool = ...,
+        emit_illustration_placeholders: bool = ...,
+    ) -> None: ...
+
+
+class _DocumentLike(Protocol):
+    pages: Sequence[_PageLike]
+
+    def to_json_file(self, path: Path) -> None: ...
+
+
+class _DocumentFactoryLike(Protocol):
+    def __call__(
+        self,
+        image: Path,
+        source_identifier: str = "",
+        predictor: object | None = None,
+    ) -> _DocumentLike: ...
+
+
+class _Cv2ImageLike(Protocol):
+    size: int
+
+    def __getitem__(self, key: tuple[slice, slice]) -> "_Cv2ImageLike": ...
+
+
+class _Cv2Like(Protocol):
+    def imread(self, path: str) -> _Cv2ImageLike | None: ...
+
+    def imwrite(self, path: str, image: _Cv2ImageLike) -> bool: ...
+
+
+_ValidateWordPreservation = Callable[[list[object], list[object]], list[str]]
+
+
+class _FormatsModuleLike(Protocol):
+    is_image_file: Callable[[Path], bool]
+
+
+class _DoctrSupportModuleLike(Protocol):
+    get_finetuned_torch_doctr_predictor: Callable[[Path, Path], object]
+
+
+class _LayoutModuleLike(Protocol):
+    get_detector: Callable[..., _LayoutDetectorLike]
+
+
+class _DocumentClassLike(Protocol):
+    from_image_ocr_via_doctr: _DocumentFactoryLike
+
+
+class _DocumentModuleLike(Protocol):
+    Document: _DocumentClassLike
+
+
+class _ReorganizeUtilsModuleLike(Protocol):
+    validate_word_preservation: _ValidateWordPreservation
+
+
+class _RegionTypeLike(Protocol):
+    figure: object
+    decoration: object
+    table: object
+
+
+class _LayoutTypesModuleLike(Protocol):
+    RegionType: _RegionTypeLike
+
+
+def _load_is_image_file() -> Callable[[Path], bool]:
+    module = cast(
+        "_FormatsModuleLike",
+        cast("object", importlib.import_module("pd_book_tools.image_processing.formats")),
+    )
+    return module.is_image_file
+
+
+_IS_IMAGE_FILE = _load_is_image_file()
+
+
+def _coerce_cli_args(args: argparse.Namespace) -> _CliArgs:
+    return _CliArgs(
+        output_dir=cast("str | None", args.output_dir),
+        save_json=cast("bool", args.save_json),
+        no_reorg=cast("bool", args.no_reorg),
+        save_reorganize_diagnostics=cast("bool", args.save_reorganize_diagnostics),
+        validate_reorg=cast("bool", args.validate_reorg),
+        experimental_drop_layout_words=cast("bool", args.experimental_drop_layout_words),
+        recursive=cast("bool", args.recursive),
+        straight_quotes=cast("bool", args.straight_quotes),
+        em_dash_to_double_hyphen=cast("bool", args.em_dash_to_double_hyphen),
+        extract_illustrations=cast("bool", args.extract_illustrations),
+        no_illustration_placeholders=cast("bool", args.no_illustration_placeholders),
+        layout_debug=cast("bool", args.layout_debug),
+        layout_debug_dir=cast("str | None", args.layout_debug_dir),
+        layout_model=cast("str", args.layout_model),
+        layout_checkpoint=cast("str | None", args.layout_checkpoint),
+        layout_confidence=cast("float", args.layout_confidence),
+        no_update_check=cast("bool", args.no_update_check),
+        inputs=cast("list[str]", args.inputs),
+    )
+
+
 def _detect_torch_device() -> str:
     """Pick the best available torch device for the layout model."""
     try:
         import torch
     except ImportError:
         return "cpu"
-    if torch.cuda.is_available():
+
+    cuda = getattr(torch, "cuda", None)
+    cuda_is_available = getattr(cuda, "is_available", None)
+    if callable(cuda_is_available) and cast("Callable[[], bool]", cuda_is_available)():
         return "cuda"
-    mps = getattr(torch.backends, "mps", None)
-    if mps is not None and getattr(mps, "is_available", lambda: False)():
+
+    backends = getattr(torch, "backends", None)
+    mps = getattr(backends, "mps", None)
+    mps_is_available = getattr(mps, "is_available", None)
+    if callable(mps_is_available) and cast("Callable[[], bool]", mps_is_available)():
         return "mps"
     return "cpu"
 
@@ -132,19 +290,23 @@ def _detect_torch_device() -> str:
 # ---------------------------------------------------------------------------
 
 
-def _load_predictor(det_path: Path, reco_path: Path) -> Any:
+def _load_predictor(det_path: Path, reco_path: Path) -> object:
     """Import doctr support and build the fine-tuned predictor."""
-    from pd_book_tools.ocr.doctr_support import get_finetuned_torch_doctr_predictor
+    module = cast(
+        "_DoctrSupportModuleLike",
+        cast("object", importlib.import_module("pd_book_tools.ocr.doctr_support")),
+    )
+    return module.get_finetuned_torch_doctr_predictor(det_path, reco_path)
 
-    return get_finetuned_torch_doctr_predictor(det_path, reco_path)
 
-
-def _load_layout_detector(args: argparse.Namespace, device: str) -> Any:
+def _load_layout_detector(args: _CliArgs, device: str) -> _LayoutDetectorLike:
     """Import the layout module and instantiate the configured detector."""
     silence_transformers_load_chatter()
-    from pd_book_tools.layout import get_detector
+    module = cast(
+        "_LayoutModuleLike", cast("object", importlib.import_module("pd_book_tools.layout"))
+    )
 
-    return get_detector(
+    return module.get_detector(
         args.layout_model,
         device=device,
         confidence=args.layout_confidence,
@@ -152,26 +314,36 @@ def _load_layout_detector(args: argparse.Namespace, device: str) -> Any:
     )
 
 
-def _load_document_factory() -> Any:
+def _load_document_factory() -> _DocumentFactoryLike:
     """Return the ``Document.from_image_ocr_via_doctr`` callable."""
-    from pd_book_tools.ocr.document import Document
+    module = cast(
+        "_DocumentModuleLike",
+        cast("object", importlib.import_module("pd_book_tools.ocr.document")),
+    )
+    return module.Document.from_image_ocr_via_doctr
 
-    return Document.from_image_ocr_via_doctr
 
-
-def _load_validate_word_preservation() -> Any:
+def _load_validate_word_preservation() -> _ValidateWordPreservation:
     """Return the ``validate_word_preservation`` reorganize-checker."""
-    from pd_book_tools.ocr.reorganize_page_utils import validate_word_preservation
+    module = cast(
+        "_ReorganizeUtilsModuleLike",
+        cast("object", importlib.import_module("pd_book_tools.ocr.reorganize_page_utils")),
+    )
+    return module.validate_word_preservation
 
-    return validate_word_preservation
 
-
-def _load_illustration_deps() -> tuple[Any, set[Any]]:
+def _load_illustration_deps() -> tuple[_Cv2Like, set[object]]:
     """Return ``(cv2_module, crop_types_set)`` used during illustration cropping."""
-    import cv2 as _cv2
-    from pd_book_tools.layout.types import RegionType
-
-    return _cv2, {RegionType.figure, RegionType.decoration, RegionType.table}
+    cv2_module = cast("_Cv2Like", cast("object", importlib.import_module("cv2")))
+    types_module = cast(
+        "_LayoutTypesModuleLike",
+        cast("object", importlib.import_module("pd_book_tools.layout.types")),
+    )
+    region_type = types_module.RegionType
+    figure = region_type.figure
+    decoration = region_type.decoration
+    table = region_type.table
+    return cv2_module, {figure, decoration, table}
 
 
 def _start_update_check_thread(disabled: bool) -> threading.Thread | None:
@@ -220,7 +392,9 @@ def _should_nudge_gpu_install() -> bool:
         if _env_truthy("PD_OCR_NO_GPU_NUDGE"):
             return False
         try:
-            import cupy  # noqa: F401  # import-only probe: success means GPU stack active  # pyright: ignore[reportMissingImports]  # optional GPU dep
+            import cupy as cupy_module  # pyright: ignore[reportMissingImports]  # optional GPU dep
+
+            _ = cupy_module
         except ImportError:
             # The expected case for the nudge: CuPy not installed.
             pass
@@ -272,11 +446,12 @@ def _maybe_print_gpu_nudge() -> None:
     try:
         if _should_nudge_gpu_install():
             print(  # noqa: T201  # CLI output
-                "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
-                "        Re-run the install script to switch to GPU "
-                "(requires CUDA >= 12.4):\n"
-                "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"  # URL cannot be broken
-                "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message.",
+                (
+                    "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
+                    + "        Re-run the install script to switch to GPU (requires CUDA >= 12.4):\n"
+                    + "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"  # URL cannot be broken
+                    + "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message."
+                ),
                 file=sys.stderr,
             )
     except BaseException:  # noqa: BLE001 S110  # nudge must never crash pd-ocr; silent pass is correct
@@ -312,43 +487,41 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="OCR images to .txt using fine-tuned detection + recognition models."
     )
-    p.add_argument("--version", action="version", version=f"%(prog)s {_VERSION}")
+    _ = p.add_argument("--version", action="version", version=f"%(prog)s {_VERSION}")
 
     src = p.add_argument_group("model source (use --hf-repo OR --detection/--recognition)")
-    src.add_argument(
+    _ = src.add_argument(
         "--hf-repo",
         metavar="REPO_ID",
         default=DEFAULT_HF_REPO,
         help=f"Hugging Face repo to download models from (default: {DEFAULT_HF_REPO}).",
     )
-    src.add_argument(
+    _ = src.add_argument(
         "--model-version",
         metavar="TAG",
         default=None,
         help="HF repo revision/tag to use (default: latest). Requires --hf-repo.",
     )
-    src.add_argument(
+    _ = src.add_argument(
         "--det-filename",
         metavar="PATH",
         default=DEFAULT_DET_FILENAME,
-        help=f"Filename within the HF repo for the detection model "
-        f"(default: {DEFAULT_DET_FILENAME}).",
+        help=f"Filename within the HF repo for the detection model (default: {DEFAULT_DET_FILENAME}).",
     )
-    src.add_argument(
+    _ = src.add_argument(
         "--reco-filename",
         metavar="PATH",
         default=DEFAULT_RECO_FILENAME,
-        help=f"Filename within the HF repo for the recognition model "
-        f"(default: {DEFAULT_RECO_FILENAME}).",
+        help=f"Filename within the HF repo for the recognition model (default: {DEFAULT_RECO_FILENAME}).",
     )
-    src.add_argument(
+    _ = src.add_argument(
         "--detection",
         "-d",
         metavar="PT_FILE",
         default=None,
         help="Path to a local detection .pt model file.",
     )
-    src.add_argument(
+    _ = src.add_argument(
         "--recognition",
         "-g",
         metavar="PT_FILE",
@@ -356,20 +529,20 @@ def parse_args() -> argparse.Namespace:
         help="Path to a local recognition .pt model file.",
     )
 
-    p.add_argument(
+    _ = p.add_argument(
         "--output-dir",
         "-o",
         metavar="DIR",
         default=None,
         help="Directory to write .txt files into (default: same directory as each image).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--save-json",
         action="store_true",
         default=False,
         help="Also save the reorganized OCR document as a .json file alongside the .txt.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--no-reorg",
         action="store_true",
         default=False,
@@ -379,7 +552,7 @@ def parse_args() -> argparse.Namespace:
             "extraction, column splitting, or paragraph reordering)."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--save-reorganize-diagnostics",
         "--save-pre-reorg-json",
         dest="save_reorganize_diagnostics",
@@ -397,7 +570,7 @@ def parse_args() -> argparse.Namespace:
             "as a backward-compatible alias."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--validate-reorg",
         action="store_true",
         default=False,
@@ -407,7 +580,7 @@ def parse_args() -> argparse.Namespace:
             "Mismatches print a WARNING; the .txt/.json are still written."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--experimental-drop-layout-words",
         "--edl",
         action="store_true",
@@ -423,7 +596,7 @@ def parse_args() -> argparse.Namespace:
             "are opt-in. Short alias: --edl."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--recursive",
         "-r",
         "-R",
@@ -431,21 +604,21 @@ def parse_args() -> argparse.Namespace:
         default=False,
         help="Recurse into subdirectories when a directory is given as input.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--straight-quotes",
         "-sq",
         action="store_true",
         default=False,
         help="Convert curly quotes in OCR text output to straight ASCII quotes.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--em-dash-to-double-hyphen",
         "-ed",
         action="store_true",
         default=False,
         help="Convert em dash in OCR text output to double hyphen (--).",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--no-update-check",
         action="store_true",
         default=False,
@@ -456,7 +629,7 @@ def parse_args() -> argparse.Namespace:
             "Can also be set via the PD_OCR_NO_UPDATE_CHECK=1 env var."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--layout-model",
         default="pp-doclayout-plus-l",
         choices=["none", "contour", "pp-doclayout-plus-l"],
@@ -469,7 +642,7 @@ def parse_args() -> argparse.Namespace:
             "skip layout detection. Default: pp-doclayout-plus-l."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--layout-checkpoint",
         default=None,
         metavar="PATH_OR_REPO",
@@ -478,14 +651,14 @@ def parse_args() -> argparse.Namespace:
             "the default PP-DocLayout_plus-L weights."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--layout-confidence",
         type=_confidence_threshold,
         default=0.5,
         metavar="THRESHOLD",
         help="Confidence threshold for layout detections (0..1). Default 0.5.",
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--extract-illustrations",
         action="store_true",
         default=False,
@@ -495,7 +668,7 @@ def parse_args() -> argparse.Namespace:
             "(error if combined with --layout-model none)."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--no-illustration-placeholders",
         action="store_true",
         default=False,
@@ -510,7 +683,7 @@ def parse_args() -> argparse.Namespace:
             "Has no effect with --no-reorg."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--layout-debug",
         action="store_true",
         default=False,
@@ -519,7 +692,7 @@ def parse_args() -> argparse.Namespace:
             "squeezed side-flow diagnostics)."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "--layout-debug-dir",
         metavar="DIR",
         default=None,
@@ -528,7 +701,7 @@ def parse_args() -> argparse.Namespace:
             "Defaults to each image output directory when --layout-debug is enabled."
         ),
     )
-    p.add_argument(
+    _ = p.add_argument(
         "inputs",
         nargs="+",
         metavar="IMAGE_OR_DIR",
@@ -557,14 +730,14 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
     for inp in inputs:
         p = Path(inp)
         if p.is_file():
-            if is_image_file(p):
+            if _IS_IMAGE_FILE(p):
                 _add(p)
             else:
                 print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)  # noqa: T201  # CLI output
         elif p.is_dir():
             pattern = "**/*" if recursive else "*"
             for child in sorted(p.glob(pattern)):
-                if child.is_file() and is_image_file(child):
+                if child.is_file() and _IS_IMAGE_FILE(child):
                     _add(child)
         else:
             print(f"WARNING: skipping missing path: {p}", file=sys.stderr)  # noqa: T201  # CLI output
@@ -573,63 +746,52 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
 
 def main() -> None:
     """Entry point for the ``pd-ocr`` CLI command."""
-    args = parse_args()
+    raw_args = parse_args()
+    args = _coerce_cli_args(raw_args)
 
-    validate_extract_illustrations(args)
+    validate_extract_illustrations(raw_args)
     layout_enabled = args.layout_model != "none"
 
     # Surface flag combinations that are silent no-ops so users do not chase
     # missing output (B3 — see docs/review/code-review-2026-05-06.md).
     if args.no_reorg and args.save_reorganize_diagnostics:
         print(  # noqa: T201  # CLI output
-            "warning: --save-reorganize-diagnostics has no effect with --no-reorg "
-            "(diagnostics are produced only when reorganize runs); ignoring.",
+            "warning: --save-reorganize-diagnostics has no effect with --no-reorg (diagnostics are produced only when reorganize runs); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.validate_reorg:
         print(  # noqa: T201  # CLI output
-            "warning: --validate-reorg has no effect with --no-reorg "
-            "(validation compares pre/post reorganize word lists); ignoring.",
+            "warning: --validate-reorg has no effect with --no-reorg (validation compares pre/post reorganize word lists); ignoring.",
             file=sys.stderr,
         )
     if not layout_enabled and args.layout_debug:
         print(  # noqa: T201  # CLI output
-            "warning: --layout-debug has no effect with --layout-model none "
-            "(no layout model runs, so no debug artifact is written); ignoring.",
+            "warning: --layout-debug has no effect with --layout-model none (no layout model runs, so no debug artifact is written); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.layout_debug:
         print(  # noqa: T201  # CLI output
-            "warning: --layout-debug has no effect with --no-reorg "
-            "(the debug report is written from inside reorganize_page, "
-            "which is skipped); ignoring.",
+            "warning: --layout-debug has no effect with --no-reorg (the debug report is written from inside reorganize_page, which is skipped); ignoring.",
             file=sys.stderr,
         )
     if args.layout_debug_dir and not args.layout_debug:
         print(  # noqa: T201  # CLI output
-            "warning: --layout-debug-dir has no effect without --layout-debug "
-            "(the directory is only used when the debug artifact is enabled); "
-            "ignoring.",
+            "warning: --layout-debug-dir has no effect without --layout-debug (the directory is only used when the debug artifact is enabled); ignoring.",
             file=sys.stderr,
         )
     if args.save_reorganize_diagnostics and not args.save_json:
         print(  # noqa: T201  # CLI output
-            "warning: --save-reorganize-diagnostics has no effect without --save-json "
-            "(the diagnostic bundle is written alongside the regular .json output, "
-            "which requires --save-json); ignoring.",
+            "warning: --save-reorganize-diagnostics has no effect without --save-json (the diagnostic bundle is written alongside the regular .json output, which requires --save-json); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.experimental_drop_layout_words:
         print(  # noqa: T201  # CLI output
-            "warning: --experimental-drop-layout-words has no effect with --no-reorg "
-            "(the drop is applied inside reorganize_page, which is skipped); ignoring.",
+            "warning: --experimental-drop-layout-words has no effect with --no-reorg (the drop is applied inside reorganize_page, which is skipped); ignoring.",
             file=sys.stderr,
         )
     if args.no_reorg and args.no_illustration_placeholders:
         print(  # noqa: T201  # CLI output
-            "warning: --no-illustration-placeholders has no effect with --no-reorg "
-            "(placeholder emission happens inside reorganize_page, which is "
-            "skipped); ignoring.",
+            "warning: --no-illustration-placeholders has no effect with --no-reorg (placeholder emission happens inside reorganize_page, which is skipped); ignoring.",
             file=sys.stderr,
         )
 
@@ -647,13 +809,13 @@ def main() -> None:
     _maybe_print_gpu_nudge()
 
     print("Resolving model files...", flush=True)  # noqa: T201  # CLI output
-    det_path, reco_path = resolve_ocr_models(args)
+    det_path, reco_path = resolve_ocr_models(raw_args)
 
     layout_repo: str | None = None
     layout_revision: str | None = None
     layout_descriptor = ""
     if layout_enabled:
-        layout_repo, layout_revision, layout_descriptor = resolve_layout_source(args)
+        layout_repo, layout_revision, layout_descriptor = resolve_layout_source(raw_args)
         if layout_repo is not None:
             prefetch_layout_files(layout_repo, layout_revision)
 
@@ -671,8 +833,8 @@ def main() -> None:
     if predictor is None:
         print("ERROR: failed to load models.", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
-    print(f"Detection model loaded:   {det_source_descriptor(args, det_path)} (device={device})")  # noqa: T201  # CLI output
-    print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")  # noqa: T201  # CLI output
+    print(f"Detection model loaded:   {det_source_descriptor(raw_args, det_path)} (device={device})")  # noqa: T201  # CLI output
+    print(f"Recognition model loaded: {reco_source_descriptor(raw_args, reco_path)} (device={device})")  # noqa: T201  # CLI output
 
     layout_detector = None
     if layout_enabled:
@@ -686,10 +848,10 @@ def main() -> None:
     else:
         print("Layout detection disabled (--layout-model none).")  # noqa: T201  # CLI output
 
-    cv2: Any | None = None
-    crop_types: set[Any] = set()
+    cv2_module: _Cv2Like | None = None
+    crop_types: set[object] = set()
     if args.extract_illustrations:
-        cv2, crop_types = _load_illustration_deps()
+        cv2_module, crop_types = _load_illustration_deps()
 
     document_factory = _load_document_factory()
 
@@ -724,7 +886,7 @@ def main() -> None:
             # path; keep it inside the per-image ``try`` so an unwritable
             # ``--layout-debug-dir`` is recorded as one per-image error
             # rather than aborting the whole batch.
-            debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+            debug_file = setup_layout_debug_env(raw_args, dest_dir, img_path.stem)
             doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
             page = doc.pages[0] if doc.pages else None
             if page is None:
@@ -751,25 +913,27 @@ def main() -> None:
             # post-reorganize ``page.diagnostic_pure_ocr`` /
             # ``diagnostic_post_noise_removal`` snapshots, so we no longer
             # need a manual pre-reorg JSON dump here.
-            do_reorg = not args.no_reorg and callable(getattr(page, "reorganize_page", None))
+            reorganize_page = getattr(cast("object", page), "reorganize_page", None)
+            do_reorg = not args.no_reorg and callable(reorganize_page)
             want_diagnostic_export = (
                 do_reorg and args.save_json and args.save_reorganize_diagnostics
             )
-            pre_reorg_words: list[Any] = []
+            pre_reorg_words: list[object] = []
             if do_reorg and args.validate_reorg:
                 pre_reorg_words = list(page.words)
 
             if do_reorg:
                 drop_layout_words = args.experimental_drop_layout_words
                 emit_illustration_placeholders = not args.no_illustration_placeholders
+                reorganize = cast("Callable[..., None]", reorganize_page)
                 if page_layout is not None:
-                    page.reorganize_page(
+                    reorganize(
                         layout=page_layout,
                         drop_layout_words=drop_layout_words,
                         emit_illustration_placeholders=emit_illustration_placeholders,
                     )
                 else:
-                    page.reorganize_page(
+                    reorganize(
                         drop_layout_words=drop_layout_words,
                         emit_illustration_placeholders=emit_illustration_placeholders,
                     )
@@ -779,7 +943,8 @@ def main() -> None:
                 # snapshot ``Page`` clones were captured, so this fires
                 # even when capture_diagnostics=False is wired through in
                 # the future.
-                dropped = list(getattr(page, "diagnostic_noise_dropped_words", []) or [])
+                dropped_raw = getattr(cast("object", page), "diagnostic_noise_dropped_words", None)
+                dropped = list(cast("Sequence[object]", dropped_raw)) if dropped_raw else []
                 if dropped:
                     for line in format_noise_drop_warning(
                         dropped,
@@ -846,17 +1011,21 @@ def main() -> None:
             if args.layout_debug and debug_file is not None and do_reorg:
                 extra_paths.append(f"layout-debug: {debug_file}")
 
-            if args.extract_illustrations and page_layout is not None and cv2 is not None:
-                source_img = cv2.imread(str(img_path))
+            if args.extract_illustrations and page_layout is not None and cv2_module is not None:
+                source_img = cv2_module.imread(str(img_path))
                 if source_img is None:
                     print(  # noqa: T201  # CLI output
                         f"WARNING: could not re-read {img_path} for illustration crops",
                         file=sys.stderr,
                     )
                 else:
-                    for crop_idx, region in iter_crop_regions(
-                        page_layout.regions, args.layout_confidence, crop_types
+                    for crop_pair in iter_crop_regions(
+                        page_layout.regions,
+                        args.layout_confidence,
+                        crop_types,
                     ):
+                        crop_idx, raw_region = cast("tuple[int, object]", crop_pair)
+                        region = cast("_RegionLike", raw_region)
                         crop = source_img[
                             max(0, region.T) : max(0, region.B),
                             max(0, region.L) : max(0, region.R),
@@ -869,7 +1038,7 @@ def main() -> None:
                         # selects the JPEG encoder, then ``os.replace``
                         # onto the canonical path. (Code-review B18.)
                         crop_tmp = crop_path.with_name(f".{crop_path.stem}.tmp{crop_path.suffix}")
-                        ok = cv2.imwrite(str(crop_tmp), crop)
+                        ok = cv2_module.imwrite(str(crop_tmp), crop)
                         if not ok:
                             with contextlib.suppress(FileNotFoundError):
                                 crop_tmp.unlink()
