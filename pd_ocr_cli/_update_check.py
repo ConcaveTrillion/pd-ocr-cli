@@ -6,6 +6,7 @@ import re
 import sys
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
+from typing import Protocol, TypedDict, cast
 
 try:
     _detected_version: str = _pkg_version("pd-ocr-cli")
@@ -18,6 +19,23 @@ _GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
 _INSTALL_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/install.sh"
 _STABLE_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 _RELEASE_PREFIX_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
+
+
+class _TagRecord(TypedDict):
+    name: str
+
+
+class _UrlopenResponse(Protocol):
+    def __enter__(self) -> "_UrlopenResponse": ...
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object | None,
+    ) -> bool | None: ...
+
+    def read(self) -> bytes: ...
 
 
 def _parse_stable_tag(version: str) -> tuple[int, int, int] | None:
@@ -38,17 +56,34 @@ def _parse_release_prefix(version: str) -> tuple[int, int, int] | None:
     return a, b, c
 
 
-def _latest_stable_tag(tags: list[dict[str, str]]) -> tuple[str, tuple[int, int, int]] | None:
+def _latest_stable_tag(tags: list[_TagRecord]) -> tuple[str, tuple[int, int, int]] | None:
     """Return (tag_name, parsed_version) for the highest stable semver tag."""
     best: tuple[str, tuple[int, int, int]] | None = None
     for tag in tags:
-        name = tag.get("name", "")
+        name = tag["name"]
         parsed = _parse_stable_tag(name)
         if parsed is None:
             continue
         if best is None or parsed > best[1]:
             best = (name, parsed)
     return best
+
+
+def _parse_tag_payload(payload: object) -> list[_TagRecord] | None:
+    if not isinstance(payload, list) or not payload:
+        return None
+
+    raw_tags = cast("list[object]", payload)
+    tags: list[_TagRecord] = []
+    for item in raw_tags:
+        if not isinstance(item, dict):
+            return None
+        tag = cast("dict[str, object]", item)
+        name = tag.get("name")
+        if not isinstance(name, str):
+            return None
+        tags.append({"name": name})
+    return tags
 
 
 def check_for_update() -> None:
@@ -78,8 +113,9 @@ def check_for_update() -> None:
                 "User-Agent": f"pd-ocr-cli/{VERSION}",
             },
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:  # noqa: S310  # https:// URL only
-            payload = json.loads(resp.read())
+        response = cast("_UrlopenResponse", urllib.request.urlopen(req, timeout=3))  # noqa: S310
+        with response as resp:
+            payload = cast("object", json.loads(resp.read()))
         # GitHub error responses (rate-limit, auth required, repo unavailable)
         # return a JSON *dict* like ``{"message": "API rate limit exceeded ...",
         # "documentation_url": ...}`` rather than the expected list of tag
@@ -88,9 +124,10 @@ def check_for_update() -> None:
         # ``str.get("name", "")`` -> AttributeError, masked by the broad
         # ``except Exception: pass`` below. Type-guard explicitly so the
         # update-check machinery degrades cleanly instead of silently dying.
-        if not isinstance(payload, list) or not payload:
+        tags = _parse_tag_payload(payload)
+        if tags is None:
             return
-        latest_stable = _latest_stable_tag(payload)
+        latest_stable = _latest_stable_tag(tags)
         if latest_stable is None:
             return
 
@@ -108,12 +145,12 @@ def check_for_update() -> None:
         # very stable they were tracking toward.
         is_pre_release = _parse_stable_tag(VERSION) is None
         if latest > current or (is_pre_release and latest == current):
-            print(  # noqa: T201  # CLI output
-                f"\nNOTICE: A newer version of pd-ocr is available ({latest_tag_name}, "
-                f"you have {VERSION}).\n"
+            notice = (
+                f"\nNOTICE: A newer version of pd-ocr is available "
+                f"({latest_tag_name}, you have {VERSION}).\n"
                 f"  To upgrade, run:\n"
-                f"    curl -sSL {_INSTALL_URL} | sh\n",
-                file=sys.stderr,
+                f"    curl -sSL {_INSTALL_URL} | sh\n"
             )
+            print(notice, file=sys.stderr)  # noqa: T201  # CLI output
     except Exception:  # noqa: BLE001 S110  # update check is best-effort; any failure is safe to swallow
         pass  # Version check is best-effort
