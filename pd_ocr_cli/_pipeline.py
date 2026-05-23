@@ -18,7 +18,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from pd_ocr_cli._text_normalize import (
     normalize_curly_quotes as _normalize_curly_quotes,
@@ -28,8 +28,40 @@ from pd_ocr_cli._text_normalize import (
 )
 
 if TYPE_CHECKING:
-    import argparse
     from collections.abc import Iterable, Iterator
+
+
+class _ExtractIllustrationsArgs(Protocol):
+    layout_model: str
+    extract_illustrations: bool
+
+
+class _LayoutDebugArgs(Protocol):
+    layout_debug: bool
+    layout_debug_dir: str | None
+
+
+@runtime_checkable
+class _WordLike(Protocol):
+    text: object
+
+
+@runtime_checkable
+class _SnapshotLike(Protocol):
+    text: str | None
+
+    def to_dict(self) -> object: ...
+
+
+class _DiagnosticPageLike(Protocol):
+    diagnostic_pure_ocr: object
+    diagnostic_post_noise_removal: object
+
+
+class _CropRegionLike(Protocol):
+    type: object
+    confidence: float
+
 
 # ---------------------------------------------------------------------------
 # Atomic file writes
@@ -127,7 +159,7 @@ def atomic_write_bytes(path: Path, data: bytes) -> None:
 # ---------------------------------------------------------------------------
 
 
-def validate_extract_illustrations(args: argparse.Namespace) -> None:
+def validate_extract_illustrations(args: _ExtractIllustrationsArgs) -> None:
     """Exit if ``--extract-illustrations`` is paired with ``--layout-model none``.
 
     Cropping illustration regions needs a real layout model — refuse the
@@ -172,8 +204,7 @@ def compute_mirror_root(inputs: Iterable[str], output_dir: Path | None) -> Path 
         # processed. ``resolve_dest_dir`` then writes every page directly
         # under ``output_dir``.
         print(  # noqa: T201  # CLI output
-            "WARNING: input directories have no common ancestor; "
-            "writing outputs flat under --output-dir instead of mirroring.",
+            "WARNING: input directories have no common ancestor; writing outputs flat under --output-dir instead of mirroring.",
             file=sys.stderr,
         )
         return None
@@ -247,7 +278,7 @@ _LAYOUT_DEBUG_ENV = "PD_OCR_LAYOUT_DEBUG"
 _LAYOUT_DEBUG_FILE_ENV = "PD_OCR_LAYOUT_DEBUG_FILE"
 
 
-def setup_layout_debug_env(args: argparse.Namespace, dest_dir: Path, img_stem: str) -> Path | None:
+def setup_layout_debug_env(args: _LayoutDebugArgs, dest_dir: Path, img_stem: str) -> Path | None:
     """Configure the layout-debug env vars and return the debug file path.
 
     Returns ``None`` when ``--layout-debug`` was not passed. The caller is
@@ -266,8 +297,8 @@ def setup_layout_debug_env(args: argparse.Namespace, dest_dir: Path, img_stem: s
 
 def clear_layout_debug_env() -> None:
     """Remove the layout-debug env vars set by :func:`setup_layout_debug_env`."""
-    os.environ.pop(_LAYOUT_DEBUG_ENV, None)
-    os.environ.pop(_LAYOUT_DEBUG_FILE_ENV, None)
+    _ = os.environ.pop(_LAYOUT_DEBUG_ENV, None)
+    _ = os.environ.pop(_LAYOUT_DEBUG_FILE_ENV, None)
 
 
 # ---------------------------------------------------------------------------
@@ -296,18 +327,19 @@ def format_drops_warning(drops: list[str], source_name: str, *, max_lines: int =
 # ---------------------------------------------------------------------------
 
 
-def _word_text(word: Any) -> str:
+def _word_text(word: object) -> str:
     """Best-effort text extraction from a ``Word`` (or test fake).
 
     The library ``Word`` exposes ``.text`` as a property; tests may pass
     ``SimpleNamespace`` fakes. Tolerate either, and falsy/missing text.
     """
-    text = getattr(word, "text", "") or ""
+    text: object = word.text if isinstance(word, _WordLike) else ""
+    text = text or ""
     return str(text)
 
 
 def format_noise_drop_warning(
-    dropped_words: list[Any],
+    dropped_words: list[object],
     source_name: str,
     diagnostic_flag_name: str,
     *,
@@ -335,19 +367,26 @@ def format_noise_drop_warning(
     extra = f" (+{count - min(count, sample_size)} more)" if count > sample_size else ""
     return [
         (
-            f"WARNING: {source_name}: dropped {count} word(s) during "
-            "reorganize that look like figure-internal noise"
+            f"WARNING: {source_name}: dropped {count} word(s) during reorganize "
+            "that look like figure-internal noise"
         ),
         f"  sample: {sample_str}{extra}",
         (
-            f"  re-run with {diagnostic_flag_name} to write the full "
-            "pure-OCR / post-noise / post-reorganize JSON+TXT bundle"
+            f"  re-run with {diagnostic_flag_name} to write the full pure-OCR / "
+            "post-noise / post-reorganize JSON+TXT bundle"
         ),
     ]
 
 
+def _snapshot_attr(page: _DiagnosticPageLike, attr: str) -> _SnapshotLike | None:
+    value = cast("object", getattr(page, attr, None))
+    if isinstance(value, _SnapshotLike):
+        return value
+    return None
+
+
 def write_diagnostic_snapshots(
-    page: Any,
+    page: _DiagnosticPageLike,
     *,
     pure_ocr_json: Path,
     pure_ocr_txt: Path,
@@ -369,7 +408,7 @@ def write_diagnostic_snapshots(
     written: list[Path] = []
     notes: list[str] = []
 
-    pure = getattr(page, "diagnostic_pure_ocr", None)
+    pure = _snapshot_attr(page, "diagnostic_pure_ocr")
     if pure is not None:
         atomic_write_text(
             pure_ocr_json,
@@ -379,11 +418,10 @@ def write_diagnostic_snapshots(
         written.extend([pure_ocr_json, pure_ocr_txt])
     else:
         notes.append(
-            "diagnostic_pure_ocr unavailable (capture_diagnostics=False); "
-            "skipping pure-OCR snapshot files"
+            "diagnostic_pure_ocr unavailable (capture_diagnostics=False); skipping pure-OCR snapshot files"
         )
 
-    post = getattr(page, "diagnostic_post_noise_removal", None)
+    post = _snapshot_attr(page, "diagnostic_post_noise_removal")
     if post is not None:
         atomic_write_text(
             post_noise_json,
@@ -393,8 +431,7 @@ def write_diagnostic_snapshots(
         written.extend([post_noise_json, post_noise_txt])
     else:
         notes.append(
-            "diagnostic_post_noise_removal unavailable "
-            "(capture_diagnostics=False); skipping post-noise snapshot files"
+            "diagnostic_post_noise_removal unavailable (capture_diagnostics=False); skipping post-noise snapshot files"
         )
 
     return written, notes
@@ -429,10 +466,10 @@ def diagnostic_output_paths(json_path: Path, txt_path: Path) -> dict[str, Path]:
 
 
 def iter_crop_regions(
-    regions: Iterable[Any],
+    regions: Iterable[_CropRegionLike],
     confidence_threshold: float,
-    crop_types: set[Any],
-) -> Iterator[tuple[int, Any]]:
+    crop_types: set[object],
+) -> Iterator[tuple[int, _CropRegionLike]]:
     """Yield ``(1-based_index, region)`` pairs for regions worth cropping.
 
     Filters by region type (must be in ``crop_types``) and minimum
