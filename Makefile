@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps upgrade-deps-local lint format pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps upgrade-deps-local lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
 # [tool.coverage.report] fail_under so any direct `coverage report` run also
@@ -136,6 +136,11 @@ format: ## Format code with ruff
 	@echo "✨ Formatting code..."
 	uv run ruff format
 	@$(MAKE) --no-print-directory lint
+
+format-check: ## Read-only ruff format+lint check (no auto-fix; matches CI exactly)
+	@echo "🔍 Checking format and lint (read-only)..."
+	uv run ruff format --check .
+	uv run ruff check .
 
 pre-commit-check: ## Run pre-commit on all files
 	@echo "🪝 Running pre-commit on all files..."
