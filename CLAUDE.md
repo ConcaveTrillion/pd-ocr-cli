@@ -9,8 +9,12 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | target | does |
 |---|---|
 | `make setup AI=1` | dev venv + pre-commit hooks (pinned `pd-book-tools` tag) |
-| `make local-setup` | setup + clone `../pd-book-tools` for side-by-side editing |
-| `make dev-local` | swap pinned dep for editable `../pd-book-tools` in the venv |
+| `make local-setup` | clone any missing sibling pd-* repos into the workspace |
+| `make local-dev` | switch to local-dev mode (editable `../pd-book-tools` + marker) |
+| `make local-check` | print local-dev mode + per-sibling resolution |
+| `make local-upgrade-deps` | upgrade deps then restore editable siblings (local-mode only) |
+| `make local-install` / `local-uninstall` | `uv tool install` with editable siblings / uninstall |
+| `make local-run` | run `pd-ocr` against local-dev workspace (local-mode only) |
 | `make test AI=1` | fast suite (`uv run pytest -n auto`; skips `@pytest.mark.slow`) |
 | `make test-slow AI=1` | full suite incl. real-model integration tests |
 | `make lint AI=1` / `make format AI=1` | ruff |
@@ -23,6 +27,8 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 `AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose
 output for debugging.
+
+See [workspace `docs/process/local-dev.md`](../docs/process/local-dev.md) for the canonical local-dev pattern (spec #362). Legacy `dev-local`, `install-local`, `uninstall-local`, `check-local-editable`, `run-local`, `upgrade-deps-local` are kept as deprecation aliases.
 
 Full target list: `make help`. Full dev setup: [`DEVELOPMENT.md`](DEVELOPMENT.md).
 
