@@ -12,42 +12,15 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps upgrade-deps-local lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help local-setup dev-local install-local uninstall-local check-local-editable run-local python-local
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help \
+        local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
+        dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
 # [tool.coverage.report] fail_under so any direct `coverage report` run also
 # enforces it. The slow floor only applies to ci-slow / coverage-slow.
 COV_FAIL_UNDER ?= 100
 COV_FAIL_UNDER_SLOW ?= 100
-
-# ---------------------------------------------------------------------------
-# Peer-repo discovery for *-local targets
-# ---------------------------------------------------------------------------
-# `make *-local` workflows install / run pd-ocr against a sibling pd-book-tools
-# checkout instead of the pinned tag in pyproject.toml. PEER_BOOK_TOOLS is the
-# absolute path if the sibling exists, or empty otherwise. The require-peer
-# guard (used inside each *-local recipe) prints a clear message and exits 1
-# when the sibling is missing — no surprise failures from raw uv errors.
-# `make local-setup` clones the sibling if missing.
-PEER_BOOK_TOOLS_PATH := ../pd-book-tools
-PEER_BOOK_TOOLS_REPO := https://github.com/ConcaveTrillion/pd-book-tools.git
-PEER_BOOK_TOOLS := $(realpath $(PEER_BOOK_TOOLS_PATH))
-
-# Auto-detect a usable NVIDIA GPU (skipped under CI). When detected, the
-# *-local targets pull pd-book-tools' [gpu] extra (CuPy) so the editable
-# install matches what `make install` does via scripts/install-uv-tool.sh.
-GPU_EXTRA := $(shell [ -z "$$CI" ] && command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1 && echo --extra gpu)
-PEER_BOOK_TOOLS_SPEC := $(if $(GPU_EXTRA),$(PEER_BOOK_TOOLS)[gpu],$(PEER_BOOK_TOOLS))
-
-define _require_peer_book_tools
-	@if [ -z "$(PEER_BOOK_TOOLS)" ]; then \
-		echo "❌ Peer repo not found at $(PEER_BOOK_TOOLS_PATH)."; \
-		echo "   This *-local target requires pd-book-tools as a sibling checkout."; \
-		echo "   Run: make local-setup"; \
-		echo "   (or clone manually: git clone $(PEER_BOOK_TOOLS_REPO) $(PEER_BOOK_TOOLS_PATH))"; \
-		exit 1; \
-	fi
-endef
 
 help: ## Show this help message
 	@echo "Available commands:"
@@ -87,42 +60,29 @@ reset: ## Rebuild virtual environment (keeps UV cache)
 	@echo "✅ Environment Reset!"
 
 # ---------------------------------------------------------------------------
-# Dev-local detection for upgrade-deps guard
+# Local-dev detection for upgrade-deps guard
 # ---------------------------------------------------------------------------
-# Three-tier probe: uv pip show → marker file → env var (last resort).
-# The shell function _is_dev_local exits 0 when dev-local mode is active.
-# It is intentionally compat with POSIX sh (no bash-isms).
-define _is_dev_local
+# Two-tier probe: uv pip show (editable) → marker file.
+# Intentionally POSIX sh compatible (no bash-isms).
+define _is_local_dev
 	( uv pip show pd-book-tools 2>/dev/null | grep -q "^Editable project location:" ) \
-	|| [ -f .venv/.pd-dev-local ] \
-	|| [ "$${PD_DEV_LOCAL:-0}" = "1" ]
+	|| [ -f .venv/.pd-local-mode ]
 endef
 
-upgrade-deps: ## Upgrade dependencies and sync (refuses when dev-local is active; use upgrade-deps-local instead)
-	@if $(call _is_dev_local); then \
+upgrade-deps: ## Upgrade dependencies and sync (refuses in local-dev mode; use local-upgrade-deps instead)
+	@if $(call _is_local_dev); then \
 		echo ""; \
-		echo "⚠️  Detected dev-local venv (pd-book-tools editable at ../pd-book-tools)."; \
+		echo "❌ local-dev install detected (editable siblings present)."; \
 		echo "    Running 'uv sync' here would revert the venv to the canonical baseline."; \
-		echo "    Use:  make upgrade-deps-local   (lock + sync + restore dev-local)"; \
-		echo "    Or:   PD_DEV_LOCAL=0 make upgrade-deps   (canonical mode, intentional clobber)"; \
+		echo "   Use 'make local-upgrade-deps' to upgrade and restore editable siblings."; \
 		echo ""; \
 		exit 1; \
 	fi
-	@echo "⬆️ Upgrading dependency lockfile..."
+	@echo "Upgrading dependency lockfile..."
 	uv lock --upgrade
-	@echo "📦 Syncing upgraded dependencies..."
+	@echo "Syncing upgraded dependencies..."
 	uv sync --group dev
-	@echo "✅ Dependencies upgraded and environment synced!"
-
-upgrade-deps-local: ## [local-dev] Upgrade lock + sync + restore dev-local editable in one shot
-	$(call _require_peer_book_tools)
-	@echo "⬆️ Upgrading dependency lockfile..."
-	uv lock --upgrade
-	@echo "📦 Syncing upgraded dependencies (canonical baseline first)..."
-	uv sync --group dev
-	@echo "🔧 Restoring dev-local editable pd-book-tools..."
-	@$(MAKE) --no-print-directory dev-local
-	@echo "✅ Dependencies upgraded and dev-local venv restored!"
+	@echo "Dependencies upgraded and environment synced!"
 
 upgrade-pd-book-tools: ## Upgrade pd-book-tools pin to latest GitHub tag
 	@./scripts/upgrade-pd-book-tools.sh
@@ -218,73 +178,53 @@ release-major: ## Release: bump major, run ci-slow, tag, push (fires GitHub Rele
 _do-release:
 	@BUMP=$(or $(BUMP),minor) ./scripts/do-release.sh
 
-# ---------------------------------------------------------------------------
-# Local editable workflow (requires ../pd-book-tools sibling checkout)
-# ---------------------------------------------------------------------------
-# Each target self-checks for the peer repo and exits cleanly if absent.
-# Env vars (UV_LINK_MODE, UV_NO_SYNC) are scoped per-recipe so they don't
-# leak into other targets like `make ci` or `make build`.
+# ─── local-dev workflow (spec #362) ─────────────────────────────────────────
 
-local-setup: ## [local-dev] Clone ../pd-book-tools if missing and set up the editable workspace
-	@if [ -d "$(PEER_BOOK_TOOLS_PATH)" ]; then \
-		echo "✅ Peer repo already at $(PEER_BOOK_TOOLS_PATH) — skipping clone."; \
-	else \
-		echo "📥 Cloning pd-book-tools from $(PEER_BOOK_TOOLS_REPO)..."; \
-		git clone "$(PEER_BOOK_TOOLS_REPO)" "$(PEER_BOOK_TOOLS_PATH)"; \
-	fi
-	@$(MAKE) --no-print-directory dev-local
-	@echo ""
-	@echo "💡 Optional: to also set up pd-book-tools' own venv (for running its tests):"
-	@echo "      (cd $(PEER_BOOK_TOOLS_PATH) && make setup)"
+local-setup: ## Clone any missing sibling pd-* repos into the workspace
+	@./scripts/local-setup.sh
 
-dev-local: ## [local-dev] Install pd-book-tools from ../pd-book-tools as editable in the venv
-	$(call _require_peer_book_tools)
-	@if [ -n "$(GPU_EXTRA)" ]; then \
-		echo "🟢 NVIDIA GPU detected — installing pd-book-tools with [gpu] extra (CuPy)."; \
-	else \
-		echo "⚪ No NVIDIA GPU detected (or CI=1) — installing pd-book-tools without [gpu] extra."; \
-	fi
-	@# Install pd-book-tools editable FIRST so its in-tree version satisfies
-	@# any pd-ocr-cli pin that may exceed what's currently published in
-	@# pd-index. Then install pd-ocr-cli + dev group without re-resolving
-	@# pd-book-tools against the index.
-	UV_LINK_MODE=copy uv pip install -e "$(PEER_BOOK_TOOLS_SPEC)"
-	UV_LINK_MODE=copy uv pip install -e . --no-deps
-	UV_LINK_MODE=copy uv pip install --group dev
-	@$(MAKE) --no-print-directory check-local-editable
-	@touch .venv/.pd-dev-local
-	@echo "✅ Local editable pd-book-tools is active in the venv."
+local-dev: ## Switch to local-dev mode (siblings editable + marker)
+	@./scripts/local-dev.sh
 
-install-local: ## [local-dev] Install pd-ocr as a uv tool with both pd-ocr-cli and ../pd-book-tools editable
-	$(call _require_peer_book_tools)
-	@if [ -n "$(GPU_EXTRA)" ]; then \
-		echo "🟢 NVIDIA GPU detected — installing pd-book-tools with [gpu] extra (CuPy)."; \
-	else \
-		echo "⚪ No NVIDIA GPU detected (or CI=1) — installing pd-book-tools without [gpu] extra."; \
-	fi
-	@echo "📦 Installing pd-ocr as a uv tool from local editable sources..."
-	UV_LINK_MODE=copy uv tool install --force --reinstall --no-sources --editable . --with-editable "$(PEER_BOOK_TOOLS_SPEC)"
-	@echo "✅ 'pd-ocr' is on PATH and tracks ./ + $(PEER_BOOK_TOOLS) live."
-	@echo "   To revert: make uninstall-local && curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh"
+local-check: ## Print local-dev mode status + per-sibling resolution
+	@./scripts/local-check.sh
 
-uninstall-local: ## [local-dev] Uninstall the locally-installed pd-ocr uv tool
-	@echo "🗑️  Uninstalling pd-ocr uv tool..."
-	uv tool uninstall pd-ocr-cli || true
-	@echo "✅ pd-ocr removed."
+local-upgrade-deps: ## Upgrade deps then restore editable siblings (local-mode only)
+	@./scripts/local-upgrade-deps.sh
 
-check-local-editable: ## [local-dev] Verify pd-book-tools resolves to ../pd-book-tools (not the pinned tag)
-	$(call _require_peer_book_tools)
-	@env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run python scripts/check-editable.py "$(PEER_BOOK_TOOLS)" || (echo "❌ pd-book-tools is not local/editable. Run: make dev-local" >&2; exit 1)
-	@echo "✅ pd-book-tools resolves to local editable copy."
+local-install: ## Install uv tool with editable siblings (local-mode only)
+	@./scripts/local-install.sh
 
-run-local: check-local-editable ## [local-dev] Run pd-ocr against the local editable workspace; pass ARGS="..."
-	@if [ -z "$(ARGS)" ]; then \
-		echo "Usage: make run-local ARGS='page.png'" >&2; \
-		exit 2; \
-	fi
-	env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run pd-ocr $(ARGS)
+local-uninstall: ## Uninstall the uv tool (siblings + venv untouched)
+	@./scripts/local-uninstall.sh
 
-python-local: check-local-editable ## [local-dev] Run python against the local editable workspace; pass ARGS="..."
-	env -u VIRTUAL_ENV UV_NO_SYNC=1 uv run python $(ARGS)
+local-run: ## Run the CLI/server against local-dev workspace (local-mode only)
+	@./scripts/local-run.sh
+
+# ─── deprecation aliases ─────────────────────────────────────────────────────
+
+dev-local: ## DEPRECATED: use local-dev
+	@echo "warning: 'dev-local' is deprecated; use 'local-dev'"
+	@$(MAKE) --no-print-directory local-dev
+
+install-local: ## DEPRECATED: use local-install
+	@echo "warning: 'install-local' is deprecated; use 'local-install'"
+	@$(MAKE) --no-print-directory local-install
+
+uninstall-local: ## DEPRECATED: use local-uninstall
+	@echo "warning: 'uninstall-local' is deprecated; use 'local-uninstall'"
+	@$(MAKE) --no-print-directory local-uninstall
+
+check-local-editable: ## DEPRECATED: use local-check
+	@echo "warning: 'check-local-editable' is deprecated; use 'local-check'"
+	@$(MAKE) --no-print-directory local-check
+
+upgrade-deps-local: ## DEPRECATED: use local-upgrade-deps
+	@echo "warning: 'upgrade-deps-local' is deprecated; use 'local-upgrade-deps'"
+	@$(MAKE) --no-print-directory local-upgrade-deps
+
+run-local: ## DEPRECATED: use local-run
+	@echo "warning: 'run-local' is deprecated; use 'local-run'"
+	@$(MAKE) --no-print-directory local-run
 
 endif
