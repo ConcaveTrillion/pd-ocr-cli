@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools release-patch release-minor release-major _do-release help \
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
@@ -84,8 +84,12 @@ upgrade-deps: ## Upgrade dependencies and sync (refuses in local-dev mode; use l
 	uv sync --group dev
 	@echo "Dependencies upgraded and environment synced!"
 
-upgrade-pd-book-tools: ## Upgrade pd-book-tools pin to latest GitHub tag
-	@./scripts/upgrade-pd-book-tools.sh
+update-pd-deps: ## Bump sibling pd-* deps to registry latest; leaves diff staged
+	@./scripts/update-pd-deps.sh
+
+upgrade-pd-book-tools: ## Deprecated: use 'make update-pd-deps' instead
+	@echo "⚠️  upgrade-pd-book-tools is deprecated; use 'make update-pd-deps' instead."
+	@$(MAKE) --no-print-directory update-pd-deps
 
 lint: ## Run ruff linting and import sorting
 	@echo "🔍 Running linting checks..."
