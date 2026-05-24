@@ -15,6 +15,7 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | `make local-upgrade-deps` | upgrade deps then restore editable siblings (local-mode only) |
 | `make local-install` / `local-uninstall` | `uv tool install` with editable siblings / uninstall |
 | `make local-run` | run `pd-ocr` against local-dev workspace (local-mode only) |
+| `make update-pd-deps` | bump pd-* sibling deps to registry latest; leaves diff for review |
 | `make test AI=1` | fast suite (`uv run pytest -n auto`; skips `@pytest.mark.slow`) |
 | `make test-slow AI=1` | full suite incl. real-model integration tests |
 | `make lint AI=1` / `make format AI=1` | ruff |
