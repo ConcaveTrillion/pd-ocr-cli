@@ -7,7 +7,7 @@ set -euo pipefail
 PY_SIBLINGS=(pd-book-tools)
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --git-common-dir)"
+GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
 CANONICAL_REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"
 WORKSPACE_ROOT="$(dirname "$CANONICAL_REPO_ROOT")"
 # Marker lives in the canonical repo's .venv (shared across worktrees).
