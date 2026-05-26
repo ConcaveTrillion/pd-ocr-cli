@@ -54,7 +54,7 @@ url = "https://pdomain.github.io/pdomain-index-pip/simple/"
 explicit = true
 
 [tool.uv.sources]
-pdomain-book-tools = { path = "../pd-book-tools", editable = true }
+pdomain-book-tools = { index = "pdomain-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"
