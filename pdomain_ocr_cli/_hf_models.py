@@ -1,9 +1,9 @@
-"""Argparse-shaped adapters around :mod:`pd_book_tools.hf`.
+"""Argparse-shaped adapters around :mod:`pdomain_book_tools.hf`.
 
-The canonical model-resolution primitives live in ``pd_book_tools.hf`` so
-pd-ocr-cli, pd-ocr-labeler, and pd-prep-for-pgdp share them. This module keeps
+The canonical model-resolution primitives live in ``pdomain_book_tools.hf`` so
+pdomain-ocr-cli, pd-ocr-labeler, and pdomain-prep-for-pgdp share them. This module keeps
 only the argparse-flavoured wrappers that the CLI's ``ocr_to_txt`` driver
-needs — the kwargs-shaped functions in ``pd_book_tools.hf`` are the right
+needs — the kwargs-shaped functions in ``pdomain_book_tools.hf`` are the right
 target for non-CLI callers.
 """
 
@@ -59,7 +59,7 @@ class _PdBookToolsHfModule(Protocol):
     def suppress_hf_unauth_warning(self, *args: object, **kwargs: object) -> object: ...
 
 
-_HF = cast("_PdBookToolsHfModule", cast("object", importlib.import_module("pd_book_tools.hf")))
+_HF = cast("_PdBookToolsHfModule", cast("object", importlib.import_module("pdomain_book_tools.hf")))
 
 DEFAULT_DET_FILENAME = _HF.DEFAULT_DET_FILENAME
 DEFAULT_HF_REPO = _HF.DEFAULT_HF_REPO
@@ -102,7 +102,7 @@ def resolve_ocr_models(args: _HfArgs) -> tuple[Path, Path]:
 
     Validates the partial-input case (one of ``--detection``/``--recognition``
     set without the other) before delegating to
-    :func:`pd_book_tools.hf.resolve_ocr_models`.
+    :func:`pdomain_book_tools.hf.resolve_ocr_models`.
     """
     if bool(args.detection) != bool(args.recognition):
         which = "--detection" if args.detection else "--recognition"

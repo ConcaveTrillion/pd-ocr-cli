@@ -1,5 +1,5 @@
 """Pure-function tests for the version-parsing helpers in
-:mod:`pd_ocr_cli._update_check`.
+:mod:`pdomain_ocr_cli._update_check`.
 
 These cover the network-free building blocks of the GitHub-tag check:
 ``_parse_stable_tag``, ``_parse_release_prefix``, and
@@ -9,7 +9,7 @@ exercised end-to-end by the slow integration tests.
 
 import pytest
 
-from pd_ocr_cli._update_check import (
+from pdomain_ocr_cli._update_check import (
     _latest_stable_tag,
     _parse_release_prefix,
     _parse_stable_tag,

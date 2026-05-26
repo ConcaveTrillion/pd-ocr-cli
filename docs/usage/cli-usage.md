@@ -78,14 +78,14 @@ Mode names are an open extension point for future locale-specific
 profiles (e.g. a `gaelic` profile that also handles dotted consonants).
 
 **Dependency.** The actual normalization logic + glyph map live in
-`pd-book-tools` as `pd_book_tools.text.normalize` (to be added). The
+`pdomain-book-tools` as `pdomain_book_tools.text.normalize` (to be added). The
 CLI is a thin pass-through that runs the normalizer between
 reorganize and disk write. This keeps the same map reusable from
-`pd-ocr-labeler` (page-scope action) and `pd-prep-for-pgdp` (export
+`pd-ocr-labeler` (page-scope action) and `pdomain-prep-for-pgdp` (export
 step) without duplication.
 
 **Cross-refs.** Mirrors decision D-025 in
-[`/workspaces/ocr-container/pd-ocr-labeler-spa/specs/17-decisions.md`](/workspaces/ocr-container/pd-ocr-labeler-spa/specs/17-decisions.md).
+[`/workspaces/ocr-container/pdomain-ocr-labeler-spa/specs/17-decisions.md`](/workspaces/ocr-container/pdomain-ocr-labeler-spa/specs/17-decisions.md).
 
 ## Model selection
 
@@ -150,7 +150,7 @@ pd-ocr --layout-debug --layout-debug-dir debug/ page.png
 
 ## Reorganize controls
 
-`Page.reorganize_page()` from `pd-book-tools` turns the raw OCR block
+`Page.reorganize_page()` from `pdomain-book-tools` turns the raw OCR block
 tree into reading-order text. These flags let you skip it, snapshot
 it, or audit it.
 
@@ -185,7 +185,7 @@ pd-ocr --experimental-drop-layout-words page.png   # also: --edl
 ### Always-on noise-drop warning
 
 When reorganize removes any words it considered figure-internal noise
-(via Step Layout-2b or Step B2 inside `pd-book-tools`), the CLI emits a
+(via Step Layout-2b or Step B2 inside `pdomain-book-tools`), the CLI emits a
 warning to stderr — independent of any flag. The warning includes:
 
 - the page filename and the count of dropped words;
@@ -219,8 +219,8 @@ pd-ocr --help
 | `PD_OCR_NO_UPDATE_CHECK=1` | Skip the background GitHub-tag upgrade-notice request (same as `--no-update-check`). |
 | `PD_OCR_NO_GPU_NUDGE=1` | Silence the one-line "GPU detected but installed CPU-only" message printed on startup when `nvidia-smi` is on `PATH` but the `[gpu]` extra wasn't installed. See the FAQ in [README.md](../README.md#faq) for details. |
 | `PD_OCR_DEBUG=1` | On per-image processing errors, also print the full traceback to stderr. |
-| `PD_OCR_REORGANIZE_STRICT=1` | Read by `pd-book-tools`'s `reorganize_page()`. When set, words dropped during reorganize raise `ReorganizeDroppedWordsError` instead of being re-added with a warning. Useful in CI to fail loudly on pipeline regressions. |
-| `HF_HOME`, `HF_HUB_CACHE` | Override the Hugging Face model cache location (default `~/.cache/huggingface/hub`). Honored by the upstream `huggingface_hub` library — pd-ocr-cli does not read these directly. |
+| `PD_OCR_REORGANIZE_STRICT=1` | Read by `pdomain-book-tools`'s `reorganize_page()`. When set, words dropped during reorganize raise `ReorganizeDroppedWordsError` instead of being re-added with a warning. Useful in CI to fail loudly on pipeline regressions. |
+| `HF_HOME`, `HF_HUB_CACHE` | Override the Hugging Face model cache location (default `~/.cache/huggingface/hub`). Honored by the upstream `huggingface_hub` library — pdomain-ocr-cli does not read these directly. |
 
 `PD_OCR_LAYOUT_DEBUG` and `PD_OCR_LAYOUT_DEBUG_FILE` are set automatically
 by the CLI as an internal IPC channel to the layout backend (controlled

@@ -15,15 +15,15 @@
 Run from the repo root:
 
 ```bash
-uv run basedpyright pd_ocr_cli --baselinefile /tmp/no-baseline-pd-ocr-cli.json --outputjson
+uv run basedpyright pdomain_ocr_cli --baselinefile /tmp/no-baseline-pdomain-ocr-cli.json --outputjson
 ```
 
 Current production baseline:
 
-- `pd_ocr_cli/ocr_to_txt.py`: 155 warnings.
-- `pd_ocr_cli/_hf_models.py`: 36 warnings.
-- `pd_ocr_cli/_pipeline.py`: 31 warnings.
-- `pd_ocr_cli/_update_check.py`: 6 warnings.
+- `pdomain_ocr_cli/ocr_to_txt.py`: 155 warnings.
+- `pdomain_ocr_cli/_hf_models.py`: 36 warnings.
+- `pdomain_ocr_cli/_pipeline.py`: 31 warnings.
+- `pdomain_ocr_cli/_update_check.py`: 6 warnings.
 
 Do not edit `.basedpyright/baseline.json` in worker branches. Regenerate it only after the branches are merged.
 
@@ -33,18 +33,18 @@ Do not edit `.basedpyright/baseline.json` in worker branches. Regenerate it only
 
 **Files:**
 
-- Modify: `pd_ocr_cli/_hf_models.py`
+- Modify: `pdomain_ocr_cli/_hf_models.py`
 - Optional test touch: `tests/test_hf_models_argparse.py`
 
 - [ ] Replace `argparse.Namespace` parameters with narrow protocols for the model-resolution args.
 - [ ] Type the attributes consumed by `resolve_ocr_models`, `det_source_descriptor`, `reco_source_descriptor`, and `resolve_layout_source`.
-- [ ] Contain untyped `pd_book_tools.hf` imports at the module boundary with precise aliases or casts.
+- [ ] Contain untyped `pdomain_book_tools.hf` imports at the module boundary with precise aliases or casts.
 - [ ] Verify:
 
 ```bash
-uv run basedpyright pd_ocr_cli/_hf_models.py --baselinefile /tmp/bpy-hf-empty.json
+uv run basedpyright pdomain_ocr_cli/_hf_models.py --baselinefile /tmp/bpy-hf-empty.json
 uv run pytest -n auto tests/test_hf_models_argparse.py
-uv run ruff check pd_ocr_cli/_hf_models.py tests/test_hf_models_argparse.py
+uv run ruff check pdomain_ocr_cli/_hf_models.py tests/test_hf_models_argparse.py
 ```
 
 ### Workstream 2: Pipeline Helper Protocols
@@ -53,7 +53,7 @@ uv run ruff check pd_ocr_cli/_hf_models.py tests/test_hf_models_argparse.py
 
 **Files:**
 
-- Modify: `pd_ocr_cli/_pipeline.py`
+- Modify: `pdomain_ocr_cli/_pipeline.py`
 - Optional test touch: `tests/test_pipeline_helpers.py`, `tests/test_main_mocked.py`
 
 - [ ] Add narrow protocols for layout args, word-like values, diagnostic page snapshots, and crop regions.
@@ -63,9 +63,9 @@ uv run ruff check pd_ocr_cli/_hf_models.py tests/test_hf_models_argparse.py
 - [ ] Verify:
 
 ```bash
-uv run basedpyright pd_ocr_cli/_pipeline.py --baselinefile /tmp/bpy-pipeline-empty.json
+uv run basedpyright pdomain_ocr_cli/_pipeline.py --baselinefile /tmp/bpy-pipeline-empty.json
 uv run pytest -n auto tests/test_pipeline_helpers.py tests/test_main_mocked.py
-uv run ruff check pd_ocr_cli/_pipeline.py tests/test_pipeline_helpers.py tests/test_main_mocked.py
+uv run ruff check pdomain_ocr_cli/_pipeline.py tests/test_pipeline_helpers.py tests/test_main_mocked.py
 ```
 
 ### Workstream 3: Update Check JSON Boundary
@@ -74,7 +74,7 @@ uv run ruff check pd_ocr_cli/_pipeline.py tests/test_pipeline_helpers.py tests/t
 
 **Files:**
 
-- Modify: `pd_ocr_cli/_update_check.py`
+- Modify: `pdomain_ocr_cli/_update_check.py`
 - Optional test touch: `tests/test_update_check_bypass.py`, `tests/test_update_check_network.py`, `tests/test_update_check_parsers.py`
 
 - [ ] Treat `json.loads` as `object` and validate the GitHub tags payload before passing it to `_latest_stable_tag`.
@@ -84,9 +84,9 @@ uv run ruff check pd_ocr_cli/_pipeline.py tests/test_pipeline_helpers.py tests/t
 - [ ] Verify:
 
 ```bash
-uv run basedpyright pd_ocr_cli/_update_check.py --baselinefile /tmp/bpy-update-empty.json
+uv run basedpyright pdomain_ocr_cli/_update_check.py --baselinefile /tmp/bpy-update-empty.json
 uv run pytest -n auto tests/test_update_check_bypass.py tests/test_update_check_network.py tests/test_update_check_parsers.py
-uv run ruff check pd_ocr_cli/_update_check.py tests/test_update_check_*.py
+uv run ruff check pdomain_ocr_cli/_update_check.py tests/test_update_check_*.py
 ```
 
 ### Workstream 4: CLI Driver Boundary Types
@@ -95,7 +95,7 @@ uv run ruff check pd_ocr_cli/_update_check.py tests/test_update_check_*.py
 
 **Files:**
 
-- Modify: `pd_ocr_cli/ocr_to_txt.py`
+- Modify: `pdomain_ocr_cli/ocr_to_txt.py`
 - Optional test touch: `tests/test_parse_args.py`, `tests/test_main_mocked.py`, `tests/test_collect_images.py`, `tests/test_gpu_nudge.py`, `tests/test_torch_device.py`
 
 - [ ] Add narrow protocols for parsed CLI args, predictor/document/page/layout detector/cv2-like dependencies, and crop regions.
@@ -107,15 +107,15 @@ uv run ruff check pd_ocr_cli/_update_check.py tests/test_update_check_*.py
 - [ ] Verify:
 
 ```bash
-uv run basedpyright pd_ocr_cli/ocr_to_txt.py --baselinefile /tmp/bpy-ocr-empty.json
+uv run basedpyright pdomain_ocr_cli/ocr_to_txt.py --baselinefile /tmp/bpy-ocr-empty.json
 uv run pytest -n auto tests/test_parse_args.py tests/test_main_mocked.py tests/test_collect_images.py tests/test_gpu_nudge.py tests/test_torch_device.py
-uv run ruff check pd_ocr_cli/ocr_to_txt.py tests/test_parse_args.py tests/test_main_mocked.py tests/test_collect_images.py tests/test_gpu_nudge.py tests/test_torch_device.py
+uv run ruff check pdomain_ocr_cli/ocr_to_txt.py tests/test_parse_args.py tests/test_main_mocked.py tests/test_collect_images.py tests/test_gpu_nudge.py tests/test_torch_device.py
 ```
 
 ## Merge-Back Checklist
 
 - [ ] Review each worker branch diff.
 - [ ] Merge branches into one integration branch.
-- [ ] Run `uv run basedpyright pd_ocr_cli --baselinefile /tmp/no-baseline-pd-ocr-cli.json` to confirm production warnings are gone.
+- [ ] Run `uv run basedpyright pdomain_ocr_cli --baselinefile /tmp/no-baseline-pdomain-ocr-cli.json` to confirm production warnings are gone.
 - [ ] Regenerate `.basedpyright/baseline.json` once with the final merged state if tests remain included in project-wide type checking.
 - [ ] Run `make test AI=1`, `make lint AI=1`, and finally `make ci AI=1`.

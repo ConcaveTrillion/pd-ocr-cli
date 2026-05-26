@@ -10,11 +10,11 @@ the canonical published-and-CPU baseline.
 
 A `dev-local` venv is materially different from the canonical one:
 
-- `pd-book-tools` is installed **editable** from `../pd-book-tools`
+- `pdomain-book-tools` is installed **editable** from `../pdomain-book-tools`
   (not the pinned tag in `pyproject.toml`).
 - `doctr` may be installed from a git ref rather than the published
   wheel.
-- The `[gpu]` extras of `pd-book-tools` (CuPy etc.) may be present.
+- The `[gpu]` extras of `pdomain-book-tools` (CuPy etc.) may be present.
 
 `uv sync` doesn't know any of that; it resolves against `pyproject.toml`
 and `uv.lock` and rewrites the venv to match. The user loses their
@@ -23,7 +23,7 @@ breakage is silent — the next `pd-ocr` invocation just quietly runs
 against the canonical pin.
 
 This same trap is being fixed in lockstep across every `pd-*` repo;
-this doc captures the contract on the `pd-ocr-cli` side.
+this doc captures the contract on the `pdomain-ocr-cli` side.
 
 ## Required behavior
 
@@ -34,9 +34,9 @@ this doc captures the contract on the `pd-ocr-cli` side.
 
 2. **Detection mechanism — preferred order:**
 
-   1. **Probe `uv pip show pd-book-tools`** for an
+   1. **Probe `uv pip show pdomain-book-tools`** for an
       `Editable project location:` field. This is the cross-repo
-      contract: the `pd-book-tools` agent is documenting the matching
+      contract: the `pdomain-book-tools` agent is documenting the matching
       half (its venv exposes the editable marker; downstream repos read
       it). Presence of that field == dev-local mode.
    2. **Marker file** written by `make dev-local`, lifecycle anchored
@@ -57,7 +57,7 @@ this doc captures the contract on the `pd-ocr-cli` side.
    Approximate message shape:
 
    ```text
-   ⚠️  Detected dev-local venv (pd-book-tools editable at ../pd-book-tools).
+   ⚠️  Detected dev-local venv (pdomain-book-tools editable at ../pdomain-book-tools).
        Running `uv sync` here would revert the venv to the canonical baseline.
        Use:  make upgrade-deps-local   (lock + sync + restore dev-local)
        Or:   PD_DEV_LOCAL=0 make upgrade-deps   (canonical mode, intentional clobber)
@@ -87,5 +87,5 @@ this doc captures the contract on the `pd-ocr-cli` side.
 - `scripts/check-editable.py` — already does the editable-resolution
   probe; the implementation can lean on (or extend) it rather than
   re-parsing `uv pip show` from scratch.
-- Workspace-level standardization: same fix landing in `pd-book-tools`,
+- Workspace-level standardization: same fix landing in `pdomain-book-tools`,
   `pd-ocr-labeler`, `pd-ocr-trainer`, etc.

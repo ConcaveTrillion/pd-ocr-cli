@@ -14,7 +14,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pd_ocr_cli import ocr_to_txt
+from pdomain_ocr_cli import ocr_to_txt
 
 
 @pytest.fixture(autouse=True)

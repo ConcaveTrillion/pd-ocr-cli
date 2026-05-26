@@ -53,11 +53,11 @@ repos:
 
     -   id: basedpyright
         name: basedpyright type check (recommended mode; workspace canonical)
-        entry: uv run basedpyright pd_ocr_cli --level error
+        entry: uv run basedpyright pdomain_ocr_cli --level error
         language: system
         stages: [pre-commit]
         pass_filenames: false
-        files: ^pd_ocr_cli/.*\.py$
+        files: ^pdomain_ocr_cli/.*\.py$
 -   repo: https://github.com/jorisroovers/gitlint
     rev: v0.19.1
     hooks:

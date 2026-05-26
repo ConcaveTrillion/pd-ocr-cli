@@ -11,7 +11,7 @@ from __future__ import annotations
 import sys
 from types import SimpleNamespace
 
-from pd_ocr_cli.ocr_to_txt import _detect_torch_device
+from pdomain_ocr_cli.ocr_to_txt import _detect_torch_device
 
 
 def test_detect_returns_cpu_when_torch_missing(monkeypatch):

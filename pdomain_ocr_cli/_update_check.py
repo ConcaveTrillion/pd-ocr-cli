@@ -9,13 +9,13 @@ from importlib.metadata import version as _pkg_version
 from typing import Protocol, TypedDict, cast
 
 try:
-    _detected_version: str = _pkg_version("pd-ocr-cli")
+    _detected_version: str = _pkg_version("pdomain-ocr-cli")
 except PackageNotFoundError:  # pragma: no cover - only fires if package metadata is missing
     _detected_version = "unknown"
 
 VERSION: str = _detected_version
 
-_GITHUB_REPO = "ConcaveTrillion/pd-ocr-cli"
+_GITHUB_REPO = "pdomain/pdomain-ocr-cli"
 _INSTALL_URL = f"https://raw.githubusercontent.com/{_GITHUB_REPO}/main/install.sh"
 _STABLE_TAG_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)$")
 _RELEASE_PREFIX_RE = re.compile(r"^v?(\d+)\.(\d+)\.(\d+)")
@@ -110,7 +110,7 @@ def check_for_update() -> None:
             url,
             headers={
                 "Accept": "application/vnd.github+json",
-                "User-Agent": f"pd-ocr-cli/{VERSION}",
+                "User-Agent": f"pdomain-ocr-cli/{VERSION}",
             },
         )
         response = cast("_UrlopenResponse", urllib.request.urlopen(req, timeout=3))  # noqa: S310

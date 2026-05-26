@@ -1,7 +1,7 @@
 """Fast end-to-end ``main()`` tests with every heavy item mocked.
 
 These exercise the ``ocr_to_txt.main`` orchestration without loading torch,
-DocTR, pd_book_tools, or cv2 — the ``_load_*`` indirection helpers and
+DocTR, pdomain_book_tools, or cv2 — the ``_load_*`` indirection helpers and
 ``_check_for_update`` are monkeypatched to return fakes so the fast suite
 (``make ci``) covers the same flow paths the slow integration tests
 exercise via subprocess + real models.
@@ -29,7 +29,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pd_ocr_cli import ocr_to_txt
+from pdomain_ocr_cli import ocr_to_txt
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TITLE_IMAGE = FIXTURES_DIR / "title_page_001.png"
@@ -982,7 +982,7 @@ def test_main_default_passes_drop_layout_words_false_to_reorganize(
     """Default invocation must call reorganize_page(drop_layout_words=False).
 
     This is the user-visible footnote-loss fix: by default the CLI must
-    match the new pd-book-tools library default and preserve all words.
+    match the new pdomain-book-tools library default and preserve all words.
     """
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)
@@ -1010,7 +1010,7 @@ def test_main_experimental_drop_layout_words_passes_true_to_reorganize(
     """``--experimental-drop-layout-words`` opts into legacy drop behavior.
 
     Verifies the flag is wired through the call site at
-    ``pd_ocr_cli/ocr_to_txt.py`` so users who still want the pre-fix
+    ``pdomain_ocr_cli/ocr_to_txt.py`` so users who still want the pre-fix
     behavior can request it explicitly.
     """
     img = tmp_path / "page.png"
@@ -1037,7 +1037,7 @@ def test_main_experimental_drop_layout_words_passes_true_to_reorganize(
 def test_main_default_emits_illustration_placeholders(patched_main, monkeypatch, tmp_path):
     """Default invocation forwards emit_illustration_placeholders=True.
 
-    The placeholder block stays on by default so pd-prep-for-pgdp can
+    The placeholder block stays on by default so pdomain-prep-for-pgdp can
     anchor [Illustration: ...] serialisation.
     """
     img = tmp_path / "page.png"
@@ -1414,7 +1414,7 @@ def test_main_layout_debug_writes_debug_file(patched_main, monkeypatch, tmp_path
     )
 
     # The env-var setup helper makes the debug dir; the loop never writes the
-    # actual file (pd_book_tools does that), but the path is announced in the
+    # actual file (pdomain_book_tools does that), but the path is announced in the
     # "extra paths" line on stdout.
     assert (out / "page.txt").exists()
 
@@ -1594,12 +1594,14 @@ def test_main_per_image_exception_with_debug_prints_traceback(
     assert "Traceback" in err  # traceback.print_exc header
 
 
-def test_main_pd_book_tools_import_error_exits_clean(patched_main, monkeypatch, tmp_path, capsys):
+def test_main_pdomain_book_tools_import_error_exits_clean(
+    patched_main, monkeypatch, tmp_path, capsys
+):
     img = tmp_path / "page.png"
     shutil.copy(TITLE_IMAGE, img)
 
     def import_boom(det, reco):
-        raise ImportError("pd_book_tools wheel missing")
+        raise ImportError("pdomain_book_tools wheel missing")
 
     monkeypatch.setattr(ocr_to_txt, "_load_predictor", import_boom)
 
@@ -1613,7 +1615,7 @@ def test_main_pd_book_tools_import_error_exits_clean(patched_main, monkeypatch, 
         )
     assert exc_info.value.code == 1
     err = capsys.readouterr().err
-    assert "pd_book_tools not importable" in err
+    assert "pdomain_book_tools not importable" in err
     assert "wheel missing" in err
 
 

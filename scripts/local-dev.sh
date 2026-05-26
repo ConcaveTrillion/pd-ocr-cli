@@ -6,7 +6,7 @@
 set -euo pipefail
 
 # Repo-specific: Python siblings (no npm siblings — no SPA frontend).
-PY_SIBLINGS=(pd-book-tools)
+PY_SIBLINGS=(pdomain-book-tools)
 NPM_SIBLINGS=()
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"

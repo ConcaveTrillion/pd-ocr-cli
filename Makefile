@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pd-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
@@ -35,8 +35,8 @@ setup: ## Set up development environment (sync deps + pre-commit hooks + refresh
 	@echo "✅ Setup complete!"
 
 refresh-version: ## Force hatch-vcs to re-derive `pd-ocr --version` from current git state (~1s)
-	@echo "🔄 Reinstalling pd-ocr-cli so hatch-vcs picks up the current HEAD / tags..."
-	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pd-ocr-cli
+	@echo "🔄 Reinstalling pdomain-ocr-cli so hatch-vcs picks up the current HEAD / tags..."
+	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pdomain-ocr-cli
 	@echo "✅ Version now reports as:"
 	@uv run pd-ocr --version
 
@@ -45,7 +45,7 @@ install: ## Install pd-ocr as a uv tool from the local source (auto-detects CUDA
 
 uninstall: ## Remove the installed pd-ocr uv tool
 	@echo "🗑️  Uninstalling pd-ocr..."
-	uv tool uninstall pd-ocr-cli || true
+	uv tool uninstall pdomain-ocr-cli || true
 	@echo "✅ pd-ocr uninstalled."
 
 remove-venv: ## Remove the virtual environment
@@ -65,7 +65,7 @@ reset: ## Rebuild virtual environment (keeps UV cache)
 # Two-tier probe: uv pip show (editable) → marker file.
 # Intentionally POSIX sh compatible (no bash-isms).
 define _is_local_dev
-	( uv pip show pd-book-tools 2>/dev/null | grep -q "^Editable project location:" ) \
+	( uv pip show pdomain-book-tools 2>/dev/null | grep -q "^Editable project location:" ) \
 	|| [ -f .venv/.pd-local-mode ]
 endef
 
@@ -87,8 +87,8 @@ upgrade-deps: ## Upgrade dependencies and sync (refuses in local-dev mode; use l
 update-pd-deps: ## Bump sibling pd-* deps to registry latest; leaves diff staged
 	@./scripts/update-pd-deps.sh
 
-upgrade-pd-book-tools: ## Deprecated: use 'make update-pd-deps' instead
-	@echo "⚠️  upgrade-pd-book-tools is deprecated; use 'make update-pd-deps' instead."
+upgrade-pdomain-book-tools: ## Deprecated: use 'make update-pd-deps' instead
+	@echo "⚠️  upgrade-pdomain-book-tools is deprecated; use 'make update-pd-deps' instead."
 	@$(MAKE) --no-print-directory update-pd-deps
 
 lint: ## Run ruff linting and import sorting
@@ -111,7 +111,7 @@ pre-commit-check: ## Run pre-commit on all files
 	uv run pre-commit run --all-files
 
 typecheck: ## Run basedpyright at recommended mode (workspace canonical)
-	uv run basedpyright pd_ocr_cli --level error
+	uv run basedpyright pdomain_ocr_cli --level error
 
 test: ## Run the pytest suite (skips @pytest.mark.slow integration tests)
 	@echo "🧪 Running tests..."
@@ -123,12 +123,12 @@ test-slow: ## Run the full pytest suite including slow integration tests (downlo
 
 coverage: ## Run fast tests with coverage + HTML report; fails if total drops below COV_FAIL_UNDER (default 100)
 	@echo "🧪 Running tests with coverage (threshold: $(COV_FAIL_UNDER)%)..."
-	uv run pytest tests/ --cov=pd_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
+	uv run pytest tests/ --cov=pdomain_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER)
 	@echo "📊 Coverage report: htmlcov/index.html"
 
 coverage-slow: ## Run full suite (incl. slow) with coverage; fails if total drops below COV_FAIL_UNDER_SLOW (default 100)
 	@echo "🧪 Running tests with coverage including slow integration (threshold: $(COV_FAIL_UNDER_SLOW)%)..."
-	uv run pytest tests/ --run-slow --cov=pd_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER_SLOW)
+	uv run pytest tests/ --run-slow --cov=pdomain_ocr_cli --cov-report=term-missing --cov-report=html --cov-report=xml --cov-fail-under=$(COV_FAIL_UNDER_SLOW)
 	@echo "📊 Coverage report: htmlcov/index.html"
 
 build: ## Build the project

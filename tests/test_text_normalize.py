@@ -1,6 +1,6 @@
 """Unit tests for the post-OCR text normalization helpers.
 
-These exercise :mod:`pd_ocr_cli._text_normalize`, the module behind the
+These exercise :mod:`pdomain_ocr_cli._text_normalize`, the module behind the
 ``--straight-quotes`` and ``--em-dash-to-double-hyphen`` CLI flags.
 
 String literals that contain curly quotes or em dashes use \\uXXXX escapes
@@ -11,7 +11,7 @@ invalid-syntax when it cannot parse them as Python code).
 
 import pytest
 
-from pd_ocr_cli._text_normalize import normalize_curly_quotes, normalize_em_dash
+from pdomain_ocr_cli._text_normalize import normalize_curly_quotes, normalize_em_dash
 
 # Unicode code point constants for the characters under test.
 # U+2018 LEFT SINGLE QUOTATION MARK

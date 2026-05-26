@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pd_ocr_cli.ocr_to_txt import _env_truthy, parse_args
+from pdomain_ocr_cli.ocr_to_txt import _env_truthy, parse_args
 
 
 @pytest.mark.parametrize(

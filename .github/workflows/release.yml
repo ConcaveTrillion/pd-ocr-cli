@@ -68,13 +68,13 @@ jobs:
             dist/*.tar.gz
           fail_on_unmatched_files: true
 
-      # Notify ConcaveTrillion/pd-index-pip so it regenerates the PEP 503
+      # Notify pdomain/pdomain-index-pip so it regenerates the PEP 503
       # simple index right away. Without this, the index catches up via
       # its 15-min cron — fine, just slower for downstream installers.
       #
-      # Requires repo secret PD_INDEX_DISPATCH_TOKEN (fine-grained PAT
+      # Requires repo secret PDOMAIN_INDEX_DISPATCH_TOKEN (fine-grained PAT
       # with `Contents: read` + `Metadata: read` on
-      # ConcaveTrillion/pd-index-pip — repository_dispatch on a foreign repo
+      # pdomain/pdomain-index-pip — repository_dispatch on a foreign repo
       # needs Contents read/write per GitHub docs; create the PAT with
       # the minimum scope that makes the dispatch succeed).
       #
@@ -82,14 +82,14 @@ jobs:
       # missing or the PAT is misconfigured, the release still succeeds.
       - name: Notify pd-index of new release
         env:
-          GH_TOKEN: ${{ secrets.PD_INDEX_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.PDOMAIN_INDEX_DISPATCH_TOKEN }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
-            echo "::warning::PD_INDEX_DISPATCH_TOKEN is not set; index will catch up via 15-min cron"
+            echo "::warning::PDOMAIN_INDEX_DISPATCH_TOKEN is not set; index will catch up via 15-min cron"
             exit 0
           fi
-          gh api -X POST /repos/ConcaveTrillion/pd-index-pip/dispatches \
+          gh api -X POST /repos/pdomain/pdomain-index-pip/dispatches \
             -f event_type=pd-release-published \
-            -F 'client_payload[repo]=pd-ocr-cli' \
+            -F 'client_payload[repo]=pdomain-ocr-cli' \
             -F "client_payload[tag]=${{ github.ref_name }}" || \
-            echo "::warning::pd-index-pip dispatch failed; index will catch up via 15-min cron"
+            echo "::warning::pdomain-index-pip dispatch failed; index will catch up via 15-min cron"

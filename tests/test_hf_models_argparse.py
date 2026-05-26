@@ -1,10 +1,10 @@
-"""Argparse-adapter coverage for :mod:`pd_ocr_cli._hf_models`.
+"""Argparse-adapter coverage for :mod:`pdomain_ocr_cli._hf_models`.
 
 These exercise the partial-input validation in ``resolve_ocr_models``
 and the source-descriptor formatting that backs the
 "Detection model loaded: …" / "Recognition model loaded: …" CLI lines.
 
-The HF-download path itself lives in :mod:`pd_book_tools.hf` and is
+The HF-download path itself lives in :mod:`pdomain_book_tools.hf` and is
 tested there; here we only confirm the CLI wrapper passes the right
 shape through and formats output the way the user sees it.
 """
@@ -16,8 +16,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from pd_ocr_cli import _hf_models
-from pd_ocr_cli._hf_models import (
+from pdomain_ocr_cli import _hf_models
+from pdomain_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
     DEFAULT_HF_REPO,
     DEFAULT_RECO_FILENAME,

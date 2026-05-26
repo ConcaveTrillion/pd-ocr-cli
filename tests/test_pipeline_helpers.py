@@ -1,4 +1,4 @@
-"""Unit tests for the pure pipeline helpers in :mod:`pd_ocr_cli._pipeline`.
+"""Unit tests for the pure pipeline helpers in :mod:`pdomain_ocr_cli._pipeline`.
 
 These cover the path-mirroring, text-normalization-apply, layout-debug
 env scaffolding, drops-warning formatting, and illustration-region
@@ -13,8 +13,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from pd_ocr_cli import _pipeline
-from pd_ocr_cli._pipeline import (
+from pdomain_ocr_cli import _pipeline
+from pdomain_ocr_cli._pipeline import (
     apply_text_normalizations,
     atomic_write_bytes,
     atomic_write_text,
@@ -334,7 +334,7 @@ def test_format_drops_warning_exact_max_lines_no_tail():
 
 
 class _Region:
-    """Minimal stand-in for pd_book_tools' Region used in selection tests."""
+    """Minimal stand-in for pdomain_book_tools' Region used in selection tests."""
 
     def __init__(self, type_, confidence):
         self.type = type_
@@ -607,7 +607,7 @@ def test_atomic_write_text_failure_preserves_prior_file(tmp_path, monkeypatch):
         real_write(fd, b"PARTIAL")
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", boom)
 
     with pytest.raises(OSError):
         atomic_write_text(target, "NEW CONTENT")
@@ -631,7 +631,7 @@ def test_atomic_write_text_failure_with_no_prior_file_leaves_no_partial(tmp_path
         real_write(fd, b"PARTIAL")
         raise RuntimeError("simulated SIGKILL between truncate and full flush")
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", boom)
 
     with pytest.raises(RuntimeError):
         atomic_write_text(target, "NEW CONTENT")
@@ -653,7 +653,7 @@ def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path,
     def boom(*args, **kwargs):
         raise RuntimeError("blew up before any byte hit disk")
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.open", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.open", boom)
     with pytest.raises(RuntimeError, match="blew up"):
         atomic_write_text(target, "x")
     assert list(tmp_path.iterdir()) == []
@@ -665,7 +665,7 @@ def test_atomic_write_bytes_failure_with_no_tmp_created_swallows_unlink(tmp_path
     def boom(*args, **kwargs):
         raise RuntimeError("blew up before any byte hit disk")
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.open", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.open", boom)
     with pytest.raises(RuntimeError, match="blew up"):
         atomic_write_bytes(target, b"x")
     assert list(tmp_path.iterdir()) == []
@@ -682,7 +682,7 @@ def test_atomic_write_bytes_roundtrip_and_failure(tmp_path, monkeypatch):
         real_write(fd, b"PARTIAL")
         raise OSError("disk full")
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", boom)
 
     with pytest.raises(OSError):
         atomic_write_bytes(target, b"\xff\xff")
@@ -712,7 +712,7 @@ def test_atomic_write_text_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch):
         fsynced_fds.append(fd)
         return real_fsync(fd)
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.fsync", tracking_fsync)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.fsync", tracking_fsync)
 
     atomic_write_text(target, "durable\n")
 
@@ -734,7 +734,7 @@ def test_atomic_write_bytes_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch)
         fsync_calls.append(fd)
         return real_fsync(fd)
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.fsync", tracking_fsync)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.fsync", tracking_fsync)
 
     atomic_write_bytes(target, b"\xde\xad\xbe\xef")
 
@@ -758,7 +758,7 @@ def test_atomic_write_swallows_filenotfound_on_cleanup(tmp_path, monkeypatch):
                 entry.unlink()
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.write", vanishing_write)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", vanishing_write)
 
     with pytest.raises(OSError, match="No space left"):
         atomic_write_text(target, "x")
@@ -780,8 +780,8 @@ def test_atomic_write_parent_dir_fsync_skipped_on_windows(tmp_path, monkeypatch)
         fsync_calls.append(fd)
         return real_fsync(fd)
 
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.fsync", tracking_fsync)
-    monkeypatch.setattr("pd_ocr_cli._pipeline.os.name", "nt")
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.fsync", tracking_fsync)
+    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.name", "nt")
 
     atomic_write_text(target, "x")
 

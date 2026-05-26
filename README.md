@@ -1,4 +1,4 @@
-# pd-ocr-cli
+# pdomain-ocr-cli
 
 Turn scanned book pages into clean `.txt` files. No setup required —
 just install and point it at an image.
@@ -57,13 +57,13 @@ when a GPU is (or isn't) worth it.
 **Linux / macOS:**
 
 ```sh
-curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh
 ```
 
 **Windows (PowerShell):** *(untested — feedback welcome)*
 
 ```powershell
-irm https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex
 ```
 
 Both scripts detect NVIDIA CUDA automatically and select the correct PyTorch build.
@@ -105,17 +105,17 @@ authoritatively.
 
 Re-run the install script. It re-detects `nvidia-smi` on every run,
 picks the matching `cuXXX` PyTorch wheels, and (when CUDA ≥ 12.4)
-opts into the `pd-book-tools[gpu]` extra (CuPy + opencv-cuda).
+opts into the `pdomain-book-tools[gpu]` extra (CuPy + opencv-cuda).
 `uv tool install --reinstall` swaps the existing install in place.
 
 ```sh
 # Linux / macOS
-curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh
 ```
 
 ```powershell
 # Windows
-irm https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex
 ```
 
 CUDA 11.x or 12.0–12.3 still gets the GPU PyTorch wheels, but the
@@ -182,7 +182,7 @@ You'll need the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cl
 ## Uninstall
 
 ```sh
-uv tool uninstall pd-ocr-cli
+uv tool uninstall pdomain-ocr-cli
 ```
 
 To also remove the cached models, check your `HF_HOME` environment variable for the cache location:
@@ -204,7 +204,7 @@ rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
   public-domain book scans.
 - **Layout detection:** [PP-DocLayout_plus-L](https://github.com/PaddlePaddle/PaddleOCR)
   (RT-DETR-based), Apache-2.0 licensed.
-- **Pipeline glue:** [pd-book-tools](https://github.com/ConcaveTrillion/pd-book-tools)
+- **Pipeline glue:** [pdomain-book-tools](https://github.com/pdomain/pdomain-book-tools)
   — owns the OCR predictor wrapper, layout adapter, and the
   `reorganize_page()` step that turns OCR output into reading-order
   text.
@@ -225,7 +225,7 @@ makes exactly these outbound requests:
    - Cached at `~/.cache/huggingface/hub` by default; override with
      `$HF_HOME` or `$HF_HUB_CACHE`.
 2. **Version check** (every run, in the background):
-   - `GET https://api.github.com/repos/ConcaveTrillion/pd-ocr-cli/tags`
+   - `GET https://api.github.com/repos/pdomain/pdomain-ocr-cli/tags`
    - 3-second timeout; if a newer release tag exists, prints a one-line
      upgrade notice to stderr.
    - Best-effort — silently suppressed on any network or parse error,
@@ -248,10 +248,10 @@ time to upgrade or to switch between CPU and GPU. They:
 - Resolve the latest non-prerelease GitHub Release via the GitHub API
   (or `gh` if authenticated) and download the published `.whl` asset.
 - Detect NVIDIA CUDA via `nvidia-smi`, pick the matching `cuXXX` PyTorch
-  wheel index, and — when CUDA ≥ 12.4 — add `--with 'pd-book-tools[gpu]'`
+  wheel index, and — when CUDA ≥ 12.4 — add `--with 'pdomain-book-tools[gpu]'`
   for CuPy + opencv-cuda.
 - Run `uv tool install --reinstall <wheel>` with `--extra-index-url`
-  pointing at the self-hosted `pd-index-pip` (for `pd-book-tools`) and at
+  pointing at the self-hosted `pdomain-index-pip` (for `pdomain-book-tools`) and at
   PyTorch's CUDA index when applicable.
 
 Once installed, `pd-ocr` itself only does the two outbound requests
@@ -276,12 +276,12 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-CPU install (uses the self-hosted `pd-index-pip` PEP 503 index for
-`pd-book-tools`):
+CPU install (uses the self-hosted `pdomain-index-pip` PEP 503 index for
+`pdomain-book-tools`):
 
 ```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
-    --extra-index-url https://concavetrillion.github.io/pd-index-pip/simple/
+uv tool install git+https://github.com/pdomain/pdomain-ocr-cli \
+    --extra-index-url https://pdomain.github.io/pdomain-index-pip/simple/
 ```
 
 NVIDIA GPU install — replace `cuXXX` with your CUDA version (e.g.
@@ -289,13 +289,13 @@ NVIDIA GPU install — replace `cuXXX` with your CUDA version (e.g.
 extra):
 
 ```sh
-uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli \
-    --with 'pd-book-tools[gpu]' \
-    --extra-index-url https://concavetrillion.github.io/pd-index-pip/simple/ \
+uv tool install git+https://github.com/pdomain/pdomain-ocr-cli \
+    --with 'pdomain-book-tools[gpu]' \
+    --extra-index-url https://pdomain.github.io/pdomain-index-pip/simple/ \
     --extra-index-url https://download.pytorch.org/whl/cuXXX
 ```
 
-The `[gpu]` extra on `pd-book-tools` opts into `cupy-cuda12x` and
+The `[gpu]` extra on `pdomain-book-tools` opts into `cupy-cuda12x` and
 `opencv-cuda`. Use `nvidia-smi` to read your CUDA version, or the
 [PyTorch install selector](https://pytorch.org/get-started/locally/).
 Disk / VRAM budgets are below in
@@ -308,7 +308,7 @@ the detection and assembles these flags for you.
 
 How the pieces fit together when you opt in:
 
-- **`pd-ocr-cli`** — the app.
+- **`pdomain-ocr-cli`** — the app.
 - **CUDA Toolkit** — NVIDIA's runtime that lets programs talk to
   your GPU. Required on Linux / Windows for the CUDA path; the
   Apple Silicon path uses Metal via PyTorch's MPS backend instead.
@@ -335,17 +335,17 @@ Rough disk + memory budget for the NVIDIA path:
 
 ## Development
 
-Working on `pd-ocr-cli` itself? See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
+Working on `pdomain-ocr-cli` itself? See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
 developer guide — covers `make setup`, the editable side-by-side workflow with
-`pd-book-tools` (`make local-setup`, `make run-local ARGS="…"`), the project
+`pdomain-book-tools` (`make local-setup`, `make run-local ARGS="…"`), the project
 layout, and the release process.
 
 Quick start:
 
 ```sh
-git clone https://github.com/ConcaveTrillion/pd-ocr-cli
-cd pd-ocr-cli
-make setup            # regular dev setup against the pinned pd-book-tools tag
+git clone https://github.com/pdomain/pdomain-ocr-cli
+cd pdomain-ocr-cli
+make setup            # regular dev setup against the pinned pdomain-book-tools tag
 # — or —
-make local-setup      # also clones ../pd-book-tools and links it editable
+make local-setup      # also clones ../pdomain-book-tools and links it editable
 ```

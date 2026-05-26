@@ -1,16 +1,16 @@
-# CLAUDE — pd-ocr-cli
+# CLAUDE — pdomain-ocr-cli
 
 CLI tool that turns scanned book pages into clean `.txt` files. Wraps
-`pd-book-tools` OCR/layout primitives with auto-rotation, layout-aware
+`pdomain-book-tools` OCR/layout primitives with auto-rotation, layout-aware
 reading-order reconstruction, and a user-facing `pd-ocr` command.
 
 ## Commands
 
 | target | does |
 |---|---|
-| `make setup AI=1` | dev venv + pre-commit hooks (pinned `pd-book-tools` tag) |
+| `make setup AI=1` | dev venv + pre-commit hooks (pinned `pdomain-book-tools` tag) |
 | `make local-setup` | clone any missing sibling pd-* repos into the workspace |
-| `make local-dev` | switch to local-dev mode (editable `../pd-book-tools` + marker) |
+| `make local-dev` | switch to local-dev mode (editable `../pdomain-book-tools` + marker) |
 | `make local-check` | print local-dev mode + per-sibling resolution |
 | `make local-upgrade-deps` | upgrade deps then restore editable siblings (local-mode only) |
 | `make local-install` / `local-uninstall` | `uv tool install` with editable siblings / uninstall |
@@ -21,7 +21,7 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | `make lint AI=1` / `make format AI=1` | ruff |
 | `make build AI=1` | sdist + wheel into `dist/` |
 | `make ci AI=1` | setup → pre-commit → test → build |
-| `make upgrade-pd-book-tools` | bump pin to latest GitHub tag |
+| `make upgrade-pdomain-book-tools` | bump pin to latest GitHub tag |
 | `make release-{patch,minor,major}` | tag locally; `git push --tags` triggers release workflow |
 | `make refresh-version` | re-derive `pd-ocr --version` after tag changes (hatch-vcs) |
 
@@ -40,13 +40,13 @@ Full target list: `make help`. Full dev setup: [`DEVELOPMENT.md`](DEVELOPMENT.md
 - Never `python -m pytest`. Always `uv run pytest -n auto` or `make test`. Bare `python`/`python3`/`.venv/bin/python` miss the venv.
 - Never silently drop OCR words. Reorg, caption suppression, and all output paths must preserve every word — roles may change, words may not disappear.
 - `--no-illustration-placeholders` suppresses the placeholder block, not caption text. Caption words must survive in the output.
-- `pd-book-tools` is upstream for OCR/layout/image primitives; coordinate with that agent before adding logic that belongs in the library.
-- `pd-book-tools` is pinned in `pyproject.toml`; upgrade with `make upgrade-pd-book-tools`.
+- `pdomain-book-tools` is upstream for OCR/layout/image primitives; coordinate with that agent before adding logic that belongs in the library.
+- `pdomain-book-tools` is pinned in `pyproject.toml`; upgrade with `make upgrade-pdomain-book-tools`.
 - Version is derived from git tags via `hatch-vcs` — no hardcoded version in `pyproject.toml`.
 
 ## Sibling repos
 
-- `../pd-book-tools/` — upstream dependency. Side-by-side editing: `make local-setup` + `make dev-local`.
+- `../pdomain-book-tools/` — upstream dependency. Side-by-side editing: `make local-setup` + `make dev-local`.
 
 ## Docs
 

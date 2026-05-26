@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from pd_ocr_cli import _update_check
+from pdomain_ocr_cli import _update_check
 
 
 class _FakeResponse:
@@ -290,7 +290,7 @@ def test_tags_request_uses_per_page_100(monkeypatch):
 
 def test_tags_request_sets_explicit_user_agent(monkeypatch):
     """The tags-API request must carry an explicit ``User-Agent`` header
-    identifying ``pd-ocr-cli`` and its version, rather than relying on
+    identifying ``pdomain-ocr-cli`` and its version, rather than relying on
     urllib's default ``Python-urllib/3.x`` (which GitHub may throttle).
     """
     monkeypatch.setattr(_update_check, "VERSION", "0.5.0")
@@ -311,5 +311,5 @@ def test_tags_request_sets_explicit_user_agent(monkeypatch):
         f"Request must set an explicit User-Agent header "
         f"(headers seen: {captured.get('headers')!r})"
     )
-    assert "pd-ocr-cli" in ua, f"User-Agent must identify pd-ocr-cli (got: {ua!r})"
+    assert "pdomain-ocr-cli" in ua, f"User-Agent must identify pdomain-ocr-cli (got: {ua!r})"
     assert "0.5.0" in ua, f"User-Agent must include the package version (got: {ua!r})"

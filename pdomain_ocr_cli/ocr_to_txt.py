@@ -3,11 +3,11 @@
 Usage
 -----
 Install and run (models download automatically):
-    uv tool install git+https://github.com/ConcaveTrillion/pd-ocr-cli
+    uv tool install git+https://github.com/pdomain/pdomain-ocr-cli
     pd-ocr page.png
 
 Run directly without installing:
-    uvx --from git+https://github.com/ConcaveTrillion/pd-ocr-cli pd-ocr page.png
+    uvx --from git+https://github.com/pdomain/pdomain-ocr-cli pd-ocr page.png
 
 Multiple images:
     pd-ocr page1.png page2.png page3.png
@@ -81,7 +81,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
 
-from pd_ocr_cli._hf_models import (
+from pdomain_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
     DEFAULT_HF_REPO,
     DEFAULT_RECO_FILENAME,
@@ -92,7 +92,7 @@ from pd_ocr_cli._hf_models import (
     resolve_ocr_models,
     silence_transformers_load_chatter,
 )
-from pd_ocr_cli._pipeline import (
+from pdomain_ocr_cli._pipeline import (
     apply_text_normalizations,
     atomic_write_text,
     clear_layout_debug_env,
@@ -108,8 +108,8 @@ from pd_ocr_cli._pipeline import (
     validate_extract_illustrations,
     write_diagnostic_snapshots,
 )
-from pd_ocr_cli._update_check import VERSION as _VERSION
-from pd_ocr_cli._update_check import check_for_update as _check_for_update
+from pdomain_ocr_cli._update_check import VERSION as _VERSION
+from pdomain_ocr_cli._update_check import check_for_update as _check_for_update
 
 
 @dataclass
@@ -240,7 +240,7 @@ class _LayoutTypesModuleLike(Protocol):
 def _load_is_image_file() -> Callable[[Path], bool]:
     module = cast(
         "_FormatsModuleLike",
-        cast("object", importlib.import_module("pd_book_tools.image_processing.formats")),
+        cast("object", importlib.import_module("pdomain_book_tools.image_processing.formats")),
     )
     return module.is_image_file
 
@@ -300,7 +300,7 @@ def _detect_torch_device() -> str:
 # ---------------------------------------------------------------------------
 # Lazy-import indirection — the only purpose of these tiny wrappers is to
 # give tests a single attribute to ``monkeypatch`` so ``main()`` can run end
-# to end without loading torch / DocTR / pd_book_tools / cv2.
+# to end without loading torch / DocTR / pdomain_book_tools / cv2.
 # ---------------------------------------------------------------------------
 
 
@@ -308,7 +308,7 @@ def _load_predictor(det_path: Path, reco_path: Path) -> object:
     """Import doctr support and build the fine-tuned predictor."""
     module = cast(
         "_DoctrSupportModuleLike",
-        cast("object", importlib.import_module("pd_book_tools.ocr.doctr_support")),
+        cast("object", importlib.import_module("pdomain_book_tools.ocr.doctr_support")),
     )
     return module.get_finetuned_torch_doctr_predictor(det_path, reco_path)
 
@@ -317,7 +317,7 @@ def _load_layout_detector(args: _CliArgs, device: str) -> _LayoutDetectorLike:
     """Import the layout module and instantiate the configured detector."""
     _ = silence_transformers_load_chatter()
     module = cast(
-        "_LayoutModuleLike", cast("object", importlib.import_module("pd_book_tools.layout"))
+        "_LayoutModuleLike", cast("object", importlib.import_module("pdomain_book_tools.layout"))
     )
 
     return module.get_detector(
@@ -332,7 +332,7 @@ def _load_document_factory() -> _DocumentFactoryLike:
     """Return the ``Document.from_image_ocr_via_doctr`` callable."""
     module = cast(
         "_DocumentModuleLike",
-        cast("object", importlib.import_module("pd_book_tools.ocr.document")),
+        cast("object", importlib.import_module("pdomain_book_tools.ocr.document")),
     )
     return module.Document.from_image_ocr_via_doctr
 
@@ -341,7 +341,7 @@ def _load_validate_word_preservation() -> _ValidateWordPreservation:
     """Return the ``validate_word_preservation`` reorganize-checker."""
     module = cast(
         "_ReorganizeUtilsModuleLike",
-        cast("object", importlib.import_module("pd_book_tools.ocr.reorganize_page_utils")),
+        cast("object", importlib.import_module("pdomain_book_tools.ocr.reorganize_page_utils")),
     )
     return module.validate_word_preservation
 
@@ -351,7 +351,7 @@ def _load_illustration_deps() -> tuple[_Cv2Like, set[object]]:
     cv2_module = cast("_Cv2Like", cast("object", importlib.import_module("cv2")))
     types_module = cast(
         "_LayoutTypesModuleLike",
-        cast("object", importlib.import_module("pd_book_tools.layout.types")),
+        cast("object", importlib.import_module("pdomain_book_tools.layout.types")),
     )
     region_type = types_module.RegionType
     figure = region_type.figure
@@ -463,7 +463,7 @@ def _maybe_print_gpu_nudge() -> None:
                 (
                     "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
                     + "        Re-run the install script to switch to GPU (requires CUDA >= 12.4):\n"
-                    + "          curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh\n"  # URL cannot be broken
+                    + "          curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh\n"  # URL cannot be broken
                     + "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message."
                 ),
                 file=sys.stderr,
@@ -693,7 +693,7 @@ def parse_args() -> argparse.Namespace:
             "[Illustration: ...] wrapper downstream). Caption text is NOT "
             "dropped — caption words are preserved alongside the surrounding "
             "body text. Default OFF: placeholders are emitted so "
-            "pd-prep-for-pgdp can anchor [Illustration: ...] serialisation. "
+            "pdomain-prep-for-pgdp can anchor [Illustration: ...] serialisation. "
             "Has no effect with --no-reorg."
         ),
     )
@@ -842,7 +842,7 @@ def main() -> None:
     try:
         predictor = _load_predictor(det_path, reco_path)
     except ImportError as e:
-        print(f"ERROR: pd_book_tools not importable: {e}", file=sys.stderr)  # noqa: T201  # CLI output
+        print(f"ERROR: pdomain_book_tools not importable: {e}", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
     if predictor is None:
         print("ERROR: failed to load models.", file=sys.stderr)  # noqa: T201  # CLI output
@@ -1018,7 +1018,7 @@ def main() -> None:
                     print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)  # noqa: T201  # CLI output
                 extra_paths.extend(str(p) for p in written)
             # Only advertise the layout-debug artifact when reorganize_page
-            # actually ran — that is the codepath in pd-book-tools that
+            # actually ran — that is the codepath in pdomain-book-tools that
             # writes the report. With ``--no-reorg`` (or any other reason
             # ``do_reorg`` is False) the file never materialises, so the
             # success line must not point at it. (B9)
