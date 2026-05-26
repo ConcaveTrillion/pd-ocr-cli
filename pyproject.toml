@@ -191,7 +191,10 @@ addopts = [
 ]
 filterwarnings = [
     "error",
-    # Add ignores below as new warnings surface -- each with a comment.
+    # defusedxml 0.7.1 imports xml.etree.cElementTree which is deprecated in
+    # Python 3.13. This is triggered transitively by doctr on import. Ignore
+    # until defusedxml cuts a Python-3.13-compatible release (>=0.8).
+    "ignore:defusedxml.cElementTree is deprecated:DeprecationWarning:defusedxml",
 ]
 
 [tool.coverage.run]
