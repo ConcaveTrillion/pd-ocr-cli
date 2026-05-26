@@ -5,7 +5,7 @@
 set -euo pipefail
 
 TOOL_NAME="pd-ocr"                  # repo-specific
-PY_SIBLINGS=(pd-book-tools)
+PY_SIBLINGS=(pdomain-book-tools)
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GIT_COMMON_DIR="$(git -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir)"
 CANONICAL_REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"

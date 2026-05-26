@@ -1,24 +1,24 @@
 # Install pd-ocr as a standalone tool using uv.
 #
 # NOTE: This script has not been tested yet. Please report any issues at
-#       https://github.com/ConcaveTrillion/pd-ocr-cli/issues
+#       https://github.com/pdomain/pdomain-ocr-cli/issues
 #
 # PRECONDITION (GPU auto-enable):
 #   The CUDA >= 12.4 branch below appends `[gpu]` to the install ref. That
-#   extra exists only in pd-book-tools >= v0.11.0 (the release that moves
+#   extra exists only in pdomain-book-tools >= v0.11.0 (the release that moves
 #   cupy-cuda12x + opencv-cuda from mandatory deps into an optional [gpu]
-#   extra), and it is exposed transitively via pd-ocr-cli's own [gpu] extra.
-#   Until pyproject.toml is repinned to pd-book-tools v0.11.0+, sourcing
+#   extra), and it is exposed transitively via pdomain-ocr-cli's own [gpu] extra.
+#   Until pyproject.toml is repinned to pdomain-book-tools v0.11.0+, sourcing
 #   this script on a CUDA host will produce a "package does not have an
 #   extra named gpu" warning from uv. DO NOT MERGE this branch until the
 #   pin is bumped.
 #
 # Usage (run in PowerShell):
-#   irm https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex
 #
 # Manual CUDA override (if auto-detection fails):
 #   $env:CUDA_VERSION = "12.4"   # replace with your version
-#   irm https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex
 
 $ErrorActionPreference = "Stop"
 
@@ -99,7 +99,7 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
         try {
             if ([version]$CudaVer -ge [version]"12.4") {
                 $BookToolsExtras = "[gpu]"
-                Write-Host "CUDA $CudaVer >= 12.4 -- enabling pd-ocr-cli[gpu] (CuPy + opencv-cuda)."
+                Write-Host "CUDA $CudaVer >= 12.4 -- enabling pdomain-ocr-cli[gpu] (CuPy + opencv-cuda)."
             } else {
                 Write-Host "CUDA $CudaVer < 12.4 -- installing CPU-only book-tools (cupy-cuda12x needs >= 12.4)."
             }
@@ -113,7 +113,7 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
         Write-Host ""
         Write-Host "         To install the GPU build instead, re-run with a manual override:"
         Write-Host "           `$env:CUDA_VERSION = `"12.4`"   # replace with your CUDA version"
-        Write-Host "           irm https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.ps1 | iex"
+        Write-Host "           irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex"
         Write-Host ""
         Write-Host "         Find your CUDA version by running:  nvidia-smi"
         Write-Host "         and looking for the 'CUDA Version' field in the output."
@@ -124,10 +124,10 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
 }
 
 # Resolve latest git tag from GitHub
-$Repo = "ConcaveTrillion/pd-ocr-cli"
-# The install ref points at the project itself (not pd-book-tools). When
-# $BookToolsExtras is "[gpu]", pd-ocr-cli's own [gpu] extra is requested,
-# which forwards to pd-book-tools[gpu] via the optional-dependency table
+$Repo = "pdomain/pdomain-ocr-cli"
+# The install ref points at the project itself (not pdomain-book-tools). When
+# $BookToolsExtras is "[gpu]", pdomain-ocr-cli's own [gpu] extra is requested,
+# which forwards to pdomain-book-tools[gpu] via the optional-dependency table
 # in pyproject.toml. PEP 508 extras attach inside the URL form as
 # `<name>[<extras>] @ git+...`; for `git+https://...` refs uv accepts the
 # equivalent `git+https://...#egg=<name>[<extras>]` style, but the simpler
@@ -150,7 +150,7 @@ try {
 
 if ($BookToolsExtras) {
     # PEP 508 form so the [gpu] extra attaches to the project ref.
-    $InstallRef = "pd-ocr-cli$BookToolsExtras @ $InstallRef"
+    $InstallRef = "pdomain-ocr-cli$BookToolsExtras @ $InstallRef"
 }
 
 if ($ExtraIndex) {

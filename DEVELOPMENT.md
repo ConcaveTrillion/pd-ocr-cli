@@ -1,6 +1,6 @@
-# Developing pd-ocr-cli
+# Developing pdomain-ocr-cli
 
-This document covers the developer workflows for `pd-ocr-cli`. End-user
+This document covers the developer workflows for `pdomain-ocr-cli`. End-user
 install / usage docs live in [`README.md`](README.md).
 
 ## Prerequisites
@@ -8,48 +8,48 @@ install / usage docs live in [`README.md`](README.md).
 - [`uv`](https://docs.astral.sh/uv/) (Python package + tool manager)
 - Python ≥ 3.10 (uv will provision one if needed)
 - `git`
-- For local-dev workflows: `pd-book-tools` available as a sibling checkout
-  at `../pd-book-tools`. `make local-setup` clones it for you.
+- For local-dev workflows: `pdomain-book-tools` available as a sibling checkout
+  at `../pdomain-book-tools`. `make local-setup` clones it for you.
 - Optional: NVIDIA GPU + CUDA Toolkit for GPU-accelerated OCR (see README).
 
 ## Quick start
 
 Two paths depending on what you're doing.
 
-### A. Just developing pd-ocr-cli (no pd-book-tools edits)
+### A. Just developing pdomain-ocr-cli (no pdomain-book-tools edits)
 
 ```sh
-git clone https://github.com/ConcaveTrillion/pd-ocr-cli.git
-cd pd-ocr-cli
+git clone https://github.com/pdomain/pdomain-ocr-cli.git
+cd pdomain-ocr-cli
 make setup
 ```
 
-This syncs the dev deps from `pyproject.toml`, including `pd-book-tools`
+This syncs the dev deps from `pyproject.toml`, including `pdomain-book-tools`
 at the pinned git tag, and installs pre-commit hooks. You can now run
 `uv run pd-ocr ...` without installing globally.
 
-### B. Editing pd-ocr-cli **and** pd-book-tools side-by-side
+### B. Editing pdomain-ocr-cli **and** pdomain-book-tools side-by-side
 
 ```sh
-git clone https://github.com/ConcaveTrillion/pd-ocr-cli.git
-cd pd-ocr-cli
+git clone https://github.com/pdomain/pdomain-ocr-cli.git
+cd pdomain-ocr-cli
 make local-setup
 ```
 
 `local-setup` does:
 
-1. Clones `pd-book-tools` to `../pd-book-tools` (skipped if it already exists).
+1. Clones `pdomain-book-tools` to `../pdomain-book-tools` (skipped if it already exists).
 2. Runs `make dev-local`, which:
    - `uv sync --group dev` (installs deps from `pyproject.toml`)
-   - `uv pip install -e ../pd-book-tools` (replaces the pinned tag with
+   - `uv pip install -e ../pdomain-book-tools` (replaces the pinned tag with
      the local editable checkout)
    - Verifies via `make check-local-editable` that imports resolve to
      the sibling, not the cached tag.
 
-If you also want pd-book-tools' own venv (to run its tests):
+If you also want pdomain-book-tools' own venv (to run its tests):
 
 ```sh
-(cd ../pd-book-tools && make setup)
+(cd ../pdomain-book-tools && make setup)
 ```
 
 ## Make targets
@@ -60,7 +60,7 @@ If you also want pd-book-tools' own venv (to run its tests):
 
 | Target | Purpose |
 | --- | --- |
-| `setup` | Install dev deps + pre-commit hooks (uses pinned `pd-book-tools` tag). |
+| `setup` | Install dev deps + pre-commit hooks (uses pinned `pdomain-book-tools` tag). |
 | `refresh-version` | Force-reinstall the editable package so `pd-ocr --version` re-derives from current git state (hatch-vcs bakes the version at install time, not at runtime — run this after `git pull` / new local tags). |
 | `install` | Install `pd-ocr` as a `uv tool` from local source, auto-detecting CUDA. |
 | `uninstall` | Remove the installed `pd-ocr` uv tool. |
@@ -74,10 +74,10 @@ If you also want pd-book-tools' own venv (to run its tests):
 | `reset` | `clean` + remove `.venv` + `setup`. |
 | `upgrade-deps` | Upgrade the lockfile and sync the venv. **Refuses when a dev-local venv is detected** — use `upgrade-deps-local` instead (or set `PD_DEV_LOCAL=0` to intentionally clobber). |
 | `upgrade-deps-local` | Upgrade the lockfile, sync to canonical baseline, then restore the dev-local editable install — all in one shot. |
-| `upgrade-pd-book-tools` | Bump the `pd-book-tools` pin to the latest GitHub tag. |
+| `upgrade-pdomain-book-tools` | Bump the `pdomain-book-tools` pin to the latest GitHub tag. |
 | `release-{patch,minor,major}` | Tag a new release locally (push with `git push --tags`). |
 
-### Local-dev (require `../pd-book-tools` sibling)
+### Local-dev (require `../pdomain-book-tools` sibling)
 
 These targets are guarded — if the sibling is missing they print a clear
 message and exit 1. None of them mutate `pyproject.toml`; they swap the
@@ -87,10 +87,10 @@ install).
 | Target | Purpose |
 | --- | --- |
 | `local-setup` | Clone the sibling if missing, then run `dev-local`. The one-stop entrypoint. |
-| `dev-local` | Install `pd-book-tools` from `../pd-book-tools` as editable into this venv. |
+| `dev-local` | Install `pdomain-book-tools` from `../pdomain-book-tools` as editable into this venv. |
 | `install-local` | Install `pd-ocr` as a `uv tool` with **both** repos editable — `pd-ocr` on your PATH tracks live edits in either tree. |
 | `uninstall-local` | Remove the `uv tool` install. |
-| `check-local-editable` | Verify `pd_book_tools` imports resolve to `../pd-book-tools` (not the cached tag). |
+| `check-local-editable` | Verify `pdomain_book_tools` imports resolve to `../pdomain-book-tools` (not the cached tag). |
 | `run-local` | Run `pd-ocr` against the editable workspace. Pass args via `ARGS="…"`. |
 | `python-local` | Run `python` against the editable workspace. Pass args via `ARGS="…"`. |
 
@@ -98,7 +98,7 @@ Examples:
 
 ```sh
 make run-local ARGS='page.png --layout-debug'
-make python-local ARGS='-c "import pd_book_tools; print(pd_book_tools.__file__)"'
+make python-local ARGS='-c "import pdomain_book_tools; print(pdomain_book_tools.__file__)"'
 ```
 
 After `install-local`, just run `pd-ocr page.png` — the global tool
@@ -108,13 +108,13 @@ To revert to the published version:
 
 ```sh
 make uninstall-local
-curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
+curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh
 ```
 
 ## Project layout
 
 ```text
-pd_ocr_cli/
+pdomain_ocr_cli/
 ├── ocr_to_txt.py        # CLI entrypoint + main() + parse_args()
 ├── _hf_download.py      # generic hf_hub_download wrapper (sidecar opt-in)
 ├── _hf_models.py        # OCR + layout model resolution / prefetch / descriptors
@@ -123,12 +123,12 @@ pd_ocr_cli/
 ```
 
 Files prefixed with `_` are package-internal. The single public entry
-point is `pd_ocr_cli.ocr_to_txt:main` (wired via `[project.scripts]`).
+point is `pdomain_ocr_cli.ocr_to_txt:main` (wired via `[project.scripts]`).
 
 ## Releasing
 
-1. Make sure the `pd-book-tools` pin in `pyproject.toml` matches the
-   intended release. `make upgrade-pd-book-tools` bumps to latest tag.
+1. Make sure the `pdomain-book-tools` pin in `pyproject.toml` matches the
+   intended release. `make upgrade-pdomain-book-tools` bumps to latest tag.
 2. Run `make ci` to lint + build cleanly.
 3. Tag and push:
 
@@ -154,7 +154,7 @@ has no hardcoded version.
   been merged into the main `Makefile` (with peer-existence guards on
   the `*-local` targets), but `-include Makefile.local` is still
   available for personal additions if you want them.
-- Pylance / Pyright may flag `pd_book_tools.layout.adapters.pp_doclayout`
+- Pylance / Pyright may flag `pdomain_book_tools.layout.adapters.pp_doclayout`
   and `transformers.utils` as unresolved. Those are intentional lazy
   imports (heavy deps loaded only when needed). Point your IDE at
   `.venv/bin/python` to silence them.

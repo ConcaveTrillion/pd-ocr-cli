@@ -8,12 +8,12 @@ import logging
 from pathlib import Path
 
 import pytest
-from pd_book_tools.image_processing.formats import SUPPORTED_IMAGE_SUFFIXES
+from pdomain_book_tools.image_processing.formats import SUPPORTED_IMAGE_SUFFIXES
 
-from pd_ocr_cli.ocr_to_txt import collect_images
+from pdomain_ocr_cli.ocr_to_txt import collect_images
 
 # Minimal magic-byte headers (>= 16 bytes after padding) for the formats
-# pd-book-tools' is_image_file recognises. Used by _touch to lay down
+# pdomain-book-tools' is_image_file recognises. Used by _touch to lay down
 # fixtures that pass the gate without involving real image encoders.
 _MAGIC_BY_SUFFIX: dict[str, bytes] = {
     ".png": b"\x89PNG\r\n\x1a\n",
@@ -134,7 +134,7 @@ def test_collect_accepts_jp2_with_real_magic_bytes(tmp_path):
 
     Regression: prior IMAGE_SUFFIXES allowlist hardcoded only PNG/JPEG/
     TIFF/BMP/WebP, so JPEG 2000 scans were rejected as "non-image".
-    pd-book-tools' is_image_file now decides via extension OR magic.
+    pdomain-book-tools' is_image_file now decides via extension OR magic.
     """
     jp2 = tmp_path / "scan.jp2"
     # Real JP2 box-format header (12 bytes) + zero padding to clear the
@@ -148,15 +148,15 @@ def test_collect_accepts_mislabeled_png_with_jp2_bytes_and_warns(tmp_path, capsy
     accepted (it IS a real image, just mislabeled) and (2) produce a
     visible WARNING so the user knows the extension is wrong.
 
-    The warning is emitted by pd-book-tools'
-    ``pd_book_tools.image_processing.formats`` module logger; pd-ocr-cli's
+    The warning is emitted by pdomain-book-tools'
+    ``pdomain_book_tools.image_processing.formats`` module logger; pdomain-ocr-cli's
     own logging configuration must not silence it.
     """
     fake_png = tmp_path / "mislabeled.png"
     # JP2 box magic + padding; 12 + 8 = 20 bytes total.
     fake_png.write_bytes(b"\x00\x00\x00\x0cjP  \r\n\x87\n" + b"\x00" * 8)
 
-    with caplog.at_level(logging.WARNING, logger="pd_book_tools.image_processing.formats"):
+    with caplog.at_level(logging.WARNING, logger="pdomain_book_tools.image_processing.formats"):
         result = collect_images([str(fake_png)], recursive=False)
 
     assert result == [fake_png], "mislabeled-but-real image must be accepted"

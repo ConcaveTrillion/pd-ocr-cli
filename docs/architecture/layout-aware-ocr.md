@@ -16,7 +16,7 @@ detected regions feed `Page.reorganize_page()` as a hint, which:
 
 The default detector is
 [`PaddlePaddle/PP-DocLayout_plus-L`](https://huggingface.co/CT2534/PP-DocLayout_plus-L)
-(via `pd-book-tools`), Apache-2.0 licensed, ~132 MB downloaded on first
+(via `pdomain-book-tools`), Apache-2.0 licensed, ~132 MB downloaded on first
 run.
 
 ## Flags

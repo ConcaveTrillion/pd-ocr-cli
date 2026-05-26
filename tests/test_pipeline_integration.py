@@ -24,7 +24,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pd_ocr_cli import ocr_to_txt
+from pdomain_ocr_cli import ocr_to_txt
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TITLE_IMAGE = FIXTURES_DIR / "title_page_001.png"

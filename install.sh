@@ -4,24 +4,24 @@ set -e
 # Install pd-ocr as a standalone tool using uv.
 #
 # Pulls the wheel from the latest non-prerelease GitHub Release of
-# ConcaveTrillion/pd-ocr-cli and installs it via `uv tool install`. Uses
+# pdomain/pdomain-ocr-cli and installs it via `uv tool install`. Uses
 # `gh` if available (and authenticated); otherwise falls back to the
 # public GitHub Releases API via curl.
 #
 # GPU auto-enable:
-#   The CUDA >= 12.4 branch below passes `--with pd-book-tools[gpu]` to
+#   The CUDA >= 12.4 branch below passes `--with pdomain-book-tools[gpu]` to
 #   pull in the optional CuPy + opencv-cuda extras.  That extra exists only
-#   in pd-book-tools >= v0.11.0 (the release that moved those heavy deps
+#   in pdomain-book-tools >= v0.11.0 (the release that moved those heavy deps
 #   from mandatory into an optional [gpu] group).
 #
-# pd-book-tools is published on a self-hosted PEP 503 index (pd-index-pip) so
+# pdomain-book-tools is published on a self-hosted PEP 503 index (pdomain-index-pip) so
 # the wheel's Requires-Dist entry resolves automatically when we pass
 # --extra-index-url to uv — no manual git-pin fetch needed.
 #
 # Usage:
-#   curl -sSL https://raw.githubusercontent.com/ConcaveTrillion/pd-ocr-cli/main/install.sh | sh
+#   curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh
 
-REPO="ConcaveTrillion/pd-ocr-cli"
+REPO="pdomain/pdomain-ocr-cli"
 
 # Install uv if not already present
 if ! command -v uv >/dev/null 2>&1; then
@@ -32,7 +32,7 @@ fi
 
 EXTRA_INDEX=""
 PD_BOOK_TOOLS_EXTRAS=""
-PD_INDEX_URL="https://concavetrillion.github.io/pd-index-pip/simple/"
+PD_INDEX_URL="https://pdomain.github.io/pdomain-index-pip/simple/"
 
 # Auto-detect NVIDIA CUDA
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
@@ -43,7 +43,7 @@ if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
         echo "Detected CUDA ${CUDA_VER} — will install PyTorch with ${CUDA_TAG} support."
 
         # CuPy (cupy-cuda12x) requires CUDA >= 12.4. Only opt into the
-        # pd-book-tools[gpu] extra when that minimum is satisfied;
+        # pdomain-book-tools[gpu] extra when that minimum is satisfied;
         # otherwise the [gpu] resolve fails with a CuPy version error
         # and a working CPU-only install would have been preferable.
         # POSIX-sh version compare — no `sort -V`, no `awk`.
@@ -51,7 +51,7 @@ if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
         CUDA_MINOR=${CUDA_VER#*.}
         if [ "$CUDA_MAJOR" -gt 12 ] || { [ "$CUDA_MAJOR" -eq 12 ] && [ "$CUDA_MINOR" -ge 4 ]; }; then
             PD_BOOK_TOOLS_EXTRAS="[gpu]"
-            echo "CUDA ${CUDA_VER} >= 12.4 — enabling pd-book-tools[gpu] (CuPy + opencv-cuda)."
+            echo "CUDA ${CUDA_VER} >= 12.4 — enabling pdomain-book-tools[gpu] (CuPy + opencv-cuda)."
         else
             echo "CUDA ${CUDA_VER} < 12.4 — installing CPU-only book-tools (cupy-cuda12x needs >= 12.4)."
         fi
@@ -119,7 +119,7 @@ fi
 
 echo "Latest release: ${RELEASE_TAG:-(unknown tag)}"
 echo "Wheel asset:    ${WHEEL_URL}"
-echo "pd-index-pip:       ${PD_INDEX_URL}"
+echo "pdomain-index-pip:       ${PD_INDEX_URL}"
 
 # ---------------------------------------------------------------------------
 # Download the wheel to a temp dir and install.
@@ -144,13 +144,13 @@ echo "Installing pd-ocr ${RELEASE_TAG:-} from $(basename "$WHEEL_FILE")..."
 # Build the install command incrementally so we only emit flags when relevant.
 # POSIX sh has no arrays — use `set --` to manage args.
 #
-# pd-book-tools is published on the self-hosted pd-index-pip (GitHub Pages PEP 503
+# pdomain-book-tools is published on the self-hosted pdomain-index-pip (GitHub Pages PEP 503
 # index); pass --extra-index-url so uv can resolve the Requires-Dist entry
 # that the wheel's METADATA carries.  When CUDA >= 12.4 was detected above,
 # $PD_BOOK_TOOLS_EXTRAS is "[gpu]"; we pass --with to pull that extra in.
 set -- --reinstall "$WHEEL_FILE" --extra-index-url "$PD_INDEX_URL"
 if [ -n "$PD_BOOK_TOOLS_EXTRAS" ]; then
-    set -- "$@" --with "pd-book-tools${PD_BOOK_TOOLS_EXTRAS}"
+    set -- "$@" --with "pdomain-book-tools${PD_BOOK_TOOLS_EXTRAS}"
 fi
 if [ -n "$EXTRA_INDEX" ]; then
     set -- "$@" --extra-index-url "$EXTRA_INDEX"

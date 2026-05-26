@@ -13,7 +13,7 @@ dist/
 htmlcov/
 coverage.xml
 
-# Local uv source overrides (e.g. pointing pd-book-tools at a local path)
+# Local uv source overrides (e.g. pointing pdomain-book-tools at a local path)
 uv.toml
 Makefile.local
 

@@ -1,8 +1,8 @@
-# pd-ocr-cli Deep Code Review and Security Scan
+# pdomain-ocr-cli Deep Code Review and Security Scan
 
 Date: 2026-05-22
-Repo: `ConcaveTrillion/pd-ocr-cli`
-Workspace path: `/workspaces/ocr-container/pd-ocr-cli`
+Repo: `pdomain/pdomain-ocr-cli`
+Workspace path: `/workspaces/ocr-container/pdomain-ocr-cli`
 
 ## Scope
 
@@ -24,12 +24,12 @@ behavior, packaging/CI, and tests/docs, plus local static/security tooling.
 - `uvx pip-audit -r /tmp/idna-req.txt --progress-spinner off --desc off`
   found `idna==3.13` vulnerable to `CVE-2026-45409`, fixed in `idna>=3.15`.
   A full exported-requirements audit could not complete because pip could not
-  resolve the self-hosted `pd-book-tools==0.12.0` entry without the private
+  resolve the self-hosted `pdomain-book-tools==0.12.0` entry without the private
   index configuration.
 - `uvx detect-secrets scan --all-files --exclude-files
   '(^|/)(\.venv|\.pytest_cache|\.ruff_cache|htmlcov|dist|\.git)/'` found no
   tracked secrets.
-- `uvx bandit -q -r pd_ocr_cli scripts install.sh install.ps1` reported one
+- `uvx bandit -q -r pdomain_ocr_cli scripts install.sh install.ps1` reported one
   medium and four low findings.
 - `uvx zizmor --format plain .github/workflows` reported workflow hardening
   findings across high, medium, and low severities.
@@ -42,51 +42,51 @@ did not reproduce after `make setup AI=1` and is not counted as a repo finding.
 
 ## Filed Issues
 
-- Finding 1: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/15>
-- Finding 2: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/16>
-- Finding 3: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/17>
-- Finding 4: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/18>
-- Finding 5: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/19>
-- Finding 6: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/20>
-- Finding 7: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/21>
-- Finding 8: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/22>
-- Finding 9: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/23>
-- Finding 10: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/24>
-- Finding 11: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/25>
-- Finding 12: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/26>
-- Finding 13: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/27>
-- Finding 14: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/28>
-- Finding 15: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/29>
-- Finding 16: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/30>
-- Finding 17: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/31>
-- Finding 18: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/32>
-- Finding 19: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/33>
-- Finding 20: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/34>
-- Finding 21: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/35>
-- Finding 22: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/36>
-- Finding 23: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/37>
-- Finding 24: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/38>
-- Finding 25: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/39>
-- Finding 26: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/40>
-- Finding 27: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/41>
-- Finding 28: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/42>
-- Finding 29: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/43>
-- Finding 30: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/44>
-- Finding 31: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/45>
-- Finding 32: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/46>
-- Finding 33: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/47>
-- Finding 34: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/48>
-- Finding 35: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/49>
-- Finding 36: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/50>
-- Finding 37: <https://github.com/ConcaveTrillion/pd-ocr-cli/issues/51>
+- Finding 1: <https://github.com/pdomain/pdomain-ocr-cli/issues/15>
+- Finding 2: <https://github.com/pdomain/pdomain-ocr-cli/issues/16>
+- Finding 3: <https://github.com/pdomain/pdomain-ocr-cli/issues/17>
+- Finding 4: <https://github.com/pdomain/pdomain-ocr-cli/issues/18>
+- Finding 5: <https://github.com/pdomain/pdomain-ocr-cli/issues/19>
+- Finding 6: <https://github.com/pdomain/pdomain-ocr-cli/issues/20>
+- Finding 7: <https://github.com/pdomain/pdomain-ocr-cli/issues/21>
+- Finding 8: <https://github.com/pdomain/pdomain-ocr-cli/issues/22>
+- Finding 9: <https://github.com/pdomain/pdomain-ocr-cli/issues/23>
+- Finding 10: <https://github.com/pdomain/pdomain-ocr-cli/issues/24>
+- Finding 11: <https://github.com/pdomain/pdomain-ocr-cli/issues/25>
+- Finding 12: <https://github.com/pdomain/pdomain-ocr-cli/issues/26>
+- Finding 13: <https://github.com/pdomain/pdomain-ocr-cli/issues/27>
+- Finding 14: <https://github.com/pdomain/pdomain-ocr-cli/issues/28>
+- Finding 15: <https://github.com/pdomain/pdomain-ocr-cli/issues/29>
+- Finding 16: <https://github.com/pdomain/pdomain-ocr-cli/issues/30>
+- Finding 17: <https://github.com/pdomain/pdomain-ocr-cli/issues/31>
+- Finding 18: <https://github.com/pdomain/pdomain-ocr-cli/issues/32>
+- Finding 19: <https://github.com/pdomain/pdomain-ocr-cli/issues/33>
+- Finding 20: <https://github.com/pdomain/pdomain-ocr-cli/issues/34>
+- Finding 21: <https://github.com/pdomain/pdomain-ocr-cli/issues/35>
+- Finding 22: <https://github.com/pdomain/pdomain-ocr-cli/issues/36>
+- Finding 23: <https://github.com/pdomain/pdomain-ocr-cli/issues/37>
+- Finding 24: <https://github.com/pdomain/pdomain-ocr-cli/issues/38>
+- Finding 25: <https://github.com/pdomain/pdomain-ocr-cli/issues/39>
+- Finding 26: <https://github.com/pdomain/pdomain-ocr-cli/issues/40>
+- Finding 27: <https://github.com/pdomain/pdomain-ocr-cli/issues/41>
+- Finding 28: <https://github.com/pdomain/pdomain-ocr-cli/issues/42>
+- Finding 29: <https://github.com/pdomain/pdomain-ocr-cli/issues/43>
+- Finding 30: <https://github.com/pdomain/pdomain-ocr-cli/issues/44>
+- Finding 31: <https://github.com/pdomain/pdomain-ocr-cli/issues/45>
+- Finding 32: <https://github.com/pdomain/pdomain-ocr-cli/issues/46>
+- Finding 33: <https://github.com/pdomain/pdomain-ocr-cli/issues/47>
+- Finding 34: <https://github.com/pdomain/pdomain-ocr-cli/issues/48>
+- Finding 35: <https://github.com/pdomain/pdomain-ocr-cli/issues/49>
+- Finding 36: <https://github.com/pdomain/pdomain-ocr-cli/issues/50>
+- Finding 37: <https://github.com/pdomain/pdomain-ocr-cli/issues/51>
 
 ### 1. High: Default mutable `.pt` model download is loaded through `torch.load`
 
-`--model-version` defaults to `None` / latest in `pd_ocr_cli/ocr_to_txt.py:325`,
-the CLI resolves models in `pd_ocr_cli/_hf_models.py:80`, and `pd-book-tools`
+`--model-version` defaults to `None` / latest in `pdomain_ocr_cli/ocr_to_txt.py:325`,
+the CLI resolves models in `pdomain_ocr_cli/_hf_models.py:80`, and `pdomain-book-tools`
 downloads with `revision=None` before loading checkpoints through `torch.load`.
-Current installed dependency evidence: `.venv/.../pd_book_tools/hf/models.py:63`,
-`.venv/.../pd_book_tools/ocr/doctr_support.py:244`, and `:275`.
+Current installed dependency evidence: `.venv/.../pdomain_book_tools/hf/models.py:63`,
+`.venv/.../pdomain_book_tools/ocr/doctr_support.py:244`, and `:275`.
 
 Impact: a compromised or malicious default Hugging Face model file can execute
 code during checkpoint loading on first run.
@@ -99,7 +99,7 @@ checkpoints to a safe loading format such as `safetensors` or
 ### 2. Medium: User-supplied model options cross the same unsafe checkpoint trust boundary
 
 The CLI accepts arbitrary Hugging Face repos/files and local `.pt` model paths
-in `pd_ocr_cli/ocr_to_txt.py:317`, `:325`, `:344`, and `:351`, then delegates to
+in `pdomain_ocr_cli/ocr_to_txt.py:317`, `:325`, `:344`, and `:351`, then delegates to
 the same loader path.
 
 Impact: users can be tricked into running untrusted `.pt` checkpoints that
@@ -110,10 +110,10 @@ non-default repos/local `.pt` files, and prefer safe model formats.
 
 ### 3. Medium: Predictable sibling temp files allow symlink clobbering in shared output dirs
 
-Atomic text writes use deterministic temps from `pd_ocr_cli/_pipeline.py:57`
-and open them with `O_CREAT | O_TRUNC` at `pd_ocr_cli/_pipeline.py:88`.
+Atomic text writes use deterministic temps from `pdomain_ocr_cli/_pipeline.py:57`
+and open them with `O_CREAT | O_TRUNC` at `pdomain_ocr_cli/_pipeline.py:88`.
 JSON and crop outputs also use deterministic temp names at
-`pd_ocr_cli/ocr_to_txt.py:820` and `:871`.
+`pdomain_ocr_cli/ocr_to_txt.py:820` and `:871`.
 
 Impact: in an attacker-writable output directory, a pre-created temp symlink can
 truncate or overwrite files writable by the user.
@@ -123,7 +123,7 @@ directory, reject symlink temps, and preserve atomic replace semantics.
 
 ### 4. High: Rotated OCR pages can get unrotated layout regions and crops
 
-The OCR document is created at `pd_ocr_cli/ocr_to_txt.py:728`, but layout
+The OCR document is created at `pdomain_ocr_cli/ocr_to_txt.py:728`, but layout
 detection still receives the original path at `:743`, and illustration crops
 re-read the original image at `:850`.
 
@@ -138,7 +138,7 @@ crop extraction when available, and add a rotated-image regression test.
 ### 5. High: Explicit file inputs with the same basename silently overwrite each other under `-o`
 
 For file-only inputs, `compute_mirror_root()` returns `None`
-(`pd_ocr_cli/_pipeline.py:159`), `resolve_dest_dir()` writes all files flat under
+(`pdomain_ocr_cli/_pipeline.py:159`), `resolve_dest_dir()` writes all files flat under
 the output directory (`:200`), and `output_paths_for()` uses only the basename
 (`:205`).
 
@@ -152,7 +152,7 @@ common parent when collisions would occur.
 
 Layout is enabled based on `args.layout_model != "none"` rather than whether
 layout output is needed. Resolution/prefetch happens at
-`pd_ocr_cli/ocr_to_txt.py:655`, loading at `:677`, detection at `:741`, while
+`pdomain_ocr_cli/ocr_to_txt.py:655`, loading at `:677`, detection at `:741`, while
 `do_reorg` is only computed later at `:754`.
 
 Impact: a user asking for raw OCR can still pay layout model download/load
@@ -165,8 +165,8 @@ extraction is requested. Skip layout for plain `--no-reorg`.
 ### 7. Medium: JSON and crop writes bypass the durable atomic-write helper
 
 The pipeline states all disk writes should go through fsync + replace helpers
-in `pd_ocr_cli/_pipeline.py:46`, but JSON writes use `doc.to_json_file()` then
-`os.replace()` at `pd_ocr_cli/ocr_to_txt.py:820` and `:827`; crop writes use
+in `pdomain_ocr_cli/_pipeline.py:46`, but JSON writes use `doc.to_json_file()` then
+`os.replace()` at `pdomain_ocr_cli/ocr_to_txt.py:820` and `:827`; crop writes use
 `cv2.imwrite()` then `os.replace()` at `:871` and `:881`.
 
 Impact: a crash or power loss can lose or corrupt sidecar/crop outputs even
@@ -178,7 +178,7 @@ parent directory.
 
 ### 8. Medium: Failed final `.txt` write leaves earlier sidecars/crops behind
 
-The final text write intentionally happens last at `pd_ocr_cli/ocr_to_txt.py:888`
+The final text write intentionally happens last at `pdomain_ocr_cli/ocr_to_txt.py:888`
 after JSON/diagnostic/crop artifacts have already been written. No rollback
 removes those artifacts if the final write fails.
 
@@ -190,22 +190,22 @@ Remediation: track newly created artifacts and unlink them if a later mandatory
 artifact fails, or stage all page artifacts and promote them only after every
 artifact succeeds.
 
-### 9. High: Windows installer likely cannot resolve `pd-book-tools`
+### 9. High: Windows installer likely cannot resolve `pdomain-book-tools`
 
 `install.ps1` installs from the GitHub source ref at `install.ps1:137` and only
 adds an extra index for CUDA/PyTorch at `:156`. It never adds
-`https://concavetrillion.github.io/pd-index-pip/simple/`, even though
-`pyproject.toml:16` depends on `pd-book-tools>=0.12.0` and `pyproject.toml:51`
+`https://pdomain.github.io/pdomain-index-pip/simple/`, even though
+`pyproject.toml:16` depends on `pdomain-book-tools>=0.12.0` and `pyproject.toml:51`
 declares the uv source only for this repo's own uv operations. The POSIX
 installer passes the pd index at `install.sh:151`.
 
-Impact: Windows installs can fail to resolve `pd-book-tools` or resolve it from
+Impact: Windows installs can fail to resolve `pdomain-book-tools` or resolve it from
 an unintended source.
 
 Remediation: make `install.ps1` mirror `install.sh`: install the release wheel,
 always pass the pd index URL, and test generated `uv tool install` arguments.
 
-### 10. Medium: Installer dependency resolution permits dependency confusion for `pd-book-tools`
+### 10. Medium: Installer dependency resolution permits dependency confusion for `pdomain-book-tools`
 
 The runtime dependency is a generic lower bound in `pyproject.toml:16`. The Unix
 installer passes the private index only as `--extra-index-url` at
@@ -213,10 +213,10 @@ installer passes the private index only as `--extra-index-url` at
 path.
 
 Impact: a same-named package on a higher-priority/default index could satisfy
-`pd-book-tools` during installation.
+`pdomain-book-tools` during installation.
 
 Remediation: use an index strategy that prevents PyPI fallback for
-`pd-book-tools`, or pin by direct URL/hash. Add the pd index consistently to
+`pdomain-book-tools`, or pin by direct URL/hash. Add the pd index consistently to
 Windows installs.
 
 ### 11. High: Tag-pushed releases publish artifacts without a server-side test gate
@@ -294,7 +294,7 @@ artifact attestations/Sigstore before `uv tool install`.
 Runtime dependencies use lower bounds only in `pyproject.toml:16` and `:17`.
 The installer resolves from live indexes at install time.
 
-Impact: future incompatible `pd-book-tools`, `huggingface_hub`, or transitive
+Impact: future incompatible `pdomain-book-tools`, `huggingface_hub`, or transitive
 releases can break fresh installs without a code change here.
 
 Remediation: add conservative upper bounds for runtime dependencies and run a
@@ -305,10 +305,10 @@ release smoke install from the built wheel using the same indexes as installers.
 README manual install examples point to
 `https://concavetrillion.github.io/pd-index/simple/` at `README.md:284` and
 `:294`, while project config and installer use
-`https://concavetrillion.github.io/pd-index-pip/simple/`.
+`https://pdomain.github.io/pdomain-index-pip/simple/`.
 
 Impact: users following the safer manual install path can fail to resolve
-`pd-book-tools` and fall back to the piped installer.
+`pdomain-book-tools` and fall back to the piped installer.
 
 Remediation: correct the README URLs and add a docs/install command smoke check.
 
@@ -325,7 +325,7 @@ wrapper script, or clearly document these as trusted developer-only targets.
 
 ### 20. Medium: Update check uses `urllib.request.urlopen`
 
-`bandit` flagged `pd_ocr_cli/_update_check.py:81` as B310. The URL is currently
+`bandit` flagged `pdomain_ocr_cli/_update_check.py:81` as B310. The URL is currently
 fixed HTTPS, but the code uses a generic URL opener and suppresses all failures.
 
 Impact: future changes could accidentally allow non-HTTPS schemes or make the
@@ -336,7 +336,7 @@ or switch to a client path that rejects non-HTTPS schemes by construction.
 
 ### 21. Low: Update check swallows all exceptions silently
 
-`bandit` flagged `pd_ocr_cli/_update_check.py:118` as B110.
+`bandit` flagged `pdomain_ocr_cli/_update_check.py:118` as B110.
 
 Impact: update-check regressions, parser changes, or API contract breaks become
 silent and can remain undiscovered.
@@ -346,7 +346,7 @@ behind an environment flag or record failures in tests/telemetry-free logs.
 
 ### 22. Low: GPU nudge invokes `nvidia-smi` from PATH
 
-`bandit` flagged `pd_ocr_cli/ocr_to_txt.py:242` as B603/B607. The command is
+`bandit` flagged `pdomain_ocr_cli/ocr_to_txt.py:242` as B603/B607. The command is
 fixed and uses `shell=False`, but the executable is resolved from PATH.
 
 Impact: a malicious earlier PATH entry can run during the optional GPU nudge
@@ -369,7 +369,7 @@ and update both through explicit maintenance PRs.
 
 ### 24. Medium: Untrusted image inputs enter native/DL decoders without resource limits
 
-The CLI accepts inputs in `pd_ocr_cli/ocr_to_txt.py:540`, then passes images to
+The CLI accepts inputs in `pdomain_ocr_cli/ocr_to_txt.py:540`, then passes images to
 OCR at `:728`, layout detection at `:743`, and OpenCV crop reads at `:850`.
 There is no preflight limit on file size, decoded pixel count, or per-page
 processing time.
@@ -383,7 +383,7 @@ document sandboxing guidance for mixed-trust batches.
 ### 25. Medium: Invalid inputs still trigger model resolution and loading first
 
 Model work happens before input validation: OCR model resolution at
-`pd_ocr_cli/ocr_to_txt.py:649`, layout resolution/prefetch at `:655`, and
+`pdomain_ocr_cli/ocr_to_txt.py:649`, layout resolution/prefetch at `:655`, and
 model loading at `:665`; input collection and the no-valid-images error happen
 later at `:698`.
 
@@ -397,8 +397,8 @@ not called for an empty input set.
 ### 26. Medium: Startup model and layout failures can leak raw tracebacks
 
 OCR model resolution only translates `FileNotFoundError` in
-`pd_ocr_cli/_hf_models.py:79`; predictor loading catches only `ImportError` in
-`pd_ocr_cli/ocr_to_txt.py:666`; layout loading catches only `ImportError` and
+`pdomain_ocr_cli/_hf_models.py:79`; predictor loading catches only `ImportError` in
+`pdomain_ocr_cli/ocr_to_txt.py:666`; layout loading catches only `ImportError` and
 `ValueError` at `:680`. Layout resolution and prefetch happen at `:655` before
 the per-image error handler.
 
@@ -464,8 +464,8 @@ support.
 Impact: users with JPEG 2000 scans can assume `pd-ocr` will skip files the
 code already accepts.
 
-Remediation: update usage docs to match `pd-book-tools` supported suffixes, or
-state that format support is delegated to `pd-book-tools` and include JPEG
+Remediation: update usage docs to match `pdomain-book-tools` supported suffixes, or
+state that format support is delegated to `pdomain-book-tools` and include JPEG
 2000 examples.
 
 ### 31. Low: Pre-commit hooks use mutable tag refs
@@ -479,15 +479,15 @@ environments and CI pre-commit runs.
 Remediation: pin hooks to commit SHAs, or enforce reviewed `pre-commit
 autoupdate` PRs before adopting hook changes.
 
-### 32. Medium: `pd-book-tools` lock entries lack artifact hashes
+### 32. Medium: `pdomain-book-tools` lock entries lack artifact hashes
 
-`uv.lock:1838` points to the `pd-book-tools` sdist URL and `uv.lock:1840`
+`uv.lock:1838` points to the `pdomain-book-tools` sdist URL and `uv.lock:1840`
 points to the wheel URL; neither entry carries a hash.
 
 Impact: the lockfile does not provide artifact integrity verification for the
 key private dependency.
 
-Remediation: publish PEP 503 hash fragments in `pd-index-pip` or otherwise
+Remediation: publish PEP 503 hash fragments in `pdomain-index-pip` or otherwise
 lock direct URL hashes, then refresh `uv.lock`.
 
 ### 33. Medium: CI does not cover all supported Python versions
@@ -544,7 +544,7 @@ and update them through explicit maintenance PRs.
 file containing `idna==3.13` reports `CVE-2026-45409`, fixed in `idna>=3.15`.
 
 Impact: crafted IDNA inputs can cause CPU denial of service. Direct exposure
-in `pd-ocr-cli` appears limited, but the vulnerable package is present in the
+in `pdomain-ocr-cli` appears limited, but the vulnerable package is present in the
 runtime dependency graph.
 
 Remediation: upgrade `idna` to `>=3.15`, refresh `uv.lock`, and re-run

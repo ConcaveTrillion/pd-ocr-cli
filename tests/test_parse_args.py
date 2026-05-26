@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from pd_ocr_cli._hf_models import (
+from pdomain_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
     DEFAULT_HF_REPO,
     DEFAULT_RECO_FILENAME,
 )
-from pd_ocr_cli.ocr_to_txt import parse_args
+from pdomain_ocr_cli.ocr_to_txt import parse_args
 
 
 def _argv(*args):

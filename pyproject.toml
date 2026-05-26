@@ -3,7 +3,7 @@ requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pd-ocr-cli"
+name = "pdomain-ocr-cli"
 dynamic = ["version"]
 description = "CLI tool for OCR-ing public domain book images to text using fine-tuned DocTR detection and recognition models"
 authors = [
@@ -11,29 +11,29 @@ authors = [
 ]
 readme = "README.md"
 license = { text = "Unlicense" }
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.11,<3.14"
 dependencies = [
-    "pd-book-tools>=0.14.1",
+    "pdomain-book-tools>=0.14.1",
     "huggingface_hub>=0.23",
 ]
 
 [project.optional-dependencies]
-# GPU acceleration is opt-in. Plain `pip install pd-ocr-cli` works on
+# GPU acceleration is opt-in. Plain `pip install pdomain-ocr-cli` works on
 # CPU-only machines; users with an NVIDIA GPU can install the heavy
 # CUDA stack (cupy-cuda12x, opencv-cuda) via:
-#   pip install pd-ocr-cli[gpu]
-# This forwards to pd-book-tools' own [gpu] extra, which owns the
+#   pip install pdomain-ocr-cli[gpu]
+# This forwards to pdomain-book-tools' own [gpu] extra, which owns the
 # actual CUDA dependency list.
 gpu = [
-    "pd-book-tools[gpu]",
+    "pdomain-book-tools[gpu]",
 ]
 
 [project.scripts]
-pd-ocr = "pd_ocr_cli.ocr_to_txt:main"
+pd-ocr = "pdomain_ocr_cli.ocr_to_txt:main"
 
 [project.urls]
-Homepage = "https://github.com/ConcaveTrillion/pd-ocr-cli"
-Repository = "https://github.com/ConcaveTrillion/pd-ocr-cli"
+Homepage = "https://github.com/pdomain/pdomain-ocr-cli"
+Repository = "https://github.com/pdomain/pdomain-ocr-cli"
 
 [dependency-groups]
 dev = [
@@ -49,12 +49,12 @@ dev = [
 ]
 
 [[tool.uv.index]]
-name = "pd-index-pip"
-url = "https://concavetrillion.github.io/pd-index-pip/simple/"
+name = "pdomain-index-pip"
+url = "https://pdomain.github.io/pdomain-index-pip/simple/"
 explicit = true
 
 [tool.uv.sources]
-pd-book-tools = { index = "pd-index-pip" }
+pdomain-book-tools = { path = "/workspaces/ocr-container/pd-book-tools/.claude/worktrees/rename-pdomain", editable = true }
 
 [tool.hatch.version]
 source = "vcs"
@@ -136,7 +136,7 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = ["pd_ocr_cli"]
+known-first-party = ["pdomain_ocr_cli"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests: assert is the idiom (S101); magic numbers common (PLR2004); no
@@ -155,7 +155,7 @@ known-first-party = ["pd_ocr_cli"]
 "**/_*.py" = ["D"]
 
 [tool.basedpyright]
-include = ["pd_ocr_cli", "tests"]
+include = ["pdomain_ocr_cli", "tests"]
 exclude = ["**/__pycache__", "**/.venv", "**/node_modules"]
 
 # "recommended" is the workspace-canonical strict mode per 2026-05-17 decisions.
@@ -164,7 +164,7 @@ exclude = ["**/__pycache__", "**/.venv", "**/node_modules"]
 typeCheckingMode = "recommended"
 # Warnings are gated via a baseline file (.basedpyright/baseline.json) that grandfathers
 # the existing warnings from CuPy/cv2/DocTR stub gaps. New warnings beyond the
-# baseline will fail CI. Regenerate the baseline with: uv run basedpyright pd_ocr_cli --writebaseline
+# baseline will fail CI. Regenerate the baseline with: uv run basedpyright pdomain_ocr_cli --writebaseline
 failOnWarnings = true
 
 # Import cycles are structural and resolved via TYPE_CHECKING guards.
@@ -185,7 +185,7 @@ addopts = [
     "-ra",
     "--strict-markers",
     "--strict-config",
-    "--cov=pd_ocr_cli",
+    "--cov=pdomain_ocr_cli",
     "--cov-branch",
     "--cov-report=term-missing:skip-covered",
 ]
@@ -195,7 +195,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["pd_ocr_cli"]
+source = ["pdomain_ocr_cli"]
 branch = true
 # The CLI spawns a daemon thread for the GitHub-tag update check; tell
 # coverage to instrument across threads so that path is counted when it
@@ -211,7 +211,7 @@ omit = [
 show_missing = true
 skip_empty = true
 # Floor for the fast suite (`make ci`). The unit tests mock every heavy
-# pd_book_tools / cv2 / torch dependency so main() is exercised in fast
+# pdomain_book_tools / cv2 / torch dependency so main() is exercised in fast
 # tests too. The `_load_*` import-trampolines are auto-excluded via the
 # pattern in `exclude_also` below, so 100% is the realistic target —
 # any new uncovered line should be either tested or pragma'd with intent.
@@ -222,7 +222,7 @@ exclude_also = [
     "pragma: no cover",
     "raise NotImplementedError",
     # `_load_*` helpers in ocr_to_txt.py exist solely as monkeypatch points
-    # for fast tests; their bodies are trivial `from pd_book_tools... import`
+    # for fast tests; their bodies are trivial `from pdomain_book_tools... import`
     # statements that the slow integration tests still execute against real
     # models. Excluding the bodies keeps the fast-coverage signal honest
     # (these functions are deliberately not unit-testable in isolation).

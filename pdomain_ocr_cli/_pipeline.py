@@ -20,10 +20,10 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
-from pd_ocr_cli._text_normalize import (
+from pdomain_ocr_cli._text_normalize import (
     normalize_curly_quotes as _normalize_curly_quotes,
 )
-from pd_ocr_cli._text_normalize import (
+from pdomain_ocr_cli._text_normalize import (
     normalize_em_dash as _normalize_em_dash,
 )
 

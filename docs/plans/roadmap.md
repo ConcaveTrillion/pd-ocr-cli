@@ -1,9 +1,9 @@
 # Roadmap
 
-Forward-looking work in `pd-ocr-cli` — items that belong in the CLI
-itself rather than in the upstream `pd-book-tools` library. Where a
+Forward-looking work in `pdomain-ocr-cli` — items that belong in the CLI
+itself rather than in the upstream `pdomain-book-tools` library. Where a
 CLI feature is a thin pass-through to a library knob, the library
-work is tracked in `pd-book-tools/docs/plans/roadmap.md` and the CLI
+work is tracked in `pdomain-book-tools/docs/plans/roadmap.md` and the CLI
 item here just covers the surfacing (flag name, help text, defaults, docs)
 and any caller-side glue.
 

@@ -1,4 +1,4 @@
-# Lint-rule Deviations — pd-ocr-cli
+# Lint-rule Deviations — pdomain-ocr-cli
 
 Standing suppressions and per-file rule overrides in this repo.
 Each entry records: the rule, the tool, the file(s) affected, and
@@ -8,7 +8,7 @@ This catalogue covers both the project-wide `[tool.ruff.lint]` `ignore`
 list / `per-file-ignores` and every inline `# noqa` / `# pyright: ignore`
 comment in the source tree.
 
-Reference implementation: `pd-book-tools/docs/conventions/lint-deviations.md`.
+Reference implementation: `pdomain-book-tools/docs/conventions/lint-deviations.md`.
 
 ---
 
@@ -75,7 +75,7 @@ Conflicts with the ruff formatter's auto-style; the formatter owns commas.
 ### 12. `ANN401` — dynamically-typed-expressions (`Any`)
 
 Some helpers legitimately accept/return `Any` — monkeypatch seams and
-word-object helpers that operate on heterogeneous pd-book-tools objects.
+word-object helpers that operate on heterogeneous pdomain-book-tools objects.
 
 ---
 
@@ -123,20 +123,20 @@ Private modules follow internal convention and need no docstrings.
 
 ### 17. `T201` — print-found (ruff)
 
-**Files:** `pd_ocr_cli/ocr_to_txt.py` (~45 occurrences), `_pipeline.py`,
+**Files:** `pdomain_ocr_cli/ocr_to_txt.py` (~45 occurrences), `_pipeline.py`,
 `_hf_models.py`, `_update_check.py`.
 
 **Suppression form:** `# noqa: T201  # CLI output` inline.
 
-**Justification.** `pd-ocr-cli` is a user-facing CLI; `print()` to stdout
+**Justification.** `pdomain-ocr-cli` is a user-facing CLI; `print()` to stdout
 and `print(..., file=sys.stderr)` are the intended output mechanism.
 `T201` is relaxed repo-wide for `tests/**` and `scripts/**`, but library
-modules under `pd_ocr_cli/` keep the rule on and suppress per-call so any
+modules under `pdomain_ocr_cli/` keep the rule on and suppress per-call so any
 *accidental* debug `print` still gets flagged in review.
 
 ### 18. `BLE001` — blind-except (ruff)
 
-**Files:** `pd_ocr_cli/ocr_to_txt.py` (lines ~223, 253, 278, 874),
+**Files:** `pdomain_ocr_cli/ocr_to_txt.py` (lines ~223, 253, 278, 874),
 `_update_check.py` (line ~118).
 
 **Suppression form:** `# noqa: BLE001` (sometimes `# noqa: BLE001 S110`)
@@ -154,7 +154,7 @@ inline, each with a trailing rationale.
 
 ### 19. `S110` — try-except-pass (ruff)
 
-**Files:** `pd_ocr_cli/ocr_to_txt.py` (line ~278), `_update_check.py`
+**Files:** `pdomain_ocr_cli/ocr_to_txt.py` (line ~278), `_update_check.py`
 (line ~118). Always paired with `BLE001`.
 
 **Justification.** Same best-effort boundaries as entry 18 — a silent
@@ -163,7 +163,7 @@ neither must ever surface an error to the user.
 
 ### 20. `S310` — suspicious-url-open (ruff)
 
-**Files:** `pd_ocr_cli/_update_check.py` (lines ~74, 81).
+**Files:** `pdomain_ocr_cli/_update_check.py` (lines ~74, 81).
 
 **Suppression form:** `# noqa: S310` inline.
 
@@ -173,7 +173,7 @@ attacker-controlled scheme risk.
 
 ### 21. `S607` — start-process-with-partial-path (ruff)
 
-**Files:** `pd_ocr_cli/ocr_to_txt.py` (line ~239).
+**Files:** `pdomain_ocr_cli/ocr_to_txt.py` (line ~239).
 
 **Suppression form:** `# noqa: S607` inline.
 
@@ -185,7 +185,7 @@ inline.)
 
 ### 22. `F401` — unused-import (ruff)
 
-**Files:** `pd_ocr_cli/ocr_to_txt.py` (line ~219).
+**Files:** `pdomain_ocr_cli/ocr_to_txt.py` (line ~219).
 
 **Suppression form:** `# noqa: F401` inline.
 
@@ -212,7 +212,7 @@ repo's `tests/**` ignore list, so these are suppressed inline.)
 
 ### 24. `reportMissingImports` — basedpyright
 
-**Files:** `pd_ocr_cli/ocr_to_txt.py` (line ~219).
+**Files:** `pdomain_ocr_cli/ocr_to_txt.py` (line ~219).
 
 **Suppression form:** `# pyright: ignore[reportMissingImports]` inline on
 the `import cupy` probe line.
