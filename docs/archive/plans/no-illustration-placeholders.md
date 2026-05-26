@@ -13,7 +13,7 @@ contribute an empty placeholder block (a stray blank paragraph in the
 `.txt`; an `[Illustration: ...]` wrapper downstream) to the reorganized
 output.
 
-Default stays `True` so existing users — and pd-prep-for-pgdp, which
+Default stays `True` so existing users — and pdomain-prep-for-pgdp, which
 anchors `[Illustration: ...]` serialisation on the placeholder — see no
 behaviour change.
 
@@ -26,7 +26,7 @@ the flag.
 
 ## Dependency
 
-Required `pd-book-tools` ≥ 0.12.0 (the `emit_illustration_placeholders`
+Required `pdomain-book-tools` ≥ 0.12.0 (the `emit_illustration_placeholders`
 kwarg landed in upstream commit `1206fbd`, released in `v0.12.0`). The
 CLI pin was bumped from `>=0.11.1` to `>=0.12.0` as part of this work and
 `uv.lock` relocked.
