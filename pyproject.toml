@@ -56,7 +56,10 @@ explicit = true
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
-pdomain-ops = { path = "../../../../pdomain-ops", editable = true }
+# pdomain-ops resolves from the registry like book-tools. Until pdomain-ops
+# is published to pdomain-index-pip, use local-dev mode (`make local-dev`)
+# to overlay the editable sibling — do NOT hardcode a path source here.
+pdomain-ops = { index = "pdomain-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"
