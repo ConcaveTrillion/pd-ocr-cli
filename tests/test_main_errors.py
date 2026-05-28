@@ -511,10 +511,12 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
 
     # Track the update-notice thread so we can assert it was joined.
     class _RecordingThread(threading.Thread):
-        joined = False
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.joined = False
 
         def join(self, timeout=None):
-            type(self).joined = True
+            self.joined = True
             return super().join(timeout=timeout)
 
     started = _RecordingThread(target=lambda: None, daemon=True)
@@ -540,7 +542,7 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
     assert third_seen["n"] == 0
     # Update thread join must still fire (otherwise a fast notice
     # racing SIGINT can interleave with shell prompt).
-    assert _RecordingThread.joined is True
+    assert started.joined is True
 
     captured = capsys.readouterr()
     # First image's success line ran; second image's "Processing ..."
