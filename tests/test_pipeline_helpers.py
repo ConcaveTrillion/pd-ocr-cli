@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
+from _fakes import pipeline_args
 
 from pdomain_ocr_cli import _pipeline
 from pdomain_ocr_cli._pipeline import (
@@ -32,18 +32,6 @@ from pdomain_ocr_cli._pipeline import (
     write_diagnostic_snapshots,
 )
 
-
-def _ns(**overrides) -> SimpleNamespace:
-    base = {
-        "layout_model": "pp-doclayout-plus-l",
-        "extract_illustrations": False,
-        "layout_debug": False,
-        "layout_debug_dir": None,
-    }
-    base.update(overrides)
-    return SimpleNamespace(**base)
-
-
 # ---------------------------------------------------------------------------
 # validate_extract_illustrations
 # ---------------------------------------------------------------------------
@@ -51,17 +39,17 @@ def _ns(**overrides) -> SimpleNamespace:
 
 def test_validate_extract_illustrations_ok_when_layout_enabled():
     """Combination is fine — should not raise or print to stderr."""
-    args = _ns(layout_model="pp-doclayout-plus-l", extract_illustrations=True)
+    args = pipeline_args(layout_model="pp-doclayout-plus-l", extract_illustrations=True)
     validate_extract_illustrations(args)  # no exception
 
 
 def test_validate_extract_illustrations_ok_when_neither_set():
-    args = _ns(layout_model="none", extract_illustrations=False)
+    args = pipeline_args(layout_model="none", extract_illustrations=False)
     validate_extract_illustrations(args)  # no exception
 
 
 def test_validate_extract_illustrations_rejects_combo(capsys):
-    args = _ns(layout_model="none", extract_illustrations=True)
+    args = pipeline_args(layout_model="none", extract_illustrations=True)
     with pytest.raises(SystemExit) as exc_info:
         validate_extract_illustrations(args)
     assert exc_info.value.code == 1
@@ -249,7 +237,7 @@ def test_apply_text_normalizations_none_or_empty_returns_empty(falsy):
 def test_setup_layout_debug_env_returns_none_when_disabled(tmp_path, monkeypatch):
     monkeypatch.delenv("PD_OCR_LAYOUT_DEBUG", raising=False)
     monkeypatch.delenv("PD_OCR_LAYOUT_DEBUG_FILE", raising=False)
-    args = _ns(layout_debug=False)
+    args = pipeline_args(layout_debug=False)
     assert setup_layout_debug_env(args, tmp_path, "page") is None
     assert "PD_OCR_LAYOUT_DEBUG" not in os.environ
     assert "PD_OCR_LAYOUT_DEBUG_FILE" not in os.environ
@@ -260,7 +248,7 @@ def test_setup_layout_debug_env_writes_into_dest_dir(tmp_path, monkeypatch):
     monkeypatch.delenv("PD_OCR_LAYOUT_DEBUG_FILE", raising=False)
     dest = tmp_path / "out"
     dest.mkdir()
-    args = _ns(layout_debug=True, layout_debug_dir=None)
+    args = pipeline_args(layout_debug=True, layout_debug_dir=None)
 
     debug_file = setup_layout_debug_env(args, dest, "page-001")
     assert debug_file == dest / "page-001.layout-debug.txt"
@@ -277,7 +265,7 @@ def test_setup_layout_debug_env_uses_explicit_debug_dir(tmp_path, monkeypatch):
     dest = tmp_path / "out"
     dest.mkdir()
     debug_dir = tmp_path / "dbg"  # does not exist yet
-    args = _ns(layout_debug=True, layout_debug_dir=str(debug_dir))
+    args = pipeline_args(layout_debug=True, layout_debug_dir=str(debug_dir))
 
     debug_file = setup_layout_debug_env(args, dest, "page-001")
     assert debug_file == debug_dir / "page-001.layout-debug.txt"
