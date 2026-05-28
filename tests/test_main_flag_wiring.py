@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from _fakes import FakePage
+
 
 def test_main_no_reorg_skips_reorganize(mock_heavy_deps, run_main, single_image):
     ns = mock_heavy_deps()
@@ -24,15 +26,14 @@ def test_main_no_reorg_skips_reorganize(mock_heavy_deps, run_main, single_image)
 
 
 def test_main_experimental_drop_layout_words_short_alias(mock_heavy_deps, run_main, single_image):
-    """End-to-end: ``--edl`` alias flips the same wiring as the long form.
+    """End-to-end: ``--edl`` alias produces the same output as the long form.
 
-    Mirrors ``test_main_experimental_drop_layout_words_passes_true_to_reorganize``
-    but uses ``--edl`` to confirm argparse routes the alias to the same
-    attribute and ``main()`` passes ``drop_layout_words=True`` through
-    to ``reorganize_page``.
+    Uses a seeded FakePage to confirm argparse routes the alias to the same
+    attribute and ``main()`` passes ``drop_layout_words=True`` through to
+    ``reorganize_page``, producing role-labeled layout words in the output.
     """
-    ns = mock_heavy_deps()
     img, out = single_image
+    mock_heavy_deps(page=FakePage(body="BODY", layout_word="FOOTNOTE"))
 
     run_main(
         "--no-update-check",
@@ -44,49 +45,34 @@ def test_main_experimental_drop_layout_words_short_alias(mock_heavy_deps, run_ma
         str(img),
     )
 
-    fake_doc = ns.captured_docs[0]
-    fake_doc.pages[0].reorganize_page.assert_called_once()
-    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
-    assert kwargs.get("drop_layout_words") is True
+    text = (out / "page.txt").read_text()
+    assert "[layout: FOOTNOTE]" in text  # same output as the long-form flag
 
 
-def test_main_default_passes_drop_layout_words_false_to_reorganize(
-    mock_heavy_deps, run_main, single_image
-):
-    """Default invocation must call reorganize_page(drop_layout_words=False).
+def test_main_default_keeps_layout_word_in_output(mock_heavy_deps, run_main, single_image):
+    """Default invocation preserves layout words in output (not relabeled).
 
-    This is the user-visible footnote-loss fix: by default the CLI must
-    match the new pdomain-book-tools library default and preserve all words.
+    By default the CLI must preserve all words — layout words appear inline,
+    not as [layout: ...] role-labels.
     """
-    ns = mock_heavy_deps()
     img, out = single_image
+    mock_heavy_deps(page=FakePage(body="BODY", layout_word="FOOTNOTE"))
 
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "-o",
-        str(out),
-        str(img),
-    )
+    run_main("--no-update-check", "--layout-model", "none", "-o", str(out), str(img))
 
-    fake_doc = ns.captured_docs[0]
-    fake_doc.pages[0].reorganize_page.assert_called_once()
-    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
-    assert kwargs.get("drop_layout_words") is False
+    text = (out / "page.txt").read_text()
+    assert "FOOTNOTE" in text
+    assert "[layout: FOOTNOTE]" not in text
 
 
-def test_main_experimental_drop_layout_words_passes_true_to_reorganize(
-    mock_heavy_deps, run_main, single_image
-):
-    """``--experimental-drop-layout-words`` opts into legacy drop behavior.
+def test_main_edl_relabels_layout_word(mock_heavy_deps, run_main, single_image):
+    """``--experimental-drop-layout-words`` relabels layout words, never drops them.
 
-    Verifies the flag is wired through the call site at
-    ``pdomain_ocr_cli/ocr_to_txt.py`` so users who still want the pre-fix
-    behavior can request it explicitly.
+    The no-silent-drops invariant: layout words must appear as [layout: ...]
+    role-labels, never silently absent from the output.
     """
-    ns = mock_heavy_deps()
     img, out = single_image
+    mock_heavy_deps(page=FakePage(body="BODY", layout_word="FOOTNOTE"))
 
     run_main(
         "--no-update-check",
@@ -98,46 +84,34 @@ def test_main_experimental_drop_layout_words_passes_true_to_reorganize(
         str(img),
     )
 
-    fake_doc = ns.captured_docs[0]
-    fake_doc.pages[0].reorganize_page.assert_called_once()
-    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
-    assert kwargs.get("drop_layout_words") is True
+    text = (out / "page.txt").read_text()
+    assert "[layout: FOOTNOTE]" in text  # role-labeled, never silently dropped
 
 
-def test_main_default_emits_illustration_placeholders(mock_heavy_deps, run_main, single_image):
-    """Default invocation forwards emit_illustration_placeholders=True.
+def test_main_default_emits_illustration_placeholder(mock_heavy_deps, run_main, single_image):
+    """Default invocation emits [Illustration] placeholder and preserves caption.
 
-    The placeholder block stays on by default so pdomain-prep-for-pgdp can
-    anchor [Illustration: ...] serialisation.
+    The placeholder block stays on by default; caption text is always preserved
+    (no-silent-drops invariant).
     """
-    ns = mock_heavy_deps()
     img, out = single_image
+    mock_heavy_deps(page=FakePage(body="BODY", illustration_caption="A cat"))
 
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "-o",
-        str(out),
-        str(img),
-    )
+    run_main("--no-update-check", "--layout-model", "none", "-o", str(out), str(img))
 
-    fake_doc = ns.captured_docs[0]
-    fake_doc.pages[0].reorganize_page.assert_called_once()
-    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
-    assert kwargs.get("emit_illustration_placeholders") is True
+    text = (out / "page.txt").read_text()
+    assert "[Illustration]" in text
+    assert "A cat" in text
 
 
-def test_main_no_illustration_placeholders_passes_false_to_reorganize(
-    mock_heavy_deps, run_main, single_image
-):
-    """``--no-illustration-placeholders`` forwards emit_illustration_placeholders=False.
+def test_main_no_illustration_placeholders_keeps_caption(mock_heavy_deps, run_main, single_image):
+    """``--no-illustration-placeholders`` suppresses placeholder but keeps caption.
 
-    Suppresses only the placeholder block; caption words are preserved by
-    the library (no-silent-drops invariant).
+    The flag suppresses only the [Illustration] block; caption words survive
+    in the output (no-silent-drops invariant).
     """
-    ns = mock_heavy_deps()
     img, out = single_image
+    mock_heavy_deps(page=FakePage(body="BODY", illustration_caption="A cat"))
 
     run_main(
         "--no-update-check",
@@ -149,7 +123,6 @@ def test_main_no_illustration_placeholders_passes_false_to_reorganize(
         str(img),
     )
 
-    fake_doc = ns.captured_docs[0]
-    fake_doc.pages[0].reorganize_page.assert_called_once()
-    _, kwargs = fake_doc.pages[0].reorganize_page.call_args
-    assert kwargs.get("emit_illustration_placeholders") is False
+    text = (out / "page.txt").read_text()
+    assert "[Illustration]" not in text
+    assert "A cat" in text  # caption survives (no-silent-drops)
