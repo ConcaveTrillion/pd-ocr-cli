@@ -29,6 +29,8 @@ help: ## Show this help message
 setup: ## Set up development environment (sync deps + pre-commit hooks + refresh version)
 	@echo "📦 Installing dependencies..."
 	uv sync --group dev
+	@echo "🔧 Ensuring PowerShell (pwsh) is available for install-script tests..."
+	@./scripts/ensure-pwsh.sh
 	@echo "🪝 Setting up pre-commit hooks..."
 	@[ -f .git/hooks/pre-commit ] || uv run pre-commit install
 	@$(MAKE) --no-print-directory refresh-version
