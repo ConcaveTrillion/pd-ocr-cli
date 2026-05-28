@@ -137,6 +137,7 @@ class _CliArgs:
     layout_checkpoint: str | None
     layout_confidence: float
     no_update_check: bool
+    batch_pages: int
     inputs: list[str]
 
 
@@ -173,21 +174,6 @@ class _PageLike(Protocol):
     ) -> None: ...
 
 
-class _DocumentLike(Protocol):
-    pages: Sequence[_PageLike]
-
-    def to_json_file(self, path: Path) -> None: ...
-
-
-class _DocumentFactoryLike(Protocol):
-    def __call__(
-        self,
-        image: Path,
-        source_identifier: str = "",
-        predictor: object | None = None,
-    ) -> _DocumentLike: ...
-
-
 class _Cv2ImageLike(Protocol):
     size: int
 
@@ -215,14 +201,6 @@ class _LayoutModuleLike(Protocol):
     get_detector: Callable[..., _LayoutDetectorLike]
 
 
-class _DocumentClassLike(Protocol):
-    from_image_ocr_via_doctr: _DocumentFactoryLike
-
-
-class _DocumentModuleLike(Protocol):
-    Document: _DocumentClassLike
-
-
 class _ReorganizeUtilsModuleLike(Protocol):
     validate_word_preservation: _ValidateWordPreservation
 
@@ -235,6 +213,44 @@ class _RegionTypeLike(Protocol):
 
 class _LayoutTypesModuleLike(Protocol):
     RegionType: _RegionTypeLike
+
+
+class _SinglePageDoc:
+    """Minimal document wrapper around a single ``Page``.
+
+    Provides the same ``to_json_file`` surface as ``Document`` so the
+    per-page JSON-sidecar write path can remain unchanged after the
+    migration to batch OCR.  The emitted JSON has the same envelope shape
+    as ``Document.to_dict()`` / ``Document.to_json_file()``.
+    """
+
+    _page: object
+    _source_identifier: str
+    _source_path: Path | None
+
+    def __init__(
+        self, page: object, *, source_identifier: str = "", source_path: Path | None = None
+    ) -> None:
+        self._page = page
+        self._source_identifier = source_identifier
+        self._source_path = source_path
+
+    def to_json_file(self, file_path: "str | Path") -> None:
+        """Write a document-envelope JSON identical to ``Document.to_json_file``."""
+        import json as _json
+
+        def _empty_dict() -> dict[str, object]:
+            return {}
+
+        page_dict = cast("Callable[[], object]", getattr(self._page, "to_dict", _empty_dict))()
+        envelope = {
+            "source_lib": "pdomain_book_tools",
+            "source_identifier": self._source_identifier,
+            "source_path": str(self._source_path) if self._source_path is not None else None,
+            "pages": [page_dict],
+        }
+        with open(file_path, "w", encoding="utf-8") as f:
+            _json.dump(envelope, f, ensure_ascii=False, indent=2)
 
 
 def _load_is_image_file() -> Callable[[Path], bool]:
@@ -273,6 +289,7 @@ def _coerce_cli_args(args: argparse.Namespace) -> _CliArgs:
         layout_checkpoint=cast("str | None", args.layout_checkpoint),
         layout_confidence=cast("float", args.layout_confidence),
         no_update_check=cast("bool", args.no_update_check),
+        batch_pages=cast("int", args.batch_pages),
         inputs=cast("list[str]", args.inputs),
     )
 
@@ -328,15 +345,6 @@ def _load_layout_detector(args: _CliArgs, device: str) -> _LayoutDetectorLike:
     )
 
 
-def _load_document_factory() -> _DocumentFactoryLike:
-    """Return the ``Document.from_image_ocr_via_doctr`` callable."""
-    module = cast(
-        "_DocumentModuleLike",
-        cast("object", importlib.import_module("pdomain_book_tools.ocr.document")),
-    )
-    return module.Document.from_image_ocr_via_doctr
-
-
 def _load_validate_word_preservation() -> _ValidateWordPreservation:
     """Return the ``validate_word_preservation`` reorganize-checker."""
     module = cast(
@@ -358,6 +366,46 @@ def _load_illustration_deps() -> tuple[_Cv2Like, set[object]]:
     decoration = region_type.decoration
     table = region_type.table
     return cv2_module, {figure, decoration, table}
+
+
+def _pick_device() -> str:
+    """Return the hardware device string via ``pdomain_ops.gpu.device.pick_device``."""
+    module = cast(
+        "object",
+        importlib.import_module("pdomain_ops.gpu.device"),
+    )
+    fn = cast("Callable[[], str]", module.pick_device)  # pyright: ignore[reportAttributeAccessIssue]
+    return fn()
+
+
+def _run_doctr_batch(
+    images: list[object],
+    *,
+    predictor: object,
+    device: str,
+    build_smaller: "Callable[[int, int], object] | None" = None,
+    source_identifiers: "list[str] | None" = None,
+) -> "list[_PageLike | None]":
+    """Delegate to ``pdomain_ops.gpu.doctr_batch.run_doctr_batch``.
+
+    This thin wrapper is the monkeypatch seam for unit tests: tests replace
+    ``_run_doctr_batch`` without needing to touch the ops library.
+    """
+    module = cast(
+        "object",
+        importlib.import_module("pdomain_ops.gpu.doctr_batch"),
+    )
+    fn = cast(
+        "Callable[..., list[_PageLike | None]]",
+        module.run_doctr_batch,  # pyright: ignore[reportAttributeAccessIssue]
+    )
+    return fn(
+        images,
+        predictor=predictor,
+        device=device,
+        build_smaller=build_smaller,
+        source_identifiers=source_identifiers,
+    )
 
 
 def _start_update_check_thread(disabled: bool) -> threading.Thread | None:
@@ -644,6 +692,18 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     _ = p.add_argument(
+        "--batch-pages",
+        type=int,
+        default=4,
+        metavar="N",
+        help=(
+            "Number of pages to send to the OCR engine in a single batch call. "
+            "Higher values improve GPU throughput; lower values reduce peak VRAM "
+            "usage. OOM is handled automatically via backoff in pdomain-ops. "
+            "Default: 4."
+        ),
+    )
+    _ = p.add_argument(
         "--layout-model",
         default="pp-doclayout-plus-l",
         choices=["none", "contour", "pp-doclayout-plus-l"],
@@ -867,9 +927,11 @@ def main() -> None:
     if args.extract_illustrations:
         cv2_module, crop_types = _load_illustration_deps()
 
-    document_factory = _load_document_factory()
-
     validate_word_preservation = _load_validate_word_preservation() if args.validate_reorg else None
+
+    # ``_pick_device`` uses pdomain-ops' GPU detection (CUDA -> MPS -> CPU).
+    # The result is forwarded to ``_run_doctr_batch`` for batch-size sizing.
+    ops_device = _pick_device()
 
     images = collect_images(args.inputs, args.recursive)
     if not images:
@@ -878,230 +940,263 @@ def main() -> None:
 
     mirror_root = compute_mirror_root(args.inputs, output_dir)
 
+    # Lazily OCR images in chunks of ``args.batch_pages``.  Each chunk is
+    # fed to ``_run_doctr_batch`` (which owns batch-size sizing and OOM
+    # backoff) and returns one book-tools ``Page`` per image in the chunk.
+    # Chunking is interleaved with per-page post-processing (via the inner
+    # generator loop) so that a ``KeyboardInterrupt`` during post-processing
+    # stops the pipeline at the current chunk boundary — subsequent chunks
+    # are never OCR'd.
+    chunk_size = max(1, args.batch_pages)
+
     errors = 0
     processed = 0
     interrupted = False
-    for img_path in images:
-        print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
-        debug_file = None
-        dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
 
-        try:
-            # ``dest_dir.mkdir`` operates on a user-supplied path (``-o`` or
-            # a mirror under it); keep it inside the per-image ``try`` so a
-            # filesystem failure (e.g. ``-o`` is a regular file, or a
-            # mirror collides with an existing file) is recorded as one
-            # per-image error rather than aborting the whole batch. (B14)
-            dest_dir.mkdir(parents=True, exist_ok=True)
-
-            out_path, json_path = output_paths_for(img_path, dest_dir)
-
-            # ``setup_layout_debug_env`` calls ``mkdir`` on a user-supplied
-            # path; keep it inside the per-image ``try`` so an unwritable
-            # ``--layout-debug-dir`` is recorded as one per-image error
-            # rather than aborting the whole batch.
-            debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
-            doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
-            page = doc.pages[0] if doc.pages else None
-            if page is None:
-                # Close the ``Processing X ...`` line (printed with
-                # end=" ") before the warning so subsequent stdout
-                # doesn't concatenate onto it. Tally as a per-image
-                # error so an all-empty batch exits non-zero rather
-                # than misleading shell scripts that branch on $?.
-                print()  # noqa: T201  # CLI output
-                print(f"WARNING: no pages in result for {img_path}", file=sys.stderr)  # noqa: T201  # CLI output
-                errors += 1
-                continue
-
-            page_layout = None
-            if layout_detector is not None:
-                page_layout = layout_detector.detect(img_path)
-                print(  # noqa: T201  # CLI output
-                    f"  layout: {len(page_layout.regions)} regions ({page_layout.inference_ms} ms)",
-                    flush=True,
-                )
-
-            # Snapshot pre-reorg word list when --validate-reorg is on. The
-            # diagnostic-export bundle is written from the library's own
-            # post-reorganize ``page.diagnostic_pure_ocr`` /
-            # ``diagnostic_post_noise_removal`` snapshots, so we no longer
-            # need a manual pre-reorg JSON dump here.
-            reorganize_page = getattr(cast("object", page), "reorganize_page", None)
-            do_reorg = not args.no_reorg and callable(reorganize_page)
-            want_diagnostic_export = (
-                do_reorg and args.save_json and args.save_reorganize_diagnostics
-            )
-            pre_reorg_words: list[object] = []
-            if do_reorg and args.validate_reorg:
-                pre_reorg_words = list(page.words)
-
-            if do_reorg:
-                drop_layout_words = args.experimental_drop_layout_words
-                emit_illustration_placeholders = not args.no_illustration_placeholders
-                reorganize = cast("Callable[..., None]", reorganize_page)
-                if page_layout is not None:
-                    reorganize(
-                        layout=page_layout,
-                        drop_layout_words=drop_layout_words,
-                        emit_illustration_placeholders=emit_illustration_placeholders,
-                    )
-                else:
-                    reorganize(
-                        drop_layout_words=drop_layout_words,
-                        emit_illustration_placeholders=emit_illustration_placeholders,
-                    )
-
-                # Always-on noise-drop warning. The library populates
-                # ``diagnostic_noise_dropped_*`` regardless of whether the
-                # snapshot ``Page`` clones were captured, so this fires
-                # even when capture_diagnostics=False is wired through in
-                # the future.
-                dropped_raw = getattr(cast("object", page), "diagnostic_noise_dropped_words", None)
-                dropped = list(cast("Sequence[object]", dropped_raw)) if dropped_raw else []
-                if dropped:
-                    for line in format_noise_drop_warning(
-                        dropped,
-                        img_path.name,
-                        diagnostic_flag_name="--save-json --save-reorganize-diagnostics",
-                    ):
-                        print(line, file=sys.stderr)  # noqa: T201  # CLI output
-
-                if args.validate_reorg and validate_word_preservation is not None:
-                    drops = validate_word_preservation(pre_reorg_words, list(page.words))
-                    for line in format_drops_warning(drops, img_path.name):
-                        print(line, file=sys.stderr)  # noqa: T201  # CLI output
-
-            text = apply_text_normalizations(
-                page.text,
-                straight_quotes=args.straight_quotes,
-                em_dash_to_double_hyphen=args.em_dash_to_double_hyphen,
-            )
-            if not text:
-                print(f"WARNING: empty text result for {img_path}", file=sys.stderr)  # noqa: T201  # CLI output
-
-            # The canonical ``.txt`` is written *last* (after the json
-            # sidecar, diagnostic snapshots, and illustration crops) so
-            # that any per-image failure leaves the output directory
-            # without a ``.txt`` for that page. External pipelines key
-            # on ``.txt`` existence to mean "this page completed
-            # successfully"; an orphan ``.txt`` next to a missing
-            # sidecar would silently masquerade as a clean run.
-            # (Code-review B19.) Combined with the B18 atomic-write
-            # invariant on the ``.txt`` itself, the per-page artifact
-            # set is now all-or-nothing.
-            extra_paths: list[str] = []
-            if args.save_json:
-                # ``Document.to_json_file`` opens the destination with
-                # mode ``"w"`` (truncate-then-write) so we route it
-                # through a sibling temp + ``os.replace`` rather than
-                # touching the upstream library. (Code-review B18.)
-                json_tmp = json_path.with_name(f".{json_path.name}.tmp")
-                try:
-                    doc.to_json_file(json_tmp)
-                except BaseException:
-                    with contextlib.suppress(FileNotFoundError):
-                        json_tmp.unlink()
-                    raise
-                os.replace(json_tmp, json_path)
-                extra_paths.append(str(json_path))
-            if want_diagnostic_export:
-                diag_paths = diagnostic_output_paths(json_path, out_path)
-                written, notes = write_diagnostic_snapshots(
-                    page,
-                    pure_ocr_json=diag_paths["pure_ocr_json"],
-                    pure_ocr_txt=diag_paths["pure_ocr_txt"],
-                    post_noise_json=diag_paths["post_noise_json"],
-                    post_noise_txt=diag_paths["post_noise_txt"],
-                )
-                for note in notes:
-                    print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)  # noqa: T201  # CLI output
-                extra_paths.extend(str(p) for p in written)
-            # Only advertise the layout-debug artifact when reorganize_page
-            # actually ran — that is the codepath in pdomain-book-tools that
-            # writes the report. With ``--no-reorg`` (or any other reason
-            # ``do_reorg`` is False) the file never materialises, so the
-            # success line must not point at it. (B9)
-            if args.layout_debug and debug_file is not None and do_reorg:
-                extra_paths.append(f"layout-debug: {debug_file}")
-
-            if args.extract_illustrations and page_layout is not None and cv2_module is not None:
-                source_img = cv2_module.imread(str(img_path))
-                if source_img is None:
-                    print(  # noqa: T201  # CLI output
-                        f"WARNING: could not re-read {img_path} for illustration crops",
-                        file=sys.stderr,
-                    )
-                else:
-                    for crop_pair in iter_crop_regions(
-                        page_layout.regions,
-                        args.layout_confidence,
-                        crop_types,
-                    ):
-                        crop_idx, raw_region = cast("tuple[int, object]", crop_pair)
-                        region = cast("_RegionLike", raw_region)
-                        crop = source_img[
-                            max(0, region.T) : max(0, region.B),
-                            max(0, region.L) : max(0, region.R),
-                        ]
-                        if crop.size == 0:
-                            continue
-                        crop_path = illustration_crop_path(dest_dir, img_path.stem, crop_idx)
-                        # Atomic crop write: pick a sibling tmp that
-                        # preserves the suffix so ``cv2.imwrite`` still
-                        # selects the JPEG encoder, then ``os.replace``
-                        # onto the canonical path. (Code-review B18.)
-                        crop_tmp = crop_path.with_name(f".{crop_path.stem}.tmp{crop_path.suffix}")
-                        ok = cv2_module.imwrite(str(crop_tmp), crop)
-                        if not ok:
-                            with contextlib.suppress(FileNotFoundError):
-                                crop_tmp.unlink()
-                            print(  # noqa: T201  # CLI output
-                                f"WARNING: cv2.imwrite failed for {crop_path}",
-                                file=sys.stderr,
-                            )
-                            continue
-                        os.replace(crop_tmp, crop_path)
-                        extra_paths.append(str(crop_path))
-
-            # B19: ``.txt`` is written *last* so a failure in any prior
-            # sidecar/crop step leaves no orphan ``.txt``. B18: still
-            # atomic, so a SIGKILL/OOM/ENOSPC mid-rename never leaves a
-            # truncated ``.txt`` at the canonical path.
-            atomic_write_text(out_path, text)
-
-            tag = " (no-reorg)" if args.no_reorg else ""
-            if extra_paths:
-                print(f"-> {out_path}, {', '.join(extra_paths)}{tag}")  # noqa: T201  # CLI output
-            else:
-                print(f"-> {out_path}{tag}")  # noqa: T201  # CLI output
-            processed += 1
-        except KeyboardInterrupt:
-            # ``KeyboardInterrupt`` inherits from ``BaseException`` and so
-            # is NOT caught by the ``except Exception`` branch below. Without
-            # this branch, Ctrl-C mid-batch escapes the for-loop entirely,
-            # skipping the end-of-batch summary, the update-thread join, and
-            # the deterministic exit code. (B20)
-            print()  # close the unterminated ``Processing X ...`` line  # noqa: T201  # CLI output
-            interrupted = True
+    # Outer loop: one chunk at a time.  A ``break`` or propagated
+    # ``KeyboardInterrupt`` from the inner per-page loop exits both loops
+    # without OCR'ing the remaining chunks.
+    outer_break = False
+    for chunk_start in range(0, len(images), chunk_size):
+        if outer_break:
             break
-        except Exception as e:  # noqa: BLE001  # per-image error: catch all, report, continue batch
-            # Close the unterminated ``Processing X ...`` stdout line
-            # (printed with ``end=" "``) before the stderr message so
-            # the next image's ``Processing`` line — and the eventual
-            # ``Done`` summary — start on their own line rather than
-            # gluing onto this one. The ``page is None`` and
-            # ``KeyboardInterrupt`` siblings already do this; this
-            # branch had been the one gap. (B17)
-            print()  # noqa: T201  # CLI output
-            print(f"ERROR processing {img_path}: {e}", file=sys.stderr)  # noqa: T201  # CLI output
-            if _env_truthy("PD_OCR_DEBUG"):
-                import traceback
+        chunk = images[chunk_start : chunk_start + chunk_size]
+        chunk_bytes: list[object] = [img.read_bytes() for img in chunk]
+        chunk_ids = [img.name for img in chunk]
+        chunk_pages = _run_doctr_batch(
+            chunk_bytes,
+            predictor=predictor,
+            device=ops_device,
+            source_identifiers=chunk_ids,
+        )
+        for img_path, page in zip(chunk, chunk_pages, strict=True):
+            print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
+            debug_file = None
+            dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
 
-                traceback.print_exc(file=sys.stderr)
-            errors += 1
-        finally:
-            clear_layout_debug_env()
+            try:
+                # ``dest_dir.mkdir`` operates on a user-supplied path (``-o`` or
+                # a mirror under it); keep it inside the per-image ``try`` so a
+                # filesystem failure (e.g. ``-o`` is a regular file, or a
+                # mirror collides with an existing file) is recorded as one
+                # per-image error rather than aborting the whole batch. (B14)
+                dest_dir.mkdir(parents=True, exist_ok=True)
+
+                out_path, json_path = output_paths_for(img_path, dest_dir)
+
+                # ``setup_layout_debug_env`` calls ``mkdir`` on a user-supplied
+                # path; keep it inside the per-image ``try`` so an unwritable
+                # ``--layout-debug-dir`` is recorded as one per-image error
+                # rather than aborting the whole batch.
+                debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+                if page is None:
+                    # Close the ``Processing X ...`` line (printed with
+                    # end=" ") before the warning so subsequent stdout
+                    # doesn't concatenate onto it. Tally as a per-image
+                    # error so an all-empty batch exits non-zero rather
+                    # than misleading shell scripts that branch on $?.
+                    print()  # noqa: T201  # CLI output
+                    print(f"WARNING: no pages in result for {img_path}", file=sys.stderr)  # noqa: T201  # CLI output
+                    errors += 1
+                    continue
+
+                page_layout = None
+                if layout_detector is not None:
+                    page_layout = layout_detector.detect(img_path)
+                    print(  # noqa: T201  # CLI output
+                        f"  layout: {len(page_layout.regions)} regions ({page_layout.inference_ms} ms)",
+                        flush=True,
+                    )
+
+                # Snapshot pre-reorg word list when --validate-reorg is on. The
+                # diagnostic-export bundle is written from the library's own
+                # post-reorganize ``page.diagnostic_pure_ocr`` /
+                # ``diagnostic_post_noise_removal`` snapshots, so we no longer
+                # need a manual pre-reorg JSON dump here.
+                reorganize_page = page.reorganize_page
+                do_reorg = not args.no_reorg
+                want_diagnostic_export = (
+                    do_reorg and args.save_json and args.save_reorganize_diagnostics
+                )
+                pre_reorg_words: list[object] = []
+                if do_reorg and args.validate_reorg:
+                    pre_reorg_words = list(page.words)
+
+                if do_reorg:
+                    drop_layout_words = args.experimental_drop_layout_words
+                    emit_illustration_placeholders = not args.no_illustration_placeholders
+                    if page_layout is not None:
+                        reorganize_page(
+                            layout=page_layout,
+                            drop_layout_words=drop_layout_words,
+                            emit_illustration_placeholders=emit_illustration_placeholders,
+                        )
+                    else:
+                        reorganize_page(
+                            drop_layout_words=drop_layout_words,
+                            emit_illustration_placeholders=emit_illustration_placeholders,
+                        )
+
+                    # Always-on noise-drop warning. The library populates
+                    # ``diagnostic_noise_dropped_*`` regardless of whether the
+                    # snapshot ``Page`` clones were captured, so this fires
+                    # even when capture_diagnostics=False is wired through in
+                    # the future.
+                    dropped_raw = getattr(page, "diagnostic_noise_dropped_words", None)
+                    dropped = list(cast("Sequence[object]", dropped_raw)) if dropped_raw else []
+                    if dropped:
+                        for line in format_noise_drop_warning(
+                            dropped,
+                            img_path.name,
+                            diagnostic_flag_name="--save-json --save-reorganize-diagnostics",
+                        ):
+                            print(line, file=sys.stderr)  # noqa: T201  # CLI output
+
+                    if args.validate_reorg and validate_word_preservation is not None:
+                        drops = validate_word_preservation(pre_reorg_words, list(page.words))
+                        for line in format_drops_warning(drops, img_path.name):
+                            print(line, file=sys.stderr)  # noqa: T201  # CLI output
+
+                text = apply_text_normalizations(
+                    page.text,
+                    straight_quotes=args.straight_quotes,
+                    em_dash_to_double_hyphen=args.em_dash_to_double_hyphen,
+                )
+                if not text:
+                    print(f"WARNING: empty text result for {img_path}", file=sys.stderr)  # noqa: T201  # CLI output
+
+                # The canonical ``.txt`` is written *last* (after the json
+                # sidecar, diagnostic snapshots, and illustration crops) so
+                # that any per-image failure leaves the output directory
+                # without a ``.txt`` for that page. External pipelines key
+                # on ``.txt`` existence to mean "this page completed
+                # successfully"; an orphan ``.txt`` next to a missing
+                # sidecar would silently masquerade as a clean run.
+                # (Code-review B19.) Combined with the B18 atomic-write
+                # invariant on the ``.txt`` itself, the per-page artifact
+                # set is now all-or-nothing.
+                extra_paths: list[str] = []
+                if args.save_json:
+                    # ``_SinglePageDoc.to_json_file`` writes a document-envelope
+                    # JSON (same shape as Document.to_json_file) so downstream
+                    # consumers see an identical format. Atomic write: sibling
+                    # temp + os.replace (Code-review B18).
+                    doc = _SinglePageDoc(
+                        page, source_identifier=img_path.name, source_path=img_path
+                    )
+                    json_tmp = json_path.with_name(f".{json_path.name}.tmp")
+                    try:
+                        doc.to_json_file(json_tmp)
+                    except BaseException:
+                        with contextlib.suppress(FileNotFoundError):
+                            json_tmp.unlink()
+                        raise
+                    os.replace(json_tmp, json_path)
+                    extra_paths.append(str(json_path))
+                if want_diagnostic_export:
+                    diag_paths = diagnostic_output_paths(json_path, out_path)
+                    written, notes = write_diagnostic_snapshots(
+                        page,
+                        pure_ocr_json=diag_paths["pure_ocr_json"],
+                        pure_ocr_txt=diag_paths["pure_ocr_txt"],
+                        post_noise_json=diag_paths["post_noise_json"],
+                        post_noise_txt=diag_paths["post_noise_txt"],
+                    )
+                    for note in notes:
+                        print(f"WARNING: {img_path.name}: {note}", file=sys.stderr)  # noqa: T201  # CLI output
+                    extra_paths.extend(str(p) for p in written)
+                # Only advertise the layout-debug artifact when reorganize_page
+                # actually ran — that is the codepath in pdomain-book-tools that
+                # writes the report. With ``--no-reorg`` (or any other reason
+                # ``do_reorg`` is False) the file never materialises, so the
+                # success line must not point at it. (B9)
+                if args.layout_debug and debug_file is not None and do_reorg:
+                    extra_paths.append(f"layout-debug: {debug_file}")
+
+                if (
+                    args.extract_illustrations
+                    and page_layout is not None
+                    and cv2_module is not None
+                ):
+                    source_img = cv2_module.imread(str(img_path))
+                    if source_img is None:
+                        print(  # noqa: T201  # CLI output
+                            f"WARNING: could not re-read {img_path} for illustration crops",
+                            file=sys.stderr,
+                        )
+                    else:
+                        for crop_pair in iter_crop_regions(
+                            page_layout.regions,
+                            args.layout_confidence,
+                            crop_types,
+                        ):
+                            crop_idx, raw_region = cast("tuple[int, object]", crop_pair)
+                            region = cast("_RegionLike", raw_region)
+                            crop = source_img[
+                                max(0, region.T) : max(0, region.B),
+                                max(0, region.L) : max(0, region.R),
+                            ]
+                            if crop.size == 0:
+                                continue
+                            crop_path = illustration_crop_path(dest_dir, img_path.stem, crop_idx)
+                            # Atomic crop write: pick a sibling tmp that
+                            # preserves the suffix so ``cv2.imwrite`` still
+                            # selects the JPEG encoder, then ``os.replace``
+                            # onto the canonical path. (Code-review B18.)
+                            crop_tmp = crop_path.with_name(
+                                f".{crop_path.stem}.tmp{crop_path.suffix}"
+                            )
+                            ok = cv2_module.imwrite(str(crop_tmp), crop)
+                            if not ok:
+                                with contextlib.suppress(FileNotFoundError):
+                                    crop_tmp.unlink()
+                                print(  # noqa: T201  # CLI output
+                                    f"WARNING: cv2.imwrite failed for {crop_path}",
+                                    file=sys.stderr,
+                                )
+                                continue
+                            os.replace(crop_tmp, crop_path)
+                            extra_paths.append(str(crop_path))
+
+                # B19: ``.txt`` is written *last* so a failure in any prior
+                # sidecar/crop step leaves no orphan ``.txt``. B18: still
+                # atomic, so a SIGKILL/OOM/ENOSPC mid-rename never leaves a
+                # truncated ``.txt`` at the canonical path.
+                atomic_write_text(out_path, text)
+
+                tag = " (no-reorg)" if args.no_reorg else ""
+                if extra_paths:
+                    print(f"-> {out_path}, {', '.join(extra_paths)}{tag}")  # noqa: T201  # CLI output
+                else:
+                    print(f"-> {out_path}{tag}")  # noqa: T201  # CLI output
+                processed += 1
+            except KeyboardInterrupt:
+                # ``KeyboardInterrupt`` inherits from ``BaseException`` and so
+                # is NOT caught by the ``except Exception`` branch below. Without
+                # this branch, Ctrl-C mid-batch escapes the for-loop entirely,
+                # skipping the end-of-batch summary, the update-thread join, and
+                # the deterministic exit code. (B20)
+                print()  # close the unterminated ``Processing X ...`` line  # noqa: T201  # CLI output
+                interrupted = True
+                outer_break = True
+                break
+            except Exception as e:  # noqa: BLE001  # per-image error: catch all, report, continue batch
+                # Close the unterminated ``Processing X ...`` stdout line
+                # (printed with ``end=" "``) before the stderr message so
+                # the next image's ``Processing`` line — and the eventual
+                # ``Done`` summary — start on their own line rather than
+                # gluing onto this one. The ``page is None`` and
+                # ``KeyboardInterrupt`` siblings already do this; this
+                # branch had been the one gap. (B17)
+                print()  # noqa: T201  # CLI output
+                print(f"ERROR processing {img_path}: {e}", file=sys.stderr)  # noqa: T201  # CLI output
+                if _env_truthy("PD_OCR_DEBUG"):
+                    import traceback
+
+                    traceback.print_exc(file=sys.stderr)
+                errors += 1
+            finally:
+                clear_layout_debug_env()
 
     if _update_thread is not None:
         _update_thread.join(timeout=3)

@@ -11,12 +11,13 @@ The patching strategy:
   network call ever fires.
 - ``resolve_ocr_models`` and ``resolve_layout_source`` return fake paths /
   descriptors so HF download is skipped.
-- ``_load_predictor``, ``_load_layout_detector``, ``_load_document_factory``,
+- ``_load_predictor``, ``_load_layout_detector``,
   ``_load_validate_word_preservation``, ``_load_illustration_deps`` return
   test fakes so no real models load.
-- The fake ``Document`` factory yields a fake page whose ``.text`` /
-  ``.words`` / ``.reorganize_page`` are stubs — that lets the per-image
-  loop write a deterministic .txt sidecar.
+- ``_run_doctr_batch`` is patched to return fake ``_FakePage`` objects from
+  a template page — that lets the per-image loop write a deterministic .txt
+  sidecar without any torch/DocTR/pdomain_book_tools loading.
+- ``_pick_device`` is patched to return ``"cpu"`` so no GPU probe runs.
 """
 
 from __future__ import annotations
@@ -101,6 +102,9 @@ def _make_factory(page: _FakePage) -> tuple[callable, list[_FakeDoc]]:
     Each call rebuilds a fresh ``_FakePage`` mirroring the template's
     ``text``, ``words``, and diagnostic attributes so per-page assertions
     don't see state from a previous call.
+
+    NOTE: this helper is retained for tests that need the legacy factory
+    interface (used by ``_run_doctr_batch`` monkeypatching adapters).
     """
     captured: list[_FakeDoc] = []
 
@@ -115,6 +119,36 @@ def _make_factory(page: _FakePage) -> tuple[callable, list[_FakeDoc]]:
         return doc
 
     return factory, captured
+
+
+def _make_batch_runner(page: _FakePage) -> tuple[callable, list[_FakePage]]:
+    """Return ``(batch_runner, captured_pages)`` — the runner is a ``_run_doctr_batch`` replacement.
+
+    Returns one cloned ``_FakePage`` per image in each chunk.  ``captured_pages``
+    accumulates all returned pages in order.
+    """
+    captured: list[_FakePage] = []
+
+    def batch_runner(
+        images,
+        *,
+        predictor,
+        device,
+        build_smaller=None,
+        source_identifiers=None,
+    ):
+        pages = []
+        for _ in images:
+            clone = _FakePage(page.text, list(page.words))
+            clone.diagnostic_pure_ocr = page.diagnostic_pure_ocr
+            clone.diagnostic_post_noise_removal = page.diagnostic_post_noise_removal
+            clone.diagnostic_noise_dropped_words = list(page.diagnostic_noise_dropped_words)
+            clone.diagnostic_noise_dropped_count = page.diagnostic_noise_dropped_count
+            captured.append(clone)
+            pages.append(clone)
+        return pages
+
+    return batch_runner, captured
 
 
 # ---------------------------------------------------------------------------
@@ -159,13 +193,28 @@ def patched_main(monkeypatch, tmp_path):
 
     # No real torch + DocTR + cv2 loads.
     monkeypatch.setattr(ocr_to_txt, "_detect_torch_device", lambda: "cpu")
+    # pdomain-ops device probe
+    monkeypatch.setattr(ocr_to_txt, "_pick_device", lambda: "cpu")
 
     fake_predictor = object()
     monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: fake_predictor)
 
     page = _FakePage(text="FAKE OCR TEXT")
-    factory, captured_docs = _make_factory(page)
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    batch_runner, captured_pages = _make_batch_runner(page)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
+
+    # Backward-compat shim: tests that check ``captured_docs[i].pages[0]``
+    # still work by wrapping each captured page in a SimpleNamespace doc.
+    class _CapturedDocsProxy(list):
+        """Lazily builds the captured_docs view from captured_pages."""
+
+        def __getitem__(self, idx):  # type: ignore[override]
+            return SimpleNamespace(pages=[captured_pages[idx]])
+
+        def __len__(self):
+            return len(captured_pages)
+
+    captured_docs = _CapturedDocsProxy()
 
     # Default: layout detection mocked off (main() still picks "none" via
     # --layout-model none in the test argv); override per-test if needed.
@@ -189,7 +238,8 @@ def patched_main(monkeypatch, tmp_path):
         predictor=fake_predictor,
         page=page,
         captured_docs=captured_docs,
-        factory=factory,
+        captured_pages=captured_pages,
+        batch_runner=batch_runner,
     )
 
 
@@ -245,7 +295,7 @@ def test_main_save_json_writes_sidecar(patched_main, monkeypatch, tmp_path):
 def test_main_save_json_failure_cleans_up_tmp_and_increments_errors(
     patched_main, monkeypatch, tmp_path, capsys
 ):
-    """If ``doc.to_json_file`` fails mid-write the canonical ``.json``
+    """If ``_SinglePageDoc.to_json_file`` fails mid-write the canonical ``.json``
     must not exist and the sibling tmp must be cleaned up. The error
     counter increments. (B18 atomic-write invariant for the JSON
     sidecar.)
@@ -254,24 +304,17 @@ def test_main_save_json_failure_cleans_up_tmp_and_increments_errors(
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    page = _FakePage(text="OK")
-    captured: list = []
+    # Patch _SinglePageDoc so its to_json_file partially writes then raises.
+    _orig_single_page_doc = ocr_to_txt._SinglePageDoc  # type: ignore[attr-defined]
 
-    def factory(img_path, source_identifier=None, predictor=None):
-        clone = _FakePage(page.text, list(page.words))
-        doc = _FakeDoc(clone)
-
-        def _boom_to_json_file(p):
+    class _BoomSinglePageDoc(_orig_single_page_doc):
+        def to_json_file(self, file_path):
             # Mimic a partial flush before crashing — the helper must
             # still leave the canonical name absent.
-            Path(p).write_text("PARTIAL", encoding="utf-8")
+            Path(file_path).write_text("PARTIAL", encoding="utf-8")
             raise OSError(28, "No space left on device")
 
-        doc.to_json_file = _boom_to_json_file
-        captured.append(doc)
-        return doc
-
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    monkeypatch.setattr(ocr_to_txt, "_SinglePageDoc", _BoomSinglePageDoc)
 
     with pytest.raises(SystemExit) as exc_info:
         _run_main(
@@ -319,10 +362,22 @@ def test_main_per_image_exception_terminates_processing_stdout_line(
     shutil.copy(TITLE_IMAGE, img_b)
     out = tmp_path / "out"
 
-    def factory(img_path, source_identifier=None, predictor=None):
-        raise RuntimeError(f"boom-{Path(img_path).stem}")
+    # Both pages raise during per-page post-processing (reorganize_page).
+    # This exercises the ``except Exception`` branch in the per-page loop
+    # — the same branch the old per-image factory raise hit.
+    call_idx = {"n": 0}
 
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    def _boom_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+        pages = []
+        for _ in images:
+            idx = call_idx["n"]
+            call_idx["n"] += 1
+            p = _FakePage(text=f"PAGE_{idx}")
+            p.reorganize_page = MagicMock(side_effect=RuntimeError(f"boom-img{idx}"))
+            pages.append(p)
+        return pages
+
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _boom_batch)
 
     with pytest.raises(SystemExit) as exc_info:
         _run_main(
@@ -354,8 +409,8 @@ def test_main_per_image_exception_terminates_processing_stdout_line(
 def test_main_save_json_failure_with_no_tmp_swallows_unlink_error(
     patched_main, monkeypatch, tmp_path, capsys
 ):
-    """When ``doc.to_json_file`` raises *before* it ever creates the
-    sibling tmp, the defensive ``unlink()`` must swallow
+    """When ``_SinglePageDoc.to_json_file`` raises *before* it ever creates
+    the sibling tmp, the defensive ``unlink()`` must swallow
     ``FileNotFoundError`` and re-raise the original error. Covers the
     same B18 cleanup branch when no partial tmp ever lands on disk.
     """
@@ -363,17 +418,14 @@ def test_main_save_json_failure_with_no_tmp_swallows_unlink_error(
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    def factory(img_path, source_identifier=None, predictor=None):
-        clone = _FakePage("OK", [])
-        doc = _FakeDoc(clone)
+    # Patch _SinglePageDoc so to_json_file raises without touching disk.
+    _orig_single_page_doc = ocr_to_txt._SinglePageDoc  # type: ignore[attr-defined]
 
-        def _explode(_p):
+    class _ExplodeSinglePageDoc(_orig_single_page_doc):
+        def to_json_file(self, file_path):
             raise RuntimeError("explode before any byte hits disk")
 
-        doc.to_json_file = _explode
-        return doc
-
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    monkeypatch.setattr(ocr_to_txt, "_SinglePageDoc", _ExplodeSinglePageDoc)
 
     with pytest.raises(SystemExit) as exc_info:
         _run_main(
@@ -514,14 +566,14 @@ def test_main_save_reorganize_diagnostics_writes_all_six_outputs(
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    factory, _ = _make_factory(
+    batch_runner, _ = _make_batch_runner(
         _FakePage(
             text="POST-REORG TEXT",
             pure_ocr_text="PURE OCR TEXT",
             post_noise_text="POST NOISE TEXT",
         )
     )
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -552,13 +604,13 @@ def test_main_save_pre_reorg_json_alias_still_works(patched_main, monkeypatch, t
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    factory, _ = _make_factory(
+    batch_runner, _ = _make_batch_runner(
         _FakePage(
             pure_ocr_text="PURE",
             post_noise_text="POST",
         )
     )
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -587,8 +639,8 @@ def test_main_save_diagnostics_skips_missing_snapshots(patched_main, monkeypatch
     out = tmp_path / "out"
 
     # No pure_ocr_text / post_noise_text → snapshots stay None.
-    factory, _ = _make_factory(_FakePage(text="POST-REORG"))
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    batch_runner, _ = _make_batch_runner(_FakePage(text="POST-REORG"))
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -619,13 +671,13 @@ def test_main_noise_drop_warning_always_fires(patched_main, monkeypatch, tmp_pat
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    factory, _ = _make_factory(
+    batch_runner, _ = _make_batch_runner(
         _FakePage(
             text="POST-REORG TEXT",
             dropped_word_texts=["foo", "bar", "baz"],
         )
     )
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -684,7 +736,7 @@ def test_main_noise_drop_warning_silent_with_zero_count(
     # Build a page whose diagnostic snapshots are populated but whose
     # dropped list is empty — i.e. reorganize ran with drop_layout_words=False
     # and preserved every word.
-    factory, _ = _make_factory(
+    batch_runner, _ = _make_batch_runner(
         _FakePage(
             text="POST-REORG TEXT",
             pure_ocr_text="PURE OCR TEXT",
@@ -692,7 +744,7 @@ def test_main_noise_drop_warning_silent_with_zero_count(
             dropped_word_texts=[],  # explicit empty list
         )
     )
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -1204,9 +1256,9 @@ def test_main_empty_page_text_warns(patched_main, monkeypatch, tmp_path, capsys)
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    # Make the document factory return a page with no text.
-    factory, _ = _make_factory(_FakePage(text=""))
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    # Make the batch runner return a page with no text.
+    batch_runner, _ = _make_batch_runner(_FakePage(text=""))
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -1513,8 +1565,8 @@ def test_main_straight_quotes_normalizes(patched_main, monkeypatch, tmp_path):
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    factory, _ = _make_factory(_FakePage(text="“hello”—world"))
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: factory)
+    batch_runner, _ = _make_batch_runner(_FakePage(text="“hello”—world"))
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
 
     _run_main(
         monkeypatch,
@@ -1543,10 +1595,15 @@ def test_main_per_image_exception_increments_error_count(
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    def boom(*a, **kw):
-        raise RuntimeError("synthetic OCR failure")
+    # Raise during per-page post-processing (reorganize_page is called inside
+    # the per-page try/except block), which exercises the same error path as
+    # the old per-image factory raise.
+    def _boom_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+        p = _FakePage(text="OK")
+        p.reorganize_page = MagicMock(side_effect=RuntimeError("synthetic OCR failure"))
+        return [p for _ in images]
 
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: boom)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _boom_batch)
 
     with pytest.raises(SystemExit) as exc_info:
         _run_main(
@@ -1573,10 +1630,12 @@ def test_main_per_image_exception_with_debug_prints_traceback(
     shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    def boom(*a, **kw):
-        raise RuntimeError("synthetic")
+    def _boom_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+        p = _FakePage(text="OK")
+        p.reorganize_page = MagicMock(side_effect=RuntimeError("synthetic"))
+        return [p for _ in images]
 
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: boom)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _boom_batch)
     monkeypatch.setenv("PD_OCR_DEBUG", "1")
 
     with pytest.raises(SystemExit):
@@ -1691,10 +1750,11 @@ def test_main_doc_with_no_pages_warns_increments_errors_and_exits_1(
     shutil.copy(TITLE_IMAGE, img_b)
     out = tmp_path / "out"
 
-    def empty_factory(img_path, source_identifier=None, predictor=None):
-        return SimpleNamespace(pages=[], to_json_file=lambda p: None)
+    # Return None pages so the per-page ``if page is None`` branch fires.
+    def empty_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+        return [None for _ in images]
 
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: empty_factory)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", empty_batch)
 
     with pytest.raises(SystemExit) as exc_info:
         _run_main(
@@ -1750,25 +1810,29 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
         shutil.copy(TITLE_IMAGE, img)
     out = tmp_path / "out"
 
-    # First call returns a normal page; second call raises
-    # KeyboardInterrupt (simulating Ctrl-C while OCR'ing the second
-    # image); third call MUST never run.
+    # First page processes normally (batch_pages=1 ensures each image is
+    # its own batch).  The second page raises KeyboardInterrupt during
+    # per-page post-processing (reorganize_page) — same point in the loop
+    # as the old per-image factory raise.  The third page MUST never run.
     call_count = {"n": 0}
     third_seen = {"n": 0}
 
-    def interrupting_factory(img_path, source_identifier=None, predictor=None):
+    def interrupting_batch(
+        images, *, predictor, device, build_smaller=None, source_identifiers=None
+    ):
         call_count["n"] += 1
-        if call_count["n"] == 1:
-            return SimpleNamespace(
-                pages=[_FakePage(text="OK")],
-                to_json_file=lambda p: None,
-            )
-        if call_count["n"] == 2:
-            raise KeyboardInterrupt
+        n = call_count["n"]
+        if n == 1:
+            p = _FakePage(text="OK")
+            return [p]
+        if n == 2:
+            p = _FakePage(text="OK")
+            p.reorganize_page = MagicMock(side_effect=KeyboardInterrupt)
+            return [p]
         third_seen["n"] += 1
-        return SimpleNamespace(pages=[_FakePage(text="OK")], to_json_file=lambda p: None)
+        return [_FakePage(text="OK")]
 
-    monkeypatch.setattr(ocr_to_txt, "_load_document_factory", lambda: interrupting_factory)
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", interrupting_batch)
 
     # Track the update-notice thread so we can assert it was joined.
     import threading
@@ -1789,6 +1853,8 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
             monkeypatch,
             "--layout-model",
             "none",
+            "--batch-pages",
+            "1",  # one image per batch so the interrupt fires on the 2nd image
             "-o",
             str(out),
             str(img_a),
