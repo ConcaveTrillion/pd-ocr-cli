@@ -16,4 +16,6 @@ if [[ ! -f "$MARKER" ]]; then
 fi
 
 # Repo-specific run target
-exec make -C "$REPO_ROOT" run
+# UV_NO_SYNC=1: keep editable pd-* siblings; a plain `make run` re-syncs and
+# reverts them to registry versions, breaking unreleased editable APIs at runtime.
+exec env UV_NO_SYNC=1 make -C "$REPO_ROOT" run
