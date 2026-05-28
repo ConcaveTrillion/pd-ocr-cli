@@ -115,13 +115,21 @@ class FakeDoc:
 
 
 class FakeArray:
-    """cv2-style array fake supporting slicing (for crop-region tests)."""
+    """cv2-style image fake for illustration-crop tests.
 
-    def __init__(self, shape: tuple[int, ...] = (100, 100, 3)) -> None:
-        self.shape = shape
+    ``size`` is the pixel-area extent; slicing with ``arr[row_slice,
+    col_slice]`` returns a new ``FakeArray`` whose ``size`` is the area of the
+    requested crop. Mirrors the only ndarray behavior the CLI's crop path
+    touches (``crop.size`` to decide whether a region is empty).
+    """
 
-    def __getitem__(self, _key) -> FakeArray:
-        return self
+    def __init__(self, extent: int = 100) -> None:
+        self.size = extent
+
+    def __getitem__(self, slc) -> FakeArray:
+        row, col = slc
+        extent = max(0, row.stop - row.start) * max(0, col.stop - col.start)
+        return FakeArray(extent)
 
 
 def pipeline_args(**overrides) -> SimpleNamespace:
