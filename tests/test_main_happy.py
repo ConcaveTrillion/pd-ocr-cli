@@ -270,6 +270,15 @@ def test_main_empty_page_text_warns(mock_heavy_deps, monkeypatch, run_main, sing
     assert (out / "page.txt").read_text() == ""
 
 
+def test_main_writes_recomposed_body_and_caption(mock_heavy_deps, run_main, single_image):
+    img, out = single_image
+    mock_heavy_deps(page=FakePage(body="The quick brown fox", illustration_caption="Fig 1"))
+    run_main("--no-update-check", "--layout-model", "none", "-o", str(out), str(img))
+    text = (out / "page.txt").read_text()
+    assert text.startswith("The quick brown fox")
+    assert "Fig 1" in text
+
+
 # ---------------------------------------------------------------------------
 # Happy paths — layout + illustration
 # ---------------------------------------------------------------------------
