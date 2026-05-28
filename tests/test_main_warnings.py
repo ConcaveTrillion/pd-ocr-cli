@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from _fakes import FakePage
 
 # ---------------------------------------------------------------------------
@@ -103,88 +104,68 @@ def test_main_noise_drop_warning_silent_with_zero_count(
 
 
 # ---------------------------------------------------------------------------
-# B3 silent-no-op warnings
+# B3 silent-no-op warnings — parametrized family
 # ---------------------------------------------------------------------------
 
+# Each tuple: (id, extra_flags, expected_substrings)
+# "DEBUG_DIR" sentinel is replaced with str(tmp_path / "debug") at runtime.
+# Cases that did NOT use --layout-model none in the original include it in
+# their own flags list; cases that did omit it also omit it here.
+_WARN_CASES = [
+    (
+        "no_reorg+save_diag",  # B3.1
+        ["--layout-model", "none", "--no-reorg", "--save-json", "--save-reorganize-diagnostics"],
+        ["--no-reorg", "--save-reorganize-diagnostics"],
+    ),
+    (
+        "no_reorg+validate_reorg",  # B3.2
+        ["--layout-model", "none", "--no-reorg", "--validate-reorg"],
+        ["--no-reorg", "--validate-reorg"],
+    ),
+    (
+        "layout_none+layout_debug",  # B3.3
+        ["--layout-model", "none", "--layout-debug"],
+        ["--layout-model none", "--layout-debug"],
+    ),
+    (
+        "layout_debug_dir_without_layout_debug",  # B11 — original omitted --layout-model none
+        ["--layout-debug-dir", "DEBUG_DIR"],
+        ["--layout-debug-dir", "--layout-debug"],
+    ),
+    (
+        "no_reorg+experimental_drop_layout_words",  # B15
+        ["--layout-model", "none", "--no-reorg", "--experimental-drop-layout-words"],
+        ["--no-reorg", "--experimental-drop-layout-words"],
+    ),
+    (
+        "save_reorg_diag_without_save_json",  # B16
+        ["--layout-model", "none", "--save-reorganize-diagnostics"],
+        ["--save-reorganize-diagnostics", "--save-json"],
+    ),
+    (
+        "no_illustration_placeholders+no_reorg",  # original omitted --layout-model none
+        ["--no-reorg", "--no-illustration-placeholders"],
+        ["--no-illustration-placeholders", "--no-reorg"],
+    ),
+]
 
-def test_main_no_reorg_with_save_diag_warns(mock_heavy_deps, run_main, single_image, capsys):
-    """B3.1: ``--no-reorg --save-reorganize-diagnostics`` is a silent no-op.
 
-    The diagnostics flag only fires when reorganize runs, so combining it
-    with ``--no-reorg`` produces no output. Warn the user explicitly to
-    stderr so the flag's silence is not surprising.
-    """
-    mock_heavy_deps()
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [(f, e) for _, f, e in _WARN_CASES],
+    ids=[c[0] for c in _WARN_CASES],
+)
+def test_main_silent_no_op_warns(
+    mock_heavy_deps, run_main, single_image, capsys, tmp_path, flags, expected
+):
+    """Parametrized: each silent-no-op flag combo must emit a stderr warning."""
     img, out = single_image
-
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "--no-reorg",
-        "--save-json",
-        "--save-reorganize-diagnostics",
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "--no-reorg" in err
-    assert "--save-reorganize-diagnostics" in err
-    assert "warning" in err.lower()
-
-
-def test_main_no_reorg_with_validate_reorg_warns(mock_heavy_deps, run_main, single_image, capsys):
-    """B3.2: ``--no-reorg --validate-reorg`` silently skips validation.
-
-    The ``if do_reorg and args.validate_reorg`` gate short-circuits, so no
-    validation runs and no warning is shown. Emit a stderr warning making
-    that explicit.
-    """
+    flags = [str(tmp_path / "debug") if f == "DEBUG_DIR" else f for f in flags]
     mock_heavy_deps()
-    img, out = single_image
-
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "--no-reorg",
-        "--validate-reorg",
-        "-o",
-        str(out),
-        str(img),
-    )
-
+    run_main("--no-update-check", *flags, "-o", str(out), str(img))
     err = capsys.readouterr().err
-    assert "--no-reorg" in err
-    assert "--validate-reorg" in err
-    assert "warning" in err.lower()
-
-
-def test_main_layout_none_with_layout_debug_warns(mock_heavy_deps, run_main, single_image, capsys):
-    """B3.3: ``--layout-model none --layout-debug`` is a silent no-op.
-
-    With layout disabled the debug file path is announced on stdout but no
-    layout model ever runs, so the file never materializes. Warn on stderr
-    so users understand why the announced path stays empty.
-    """
-    mock_heavy_deps()
-    img, out = single_image
-
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "--layout-debug",
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "--layout-model none" in err
-    assert "--layout-debug" in err
+    for sub in expected:
+        assert sub in err
     assert "warning" in err.lower()
 
 
@@ -218,119 +199,6 @@ def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
     assert "warning" in err.lower()
     # Success line must not falsely advertise a layout-debug artifact.
     assert "layout-debug:" not in captured.out
-
-
-def test_main_layout_debug_dir_without_layout_debug_warns(
-    mock_heavy_deps, run_main, single_image, capsys, tmp_path
-):
-    """B11: ``--layout-debug-dir DIR`` without ``--layout-debug`` is a silent no-op.
-
-    The directory argument is only consulted inside ``setup_layout_debug_env``,
-    which short-circuits to ``None`` when ``--layout-debug`` was not passed.
-    Users who specify a debug directory without the enable flag get no
-    artifacts and no feedback. Warn on stderr per the B3 pattern.
-    """
-    mock_heavy_deps()
-    img, out = single_image
-    debug_dir = tmp_path / "debug"
-
-    run_main(
-        "--no-update-check",
-        "--layout-debug-dir",
-        str(debug_dir),
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "--layout-debug-dir" in err
-    assert "--layout-debug" in err
-    assert "warning" in err.lower()
-
-
-def test_main_no_reorg_with_experimental_drop_layout_words_warns(
-    mock_heavy_deps, run_main, single_image, capsys
-):
-    """B15: ``--experimental-drop-layout-words`` with ``--no-reorg`` is a silent no-op.
-
-    The flag is consumed only inside the ``if do_reorg:`` block, so combining
-    it with ``--no-reorg`` quietly does nothing. Warn on stderr per the B3
-    silent-no-op pattern.
-    """
-    mock_heavy_deps()
-    img, out = single_image
-
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "--no-reorg",
-        "--experimental-drop-layout-words",
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "--no-reorg" in err
-    assert "--experimental-drop-layout-words" in err
-    assert "warning" in err.lower()
-
-
-def test_main_save_reorganize_diagnostics_without_save_json_warns(
-    mock_heavy_deps, run_main, single_image, capsys
-):
-    """B16: ``--save-reorganize-diagnostics`` without ``--save-json`` is a silent no-op.
-
-    The diagnostic-export bundle is gated on ``args.save_json`` in the
-    per-image loop, so a user passing only ``--save-reorganize-diagnostics``
-    (or its legacy alias ``--save-pre-reorg-json``) gets no diagnostic
-    files and no feedback. Warn on stderr per the B3 silent-no-op pattern.
-    """
-    mock_heavy_deps()
-    img, out = single_image
-
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "--save-reorganize-diagnostics",
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "--save-reorganize-diagnostics" in err
-    assert "--save-json" in err
-    assert "warning" in err.lower()
-
-
-def test_main_no_illustration_placeholders_with_no_reorg_warns(
-    mock_heavy_deps, run_main, single_image, capsys
-):
-    """``--no-illustration-placeholders --no-reorg`` is a silent no-op; warn.
-
-    Placeholder emission happens inside reorganize_page, which is skipped
-    under --no-reorg. Match the B3 no-op-warning pattern.
-    """
-    mock_heavy_deps()
-    img, out = single_image
-
-    run_main(
-        "--no-update-check",
-        "--no-reorg",
-        "--no-illustration-placeholders",
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "--no-illustration-placeholders" in err
-    assert "--no-reorg" in err
-    assert "warning" in err.lower()
 
 
 def test_main_layout_debug_writes_debug_file(mock_heavy_deps, run_main, single_image):
