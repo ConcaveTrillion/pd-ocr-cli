@@ -1457,7 +1457,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "pdomain-book-tools", specifier = ">=0.14.1", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "pdomain-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
-    { name = "pdomain-ops", editable = "../../../../pdomain-ops" },
+    { name = "pdomain-ops", editable = "../pdomain-ops" },
 ]
 provides-extras = ["gpu"]
 
@@ -1476,7 +1476,7 @@ dev = [
 
 [[package]]
 name = "pdomain-ops"
-source = { editable = "../../../../pdomain-ops" }
+source = { editable = "../pdomain-ops" }
 dependencies = [
     { name = "fastapi" },
     { name = "filelock" },

@@ -56,10 +56,12 @@ explicit = true
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
-# pdomain-ops resolves from the registry like book-tools. Until pdomain-ops
-# is published to pdomain-index-pip, use local-dev mode (`make local-dev`)
-# to overlay the editable sibling — do NOT hardcode a path source here.
-pdomain-ops = { index = "pdomain-index-pip" }
+# pdomain-ops is not yet published to pdomain-index-pip. Until it is, resolve
+# it from the workspace sibling (path is relative to this pyproject = repo root).
+# TODO(release): once pdomain-ops ships to pdomain-index-pip, replace this with
+#   pdomain-ops = { index = "pdomain-index-pip" }
+# to match book-tools and rely on local-dev mode for the editable overlay.
+pdomain-ops = { path = "../pdomain-ops", editable = true }
 
 [tool.hatch.version]
 source = "vcs"
