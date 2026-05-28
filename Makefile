@@ -13,7 +13,7 @@ $(_goals):
 else
 
 .PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
-        local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run \
+        local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run local-test local-test-slow \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
 # Coverage thresholds. The fast suite floor is duplicated in pyproject.toml's
@@ -207,6 +207,12 @@ local-uninstall: ## Uninstall the uv tool (siblings + venv untouched)
 
 local-run: ## Run the CLI/server against local-dev workspace (local-mode only)
 	@./scripts/local-run.sh
+
+local-test: ## Run the fast test suite against editable local-dev siblings (local-mode only)
+	@./scripts/local-test.sh
+
+local-test-slow: ## Run the full test suite incl. slow integration tests against editable local-dev siblings (local-mode only)
+	@./scripts/local-test-slow.sh
 
 # ─── deprecation aliases ─────────────────────────────────────────────────────
 
