@@ -44,26 +44,6 @@ def test_main_noise_drop_warning_always_fires(
     assert "--save-reorganize-diagnostics" in err
 
 
-def test_main_noise_drop_warning_skipped_when_no_drops(
-    mock_heavy_deps, run_main, single_image, capsys
-):
-    mock_heavy_deps()
-    img, out = single_image
-
-    # Default _FakePage has no dropped words.
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "none",
-        "-o",
-        str(out),
-        str(img),
-    )
-
-    err = capsys.readouterr().err
-    assert "dropped" not in err.lower() or "look like figure-internal noise" not in err
-
-
 def test_main_noise_drop_warning_silent_with_zero_count(
     mock_heavy_deps, monkeypatch, run_main, single_image, capsys
 ):
@@ -201,21 +181,28 @@ def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
     assert "layout-debug:" not in captured.out
 
 
-def test_main_layout_debug_writes_debug_file(mock_heavy_deps, run_main, single_image):
+def test_main_layout_debug_announces_artifact_on_success_line(
+    mock_heavy_deps, run_main, single_image, capsys
+):
+    """With layout enabled (not ``--layout-model none``) and ``--layout-debug``,
+    the success line must include a ``layout-debug: <path>`` segment.
+
+    ``setup_layout_debug_env`` sets the env vars and returns a non-None path;
+    ``ocr_to_txt.py`` appends it to ``extra_paths`` when
+    ``args.layout_debug and debug_file is not None and do_reorg`` all hold.
+    The mock layout detector (installed by ``mock_heavy_deps``) returns empty
+    regions, so ``reorganize_page`` still runs — the announcement fires.
+    """
     mock_heavy_deps()
     img, out = single_image
 
     run_main(
         "--no-update-check",
-        "--layout-model",
-        "none",
         "--layout-debug",
         "-o",
         str(out),
         str(img),
     )
 
-    # The env-var setup helper makes the debug dir; the loop never writes the
-    # actual file (pdomain_book_tools does that), but the path is announced in the
-    # "extra paths" line on stdout.
-    assert (out / "page.txt").exists()
+    captured = capsys.readouterr()
+    assert "layout-debug:" in captured.out
