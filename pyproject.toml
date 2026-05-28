@@ -152,7 +152,7 @@ known-first-party = ["pdomain_ocr_cli"]
 # pytest.raises match= not required for every test (PT011);
 # /tmp paths are fine in tests (S108); trivial comparisons can be intentional (PLR0133);
 # loop-var reassignment as pattern (PLW2901); list-building loops in tests are fine (PERF401).
-"tests/**/*.py" = ["S101", "S105", "S106", "S311", "T201", "ANN", "D", "PLR2004", "PT011", "S108", "PLR0133", "PLW2901", "PERF401"]
+"tests/**/*.py" = ["S101", "S105", "S106", "S311", "T201", "ANN", "D", "PLR2004", "PT011", "S108", "PLR0133", "PLW2901", "PERF401", "S603", "S607"]
 # Scripts: print() is the output mechanism; no docstrings required; S607 partial
 # executable path is idiomatic when invoking system tools (uv, git, etc.)
 "scripts/*.py" = ["T201", "D", "S607"]

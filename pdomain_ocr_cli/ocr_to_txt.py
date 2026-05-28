@@ -79,7 +79,7 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 from pdomain_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
@@ -956,20 +956,67 @@ def main() -> None:
     # Outer loop: one chunk at a time.  A ``break`` or propagated
     # ``KeyboardInterrupt`` from the inner per-page loop exits both loops
     # without OCR'ing the remaining chunks.
+    def _record_error(img_path: object, exc: BaseException) -> None:
+        """Emit per-image error to stderr (and traceback under PD_OCR_DEBUG)."""
+        print()  # noqa: T201  # CLI output — close unterminated "Processing X ..." line
+        print(f"ERROR processing {img_path}: {exc}", file=sys.stderr)  # noqa: T201  # CLI output
+        if _env_truthy("PD_OCR_DEBUG"):
+            import traceback
+
+            traceback.print_exc(file=sys.stderr)
+
+    # cv2 + numpy are always present with the doctr/gpu deps that this code path
+    # requires.  Import once here (lazy, to avoid pulling heavy GPU libs at
+    # module import time) rather than re-importing on every chunk iteration.
+    import cv2  # pyright: ignore[reportMissingImports]  # optional [gpu] dep; always present with doctr
+    import numpy as np
+
     outer_break = False
     for chunk_start in range(0, len(images), chunk_size):
         if outer_break:
             break
         chunk = images[chunk_start : chunk_start + chunk_size]
-        chunk_bytes: list[object] = [img.read_bytes() for img in chunk]
-        chunk_ids = [img.name for img in chunk]
+
+        # Decode each image in the chunk individually so that a corrupt image
+        # is caught here — as a per-image error — rather than inside
+        # ``_run_doctr_batch`` where it would abort the entire chunk.
+
+        survivor_paths: list[Path] = []
+        survivor_arrays: list[Any] = []
+        survivor_ids: list[str] = []
+        for img_path in chunk:
+            try:
+                raw = img_path.read_bytes()
+                arr = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if arr is None:
+                    raise ValueError(  # noqa: TRY301
+                        "cv2.imdecode returned None -- image bytes are not a valid image format"
+                    )
+            except Exception as e:  # noqa: BLE001  # per-image decode error: catch all, report, continue
+                # Print the "Processing X ..." prefix here (for decode failures)
+                # so that each failed image's output stays on its own terminated
+                # line before the next image is considered.  For successful
+                # decodes we defer the print to the post-processing loop below so
+                # the ``Processing X ... -> out.txt`` pattern is preserved.
+                print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
+                _record_error(img_path, e)
+                errors += 1
+                continue
+            survivor_paths.append(img_path)
+            survivor_arrays.append(arr)
+            survivor_ids.append(img_path.name)
+
+        if not survivor_arrays:
+            # Every image in this chunk failed at decode; skip the batch call.
+            continue
+
         chunk_pages = _run_doctr_batch(
-            chunk_bytes,
+            survivor_arrays,
             predictor=predictor,
             device=ops_device,
-            source_identifiers=chunk_ids,
+            source_identifiers=survivor_ids,
         )
-        for img_path, page in zip(chunk, chunk_pages, strict=True):
+        for img_path, page in zip(survivor_paths, chunk_pages, strict=True):
             print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
             debug_file = None
             dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
@@ -1181,19 +1228,10 @@ def main() -> None:
                 outer_break = True
                 break
             except Exception as e:  # noqa: BLE001  # per-image error: catch all, report, continue batch
-                # Close the unterminated ``Processing X ...`` stdout line
-                # (printed with ``end=" "``) before the stderr message so
-                # the next image's ``Processing`` line — and the eventual
-                # ``Done`` summary — start on their own line rather than
-                # gluing onto this one. The ``page is None`` and
-                # ``KeyboardInterrupt`` siblings already do this; this
-                # branch had been the one gap. (B17)
-                print()  # noqa: T201  # CLI output
-                print(f"ERROR processing {img_path}: {e}", file=sys.stderr)  # noqa: T201  # CLI output
-                if _env_truthy("PD_OCR_DEBUG"):
-                    import traceback
-
-                    traceback.print_exc(file=sys.stderr)
+                # ``_record_error`` closes the unterminated ``Processing X ...``
+                # stdout line (printed with ``end=" "``) before the stderr
+                # message so subsequent output starts on its own line. (B17)
+                _record_error(img_path, e)
                 errors += 1
             finally:
                 clear_layout_debug_env()

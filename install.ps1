@@ -22,6 +22,8 @@
 
 $ErrorActionPreference = "Stop"
 
+. "$PSScriptRoot/scripts/install-cuda-detect.ps1"
+
 # Install uv if not already present
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Write-Host "uv not found -- installing uv..."
@@ -34,62 +36,15 @@ $ExtraIndex = ""
 $BookToolsExtras = ""
 
 # ── CUDA version detection ──────────────────────────────────────────────────
-#
-# Resolution order:
-#   1. $env:CUDA_VERSION — manual override (e.g. "12.4")
-#   2. nvidia-smi -q     — verbose query output; always contains
-#                          "CUDA Version                          : X.Y"
-#   3. nvidia-smi        — summary table header; contains "CUDA Version: X.Y"
-#
-# IMPORTANT: PowerShell -match on an array returns the matching *elements*
-# (not $true/$false) and does NOT populate $Matches. We must join the output
-# array into a single string before using -match so that the capture group
-# populates $Matches[1].
-
-function Get-CudaVersion {
-    # 1. Manual env override takes precedence.
-    if ($env:CUDA_VERSION) {
-        Write-Host "Using CUDA_VERSION override: $($env:CUDA_VERSION)"
-        return $env:CUDA_VERSION
-    }
-
-    if (-not (Get-Command nvidia-smi -ErrorAction SilentlyContinue)) {
-        return $null
-    }
-
-    # 2. nvidia-smi -q (verbose output; reliable on all supported platforms)
-    #    Format:  "    CUDA Version                          : 12.4"
-    #    Allow optional whitespace around the colon.
-    try {
-        $qOut = & nvidia-smi -q 2>$null
-        $qStr = ($qOut -join "`n")
-        if ($qStr -match "CUDA Version\s*:\s*(\d+\.\d+)") {
-            return $Matches[1]
-        }
-    } catch {
-        # nvidia-smi -q unavailable; fall through to plain nvidia-smi
-    }
-
-    # 3. Plain nvidia-smi summary table header.
-    #    Format:  "| ... CUDA Version: 12.4   |"
-    try {
-        $smiOut = & nvidia-smi 2>$null
-        $smiStr = ($smiOut -join "`n")
-        if ($smiStr -match "CUDA Version:\s*(\d+\.\d+)") {
-            return $Matches[1]
-        }
-    } catch {
-        # nvidia-smi failed entirely; return $null below
-    }
-
-    return $null
-}
+# Detection helpers are defined in scripts/install-cuda-detect.ps1 (dot-sourced
+# above). Resolution order: $env:CUDA_VERSION override → nvidia-smi -q →
+# plain nvidia-smi. See that file for details.
 
 if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     $CudaVer = Get-CudaVersion
 
     if ($CudaVer) {
-        $CudaTag = "cu" + ($CudaVer -replace "\.", "")
+        $CudaTag = Get-CudaTag $CudaVer
         $ExtraIndex = "https://download.pytorch.org/whl/$CudaTag"
         Write-Host "Detected CUDA $CudaVer -- will install PyTorch with $CudaTag support."
 
@@ -97,8 +52,8 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
         # for a clean numeric compare; fall back gracefully on
         # malformed strings.
         try {
-            if ([version]$CudaVer -ge [version]"12.4") {
-                $BookToolsExtras = "[gpu]"
+            $BookToolsExtras = Get-BookToolsExtras $CudaVer
+            if ($BookToolsExtras -eq "[gpu]") {
                 Write-Host "CUDA $CudaVer >= 12.4 -- enabling pdomain-ocr-cli[gpu] (CuPy + opencv-cuda)."
             } else {
                 Write-Host "CUDA $CudaVer < 12.4 -- installing CPU-only book-tools (cupy-cuda12x needs >= 12.4)."
