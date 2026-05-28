@@ -14,6 +14,7 @@ license = { text = "Unlicense" }
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "pdomain-book-tools>=0.14.1",
+    "pdomain-ops>=0.3.1",
     "huggingface_hub>=0.23",
 ]
 
@@ -55,6 +56,10 @@ explicit = true
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
+# pdomain-ops resolves from the registry like book-tools. Until pdomain-ops
+# is published to pdomain-index-pip, use local-dev mode (`make local-dev`)
+# to overlay the editable sibling — do NOT hardcode a path source here.
+pdomain-ops = { index = "pdomain-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"
@@ -224,12 +229,15 @@ exclude_also = [
     "if __name__ == .__main__.:",
     "pragma: no cover",
     "raise NotImplementedError",
-    # `_load_*` helpers in ocr_to_txt.py exist solely as monkeypatch points
-    # for fast tests; their bodies are trivial `from pdomain_book_tools... import`
-    # statements that the slow integration tests still execute against real
-    # models. Excluding the bodies keeps the fast-coverage signal honest
+    # `_load_*`, `_pick_device`, and `_run_doctr_batch` helpers in
+    # ocr_to_txt.py exist solely as monkeypatch points for fast tests;
+    # their bodies are trivial `from pdomain_*... import` statements that
+    # the slow integration tests still execute against real models.
+    # Excluding the bodies keeps the fast-coverage signal honest
     # (these functions are deliberately not unit-testable in isolation).
     "def _load_[a-z_]+\\(",
+    "def _pick_device\\(",
+    "def _run_doctr_batch\\(",
 ]
 
 [tool.coverage.html]
