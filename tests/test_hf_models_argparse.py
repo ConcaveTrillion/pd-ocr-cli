@@ -29,22 +29,19 @@ from pdomain_ocr_cli._hf_models import (
 # --- resolve_ocr_models: partial-input rejection -----------------------------
 
 
-def test_resolve_ocr_models_detection_without_recognition_exits(capsys):
-    args = hf_args(detection="det.pt")
+@pytest.mark.parametrize(
+    ("kwargs", "expected_msg"),
+    [
+        ({"detection": "det.pt"}, "--detection requires its counterpart"),
+        ({"recognition": "rec.pt"}, "--recognition requires its counterpart"),
+    ],
+    ids=["detection_only", "recognition_only"],
+)
+def test_resolve_ocr_models_partial_input_exits(capsys, kwargs, expected_msg):
     with pytest.raises(SystemExit) as exc_info:
-        resolve_ocr_models(args)
+        resolve_ocr_models(hf_args(**kwargs))
     assert exc_info.value.code == 1
-    err = capsys.readouterr().err
-    assert "--detection requires its counterpart" in err
-
-
-def test_resolve_ocr_models_recognition_without_detection_exits(capsys):
-    args = hf_args(recognition="rec.pt")
-    with pytest.raises(SystemExit) as exc_info:
-        resolve_ocr_models(args)
-    assert exc_info.value.code == 1
-    err = capsys.readouterr().err
-    assert "--recognition requires its counterpart" in err
+    assert expected_msg in capsys.readouterr().err
 
 
 def test_resolve_ocr_models_local_pair_passes_through(monkeypatch):
