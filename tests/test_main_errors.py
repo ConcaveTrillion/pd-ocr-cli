@@ -638,3 +638,102 @@ def test_main_dest_dir_mkdir_failure_recorded_per_image_not_batch_abort(
     assert imgs[1].name in (captured.out + captured.err)
     assert exc_info.value.code == 1
     assert "2 error(s)" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# CLI-side image decode failures (corrupt bytes, before batch inference)
+# ---------------------------------------------------------------------------
+
+
+def test_main_corrupt_image_decode_failure_reports_error_continues_batch(
+    mock_heavy_deps, monkeypatch, run_main, make_images, tmp_path, capsys
+):
+    """A corrupt image (cv2.imdecode returns None) must be reported as a
+    per-image error and must NOT abort the rest of the batch.
+
+    This exercises the decode-failure path added in the batch loop:
+    lines that catch a decode error, emit ``ERROR processing``, increment
+    the error count, and continue to the next image.  The survivor image
+    still runs through ``_run_doctr_batch`` and completes successfully.
+    """
+    mock_heavy_deps()
+
+    # One real fixture image (decodes fine) and one corrupt image.
+    good_imgs = make_images(1)
+    good = good_imgs[0]
+
+    # Corrupt image: a .png file whose bytes are not a real PNG but are long
+    # enough (16+ bytes) to pass the extension-based file-type gate in
+    # collect_images, yet fail cv2.imdecode (returns None).
+    corrupt = tmp_path / "corrupt.png"
+    corrupt.write_bytes(b"NOT A VALID PNG IMAGE AT ALL \x00\x01\x02")
+
+    out = tmp_path / "out"
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(corrupt),
+            str(good),
+        )
+
+    captured = capsys.readouterr()
+    # Corrupt image must appear in ERROR line on stderr.
+    assert "ERROR processing" in captured.err
+    assert "corrupt.png" in captured.err
+    # Exit 1 because of the one decode error.
+    assert exc_info.value.code == 1
+    # Summary must name exactly 1 error.
+    assert "1 error(s)" in captured.out
+    # Good image must have produced a .txt output (stem of fixture = "page_00").
+    assert (out / f"{good.stem}.txt").exists()
+
+
+def test_main_all_images_corrupt_skips_batch_exits_1(
+    mock_heavy_deps, monkeypatch, run_main, tmp_path, capsys
+):
+    """When every image in a chunk fails to decode, the batch call must be
+    skipped entirely (``if not survivor_arrays: continue``), and the final
+    exit code must be 1.
+    """
+    mock_heavy_deps()
+
+    # Two corrupt images — long enough to pass the extension gate (16+ bytes)
+    # but not valid images, so cv2.imdecode returns None for each.
+    c1 = tmp_path / "bad1.png"
+    c2 = tmp_path / "bad2.png"
+    c1.write_bytes(b"GARBAGE_IMAGE_1_CORRUPT_DATA_HERE")
+    c2.write_bytes(b"GARBAGE_IMAGE_2_CORRUPT_DATA_HERE")
+
+    out = tmp_path / "out"
+
+    # Track whether _run_doctr_batch was ever called — it must NOT be.
+    batch_called: list[int] = []
+
+    def _spy_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+        batch_called.append(1)
+        return []
+
+    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _spy_batch)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(c1),
+            str(c2),
+        )
+
+    captured = capsys.readouterr()
+    assert exc_info.value.code == 1
+    assert "ERROR processing" in captured.err
+    assert "2 error(s)" in captured.out
+    # _run_doctr_batch must have been skipped entirely.
+    assert batch_called == [], "batch must not be called when all images fail to decode"
