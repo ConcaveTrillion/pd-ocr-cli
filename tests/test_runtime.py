@@ -77,3 +77,65 @@ def test_create_runtime_session_rejects_none_predictor(monkeypatch, tmp_path) ->
 
     with pytest.raises(RuntimeError, match="failed to load models"):
         ocr_to_txt._create_runtime_session(tmp_path / "det.pt", tmp_path / "reco.pt")
+
+
+def test_doctr_batch_single_image_compat_uses_default_identifiers(monkeypatch) -> None:
+    calls: list[tuple[object, str, object]] = []
+    page_a = SimpleNamespace(text="A")
+    page_b = SimpleNamespace(text="B")
+
+    class FakeDocument:
+        @staticmethod
+        def from_image_ocr_via_doctr(image, *, source_identifier, predictor):
+            calls.append((image, source_identifier, predictor))
+            page = page_a if source_identifier == "0" else page_b
+            return SimpleNamespace(pages=[page])
+
+    monkeypatch.setattr(
+        ocr_to_txt.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(Document=FakeDocument),
+    )
+
+    result = ocr_to_txt._run_doctr_batch_single_image_compat(
+        ["img-a", "img-b"],
+        predictor="predictor",
+        source_identifiers=None,
+    )
+
+    assert result == [page_a, page_b]
+    assert calls == [("img-a", "0", "predictor"), ("img-b", "1", "predictor")]
+
+
+def test_doctr_batch_single_image_compat_handles_empty_page_docs(monkeypatch) -> None:
+    page = SimpleNamespace(text="A")
+
+    class FakeDocument:
+        @staticmethod
+        def from_image_ocr_via_doctr(image, *, source_identifier, predictor):
+            if source_identifier == "empty.png":
+                return SimpleNamespace(pages=[])
+            return SimpleNamespace(pages=[page])
+
+    monkeypatch.setattr(
+        ocr_to_txt.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(Document=FakeDocument),
+    )
+
+    result = ocr_to_txt._run_doctr_batch_single_image_compat(
+        ["img-a", "img-b"],
+        predictor="predictor",
+        source_identifiers=["page.png", "empty.png"],
+    )
+
+    assert result == [page, None]
+
+
+def test_doctr_batch_single_image_compat_rejects_identifier_mismatch() -> None:
+    with pytest.raises(ValueError, match="source_identifiers length"):
+        ocr_to_txt._run_doctr_batch_single_image_compat(
+            ["img-a", "img-b"],
+            predictor="predictor",
+            source_identifiers=["only-one.png"],
+        )
