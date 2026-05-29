@@ -70,9 +70,8 @@ subsequent runs.
 import argparse
 import importlib
 import math
-import os
-import shutil
-import subprocess
+import shutil as _shutil
+import subprocess as _subprocess
 import sys
 import threading
 from collections.abc import Callable, Sequence
@@ -80,6 +79,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from pdomain_ocr_cli import _startup_notices
 from pdomain_ocr_cli._artifacts import (
     atomic_write_bytes,
     atomic_write_json_document,
@@ -104,6 +104,7 @@ from pdomain_ocr_cli._hf_models import (
     resolve_ocr_models,
     silence_transformers_load_chatter,
 )
+from pdomain_ocr_cli._model_security import model_security_warnings
 from pdomain_ocr_cli._pipeline import (
     apply_text_normalizations,
     clear_layout_debug_env,
@@ -120,6 +121,10 @@ from pdomain_ocr_cli._policy import build_run_policy
 from pdomain_ocr_cli._runtime import BatchRuntimeError, DefaultRuntimeSession, RuntimeSession
 from pdomain_ocr_cli._update_check import VERSION as _VERSION
 from pdomain_ocr_cli._update_check import check_for_update as _check_for_update
+
+# Compatibility patch points for existing GPU-nudge tests and downstream users.
+shutil = _shutil
+subprocess = _subprocess
 
 if TYPE_CHECKING:
     from pdomain_ocr_cli._batch_plan import PageJob
@@ -438,16 +443,15 @@ def _create_runtime_session(det_path: Path, reco_path: Path) -> RuntimeSession[_
 
 def _start_update_check_thread(disabled: bool) -> threading.Thread | None:
     """Spawn the background GitHub-tag check unless suppressed."""
-    if disabled:
-        return None
-    thread = threading.Thread(target=_check_for_update, daemon=True)
-    thread.start()
-    return thread
+    return _startup_notices.start_update_check_thread(
+        disabled=disabled,
+        check_for_update=_check_for_update,
+    )
 
 
 def _env_truthy(name: str) -> bool:
     """True if the env var is set to a truthy value (1/true/yes/on, case-insensitive)."""
-    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+    return _startup_notices.env_truthy(name)
 
 
 # ---------------------------------------------------------------------------
@@ -457,7 +461,7 @@ def _env_truthy(name: str) -> bool:
 # re-runs the (potentially) blocking ``nvidia-smi`` subprocess. The cache
 # is busted across processes (CLI restart) — that's the right granularity
 # because hardware doesn't change mid-run.
-_GPU_NUDGE_CACHE: dict[str, bool] = {}
+_GPU_NUDGE_CACHE = _startup_notices.GPU_NUDGE_CACHE
 
 
 def _should_nudge_gpu_install() -> bool:
@@ -475,56 +479,7 @@ def _should_nudge_gpu_install() -> bool:
     so that callers invoking ``main()`` more than once (e.g. in a test loop)
     do not re-spawn ``nvidia-smi``.
     """
-    if "result" in _GPU_NUDGE_CACHE:
-        return _GPU_NUDGE_CACHE["result"]
-
-    def _probe() -> bool:
-        if _env_truthy("PD_OCR_NO_GPU_NUDGE"):
-            return False
-        try:
-            import cupy as cupy_module  # pyright: ignore[reportMissingImports]  # optional GPU dep
-
-            _ = cupy_module
-        except ImportError:
-            # The expected case for the nudge: CuPy not installed.
-            pass
-        except BaseException:  # noqa: BLE001  # broken CuPy (native segfault) — must stay silent
-            # CuPy installed but broken (segfaulting native lib, etc.) —
-            # not our problem to diagnose. Stay silent.
-            return False
-        else:
-            # CuPy importable → GPU mode already active (or at least the
-            # user has explicitly installed the GPU stack); no nudge.
-            return False
-
-        # ``shutil.which`` is cheap and short-circuits the no-GPU case
-        # for free — only NVIDIA hosts (or hosts with the toolkit
-        # installed) will cause us to spawn the subprocess below.
-        if shutil.which("nvidia-smi") is None:
-            return False
-        try:
-            proc = subprocess.run(
-                ["nvidia-smi"],  # noqa: S607  # partial path: nvidia-smi is always on PATH when present
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=2,
-                check=False,
-            )
-        except (OSError, subprocess.SubprocessError):
-            # PATH lied, kernel module missing, hung process, etc. —
-            # treat as "no usable GPU" and stay silent.
-            return False
-        return proc.returncode == 0
-
-    try:
-        result = _probe()
-    except BaseException:  # noqa: BLE001  # outer safety net — nudge helper must never raise
-        # Defensive: nothing in the probe should leak past the inner
-        # ``try`` blocks, but a blanket guard makes the contract
-        # explicit — the nudge helper must not raise.
-        result = False
-    _GPU_NUDGE_CACHE["result"] = result
-    return result
+    return _startup_notices.should_nudge_gpu_install(cache=_GPU_NUDGE_CACHE)
 
 
 def _maybe_print_gpu_nudge() -> None:
@@ -533,20 +488,7 @@ def _maybe_print_gpu_nudge() -> None:
     Wraps ``_should_nudge_gpu_install`` so the print site is also
     bullet-proof against unexpected errors (it never raises).
     """
-    try:
-        if _should_nudge_gpu_install():
-            print(  # noqa: T201  # CLI output
-                (
-                    "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
-                    + "        Re-run the install script to switch to GPU (requires CUDA >= 12.4):\n"
-                    + "          curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh\n"  # URL cannot be broken
-                    + "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message."
-                ),
-                file=sys.stderr,
-            )
-    except BaseException:  # noqa: BLE001 S110  # nudge must never crash pd-ocr; silent pass is correct
-        # A bug in the nudge must never break pd-ocr's actual job.
-        pass
+    _startup_notices.maybe_print_gpu_nudge(should_nudge=_should_nudge_gpu_install)
 
 
 def _confidence_threshold(s: str) -> float:
@@ -833,6 +775,8 @@ def main() -> None:
     policy = build_run_policy(args)
     for warning in policy.warnings:
         print(warning, file=sys.stderr)  # noqa: T201  # CLI output
+    for warning in model_security_warnings(args):
+        print(warning, file=sys.stderr)  # noqa: T201  # CLI output
 
     output_dir = Path(args.output_dir) if args.output_dir else None
     try:
@@ -855,8 +799,9 @@ def main() -> None:
 
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
-    update_check_disabled = args.no_update_check or _env_truthy("PD_OCR_NO_UPDATE_CHECK")
-    _update_thread = _start_update_check_thread(disabled=update_check_disabled)
+    _update_thread = _start_update_check_thread(
+        disabled=_startup_notices.update_check_disabled(args)
+    )
 
     # One-line nudge for users who have an NVIDIA GPU but installed
     # pd-ocr without the [gpu] extra — surfaces the opt-in path so the

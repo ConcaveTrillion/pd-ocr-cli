@@ -79,10 +79,23 @@ def test_main_noise_drop_warning_silent_with_zero_count(
     )
 
     err = capsys.readouterr().err
+    assert "mutable latest OCR model revision" in err
     assert "look like figure-internal noise" not in err
     assert "dropped 0 word(s)" not in err
     assert "--save-reorganize-diagnostics to write the full" not in err
     assert (out / "page.txt").read_text() == "POST-REORG TEXT"
+
+
+def test_main_prints_default_model_trust_warning_once(
+    mock_heavy_deps, run_main, single_image, capsys
+):
+    mock_heavy_deps()
+    img, out = single_image
+
+    run_main("--no-update-check", "--layout-model", "none", "-o", str(out), str(img))
+
+    err = capsys.readouterr().err
+    assert err.count("mutable latest OCR model revision") == 1
 
 
 # ---------------------------------------------------------------------------

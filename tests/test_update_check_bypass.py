@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from pdomain_ocr_cli import ocr_to_txt
 from pdomain_ocr_cli.ocr_to_txt import _env_truthy, parse_args
 
 
@@ -90,3 +91,19 @@ def test_gate_on_via_either(monkeypatch):
     with patch("sys.argv", ["pd-ocr", "--no-update-check", "page.png"]):
         args = parse_args()
     assert _gate_disabled(args, monkeypatch) is True
+
+
+def test_main_env_var_disables_update_check(mock_heavy_deps, monkeypatch, run_main, single_image):
+    mock_heavy_deps()
+    img, out = single_image
+    monkeypatch.setenv("PD_OCR_NO_UPDATE_CHECK", "1")
+    calls: list[bool] = []
+
+    def record_disabled(disabled):
+        calls.append(disabled)
+
+    monkeypatch.setattr(ocr_to_txt, "_start_update_check_thread", record_disabled)
+
+    run_main("--layout-model", "none", "-o", str(out), str(img))
+
+    assert calls == [True]

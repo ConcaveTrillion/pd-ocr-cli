@@ -175,6 +175,15 @@ Later runs reuse the cache.
 for what's downloaded and from where, and [Uninstall](#uninstall) for
 how to remove the cache.
 
+### Model trust boundary
+
+OCR and layout model checkpoints are trusted inputs. The default model
+source is maintained by this project, but mutable latest revisions can
+change. For reproducible runs, pass `--model-version` pinned to a tag
+or commit. Custom `--hf-repo`, local `--detection` / `--recognition`,
+and `--layout-checkpoint` values should only come from sources you
+trust.
+
 ---
 
 ## Running in a Container with NVIDIA GPU
