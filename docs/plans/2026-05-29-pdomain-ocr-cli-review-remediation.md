@@ -98,6 +98,11 @@
 | Python matrix too narrow | Task 11 | CI matrix check |
 | Architecture seams shallow | Tasks 3-8 | module tests and final architecture checklist |
 
+Focused pytest commands in this plan run with `--no-cov` because the repository
+enforces 100% coverage for default pytest invocations. Full coverage validation
+continues to run through `make test AI=1`, `make coverage`, `make ci`, and the
+final validation matrix.
+
 ---
 
 ### Task 1: Fix And Test The Windows Installer Contract
@@ -200,7 +205,7 @@ Set-Content -Path "$env:TEMP\\install-under-test.ps1" -Value @'
 
 - [ ] **Step 2: Run the failing test**
 
-Run: `uv run pytest tests/test_install_ps1.py::test_install_ps1_piped_mode_is_self_contained_and_uses_pdomain_index -v`
+Run: `uv run pytest --no-cov tests/test_install_ps1.py::test_install_ps1_piped_mode_is_self_contained_and_uses_pdomain_index -v`
 
 Expected before implementation: FAIL because `install.ps1` dot-sources a missing helper or omits the pdomain index.
 
@@ -283,7 +288,7 @@ Resolve and download the latest release wheel instead of installing from a git r
 
 - [ ] **Step 5: Run installer tests**
 
-Run: `uv run pytest tests/test_install_ps1.py tests/test_install_ps1_cuda.py -v`
+Run: `uv run pytest --no-cov tests/test_install_ps1.py tests/test_install_ps1_cuda.py -v`
 
 Expected: PASS.
 
@@ -372,7 +377,7 @@ exit 0
 
 - [ ] **Step 2: Run the test**
 
-Run: `uv run pytest tests/test_install_sh.py -v`
+Run: `uv run pytest --no-cov tests/test_install_sh.py -v`
 
 Expected: PASS if `install.sh` already conforms. If it fails, change `install.sh` to keep the contract tested above.
 
@@ -382,7 +387,7 @@ Modify `Makefile`:
 
 ```make
 installer-test: ## Run real installer contract tests with fake uv/curl/gh
-	uv run pytest tests/test_install_sh.py tests/test_install_ps1.py tests/test_install_ps1_cuda.py -v
+	PYTEST_ADDOPTS=--no-cov uv run pytest tests/test_install_sh.py tests/test_install_ps1.py tests/test_install_ps1_cuda.py -v
 ```
 
 Add `installer-test` to `ci` after `coverage`.
@@ -479,7 +484,7 @@ def test_policy_emits_current_noop_warnings() -> None:
 
 - [ ] **Step 2: Run policy tests and confirm failure**
 
-Run: `uv run pytest tests/test_policy.py -v`
+Run: `uv run pytest --no-cov tests/test_policy.py -v`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'pdomain_ocr_cli._policy'`.
 
@@ -648,7 +653,7 @@ def test_batch_plan_precomputes_mirrored_jobs(tmp_path: Path) -> None:
 
 - [ ] **Step 5: Run batch-plan tests and confirm failure**
 
-Run: `uv run pytest tests/test_batch_plan.py -v`
+Run: `uv run pytest --no-cov tests/test_batch_plan.py -v`
 
 Expected: FAIL with missing module.
 
@@ -852,7 +857,7 @@ Keep wrappers in `_pipeline.py` for `collect_images`, `compute_mirror_root`, `re
 Run:
 
 ```bash
-uv run pytest tests/test_policy.py tests/test_batch_plan.py tests/test_parse_args.py tests/test_batch_pages.py tests/test_main_warnings.py -v
+uv run pytest --no-cov tests/test_policy.py tests/test_batch_plan.py tests/test_parse_args.py tests/test_batch_pages.py tests/test_main_warnings.py -v
 ```
 
 Expected: PASS.
@@ -929,7 +934,7 @@ def test_main_batch_result_count_mismatch_is_clean_error(
 
 - [ ] **Step 2: Run failing tests**
 
-Run: `uv run pytest tests/test_main_errors.py::test_main_batch_runner_error_reports_chunk_and_exits_1 tests/test_main_errors.py::test_main_batch_result_count_mismatch_is_clean_error -v`
+Run: `uv run pytest --no-cov tests/test_main_errors.py::test_main_batch_runner_error_reports_chunk_and_exits_1 tests/test_main_errors.py::test_main_batch_result_count_mismatch_is_clean_error -v`
 
 Expected: FAIL with unhandled exception or missing clean error.
 
@@ -1037,7 +1042,7 @@ if policy.layout_needed:
 Run:
 
 ```bash
-uv run pytest tests/test_runtime.py tests/test_main_errors.py -v
+uv run pytest --no-cov tests/test_runtime.py tests/test_main_errors.py -v
 ```
 
 Expected: PASS.
@@ -1107,7 +1112,7 @@ def test_atomic_write_uses_unique_temp_names(tmp_path: Path, monkeypatch: pytest
 
 - [ ] **Step 2: Run failing tests**
 
-Run: `uv run pytest tests/test_artifacts.py -v`
+Run: `uv run pytest --no-cov tests/test_artifacts.py -v`
 
 Expected: FAIL because `_artifacts.py` does not exist.
 
@@ -1250,7 +1255,7 @@ assert len(payload["pages"]) == 1
 Run:
 
 ```bash
-uv run pytest tests/test_artifacts.py tests/test_pipeline_atomic_write.py tests/test_main_happy.py tests/test_main_errors.py -v
+uv run pytest --no-cov tests/test_artifacts.py tests/test_pipeline_atomic_write.py tests/test_main_happy.py tests/test_main_errors.py -v
 ```
 
 Expected: PASS.
@@ -1317,7 +1322,7 @@ def test_warns_for_layout_checkpoint() -> None:
 
 - [ ] **Step 2: Run failing tests**
 
-Run: `uv run pytest tests/test_model_security.py -v`
+Run: `uv run pytest --no-cov tests/test_model_security.py -v`
 
 Expected: FAIL with missing module.
 
@@ -1386,7 +1391,7 @@ OCR and layout model checkpoints are trusted inputs. The default model source is
 Run:
 
 ```bash
-uv run pytest tests/test_model_security.py tests/test_main_warnings.py -v
+uv run pytest --no-cov tests/test_model_security.py tests/test_main_warnings.py -v
 ```
 
 Expected: PASS. Update any stderr assertions in `tests/test_main_warnings.py` in this task so the new model-security warnings are asserted deliberately.
@@ -1436,7 +1441,7 @@ def test_update_check_enabled_by_default(monkeypatch) -> None:
 
 - [ ] **Step 2: Run failing tests**
 
-Run: `uv run pytest tests/test_startup_notices.py -v`
+Run: `uv run pytest --no-cov tests/test_startup_notices.py -v`
 
 Expected: FAIL with missing module.
 
@@ -1508,7 +1513,7 @@ update_thread = _start_update_check_thread(disabled=update_check_disabled(args))
 Run:
 
 ```bash
-uv run pytest tests/test_startup_notices.py tests/test_update_check_bypass.py tests/test_gpu_nudge.py -v
+uv run pytest --no-cov tests/test_startup_notices.py tests/test_update_check_bypass.py tests/test_gpu_nudge.py -v
 ```
 
 Expected: PASS.
@@ -1592,7 +1597,7 @@ Change `mock_heavy_deps` to keep its existing return namespace but patch one run
 
 - [ ] **Step 4: Run focused tests**
 
-Run: `uv run pytest tests/test_runtime.py tests/test_main_happy.py tests/test_main_errors.py -v`
+Run: `uv run pytest --no-cov tests/test_runtime.py tests/test_main_happy.py tests/test_main_errors.py -v`
 
 Expected: PASS.
 
@@ -1641,7 +1646,7 @@ assert len(payload["pages"]) == 1
 Run:
 
 ```bash
-uv run pytest tests/test_main_happy.py::test_main_save_json_writes_sidecar tests/test_pipeline_integration.py::test_ocr_save_json_writes_sidecar --run-slow -v
+uv run pytest --no-cov tests/test_main_happy.py::test_main_save_json_writes_sidecar tests/test_pipeline_integration.py::test_ocr_save_json_writes_sidecar --run-slow -v
 ```
 
 Expected: PASS.
@@ -1765,10 +1770,10 @@ In `Makefile`:
 
 ```make
 test-integration: ## Run real OCR integration tests
-	uv run pytest tests/test_pipeline_integration.py -v --run-slow
+	uv run pytest --no-cov tests/test_pipeline_integration.py -v --run-slow
 
 test-layout-integration: ## Run real default-layout integration tests
-	uv run pytest tests/test_pipeline_integration.py -v --run-slow -k "default_layout"
+	uv run pytest --no-cov tests/test_pipeline_integration.py -v --run-slow -k "default_layout"
 ```
 
 - [ ] **Step 5: Run slow tests**
@@ -1776,7 +1781,7 @@ test-layout-integration: ## Run real default-layout integration tests
 Run:
 
 ```bash
-uv run pytest tests/test_pipeline_integration.py -v --run-slow
+uv run pytest --no-cov tests/test_pipeline_integration.py -v --run-slow
 ```
 
 Expected: PASS.
@@ -1939,7 +1944,7 @@ def test_makefile_wheel_smoke_covers_supported_python_versions() -> None:
 
 - [ ] **Step 7: Run workflow tests**
 
-Run: `uv run pytest tests/test_workflows_static.py -v`
+Run: `uv run pytest --no-cov tests/test_workflows_static.py -v`
 
 Expected: PASS.
 
@@ -2018,7 +2023,7 @@ git commit -m "docs: align review remediation behavior"
 Run:
 
 ```bash
-uv run pytest \
+uv run pytest --no-cov \
   tests/test_policy.py \
   tests/test_batch_plan.py \
   tests/test_runtime.py \
@@ -2113,7 +2118,7 @@ Date: 2026-05-29
 
 ## Commands
 
-- `uv run pytest ... focused suite`: PASS
+- `uv run pytest --no-cov ... focused suite`: PASS
 - `make ci AI=1`: PASS
 - `make ci-slow AI=1`: PASS
 - `make installer-test AI=1`: PASS
