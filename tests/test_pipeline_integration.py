@@ -18,6 +18,7 @@ stderr/stdout messages stay covered.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -168,7 +169,11 @@ def test_ocr_save_json_writes_sidecar(
 
     out_json = tmp_path / "title_page_001.json"
     assert out_json.exists(), f"expected JSON sidecar missing: {out_json}"
-    assert out_json.stat().st_size > 0, "JSON sidecar was empty"
+    payload = json.loads(out_json.read_text(encoding="utf-8"))
+    assert payload["source_lib"] == "pdomain_book_tools"
+    assert payload["source_identifier"] == title_image_path.name
+    assert payload["source_path"] == str(title_image_path)
+    assert len(payload["pages"]) == 1
 
 
 def test_ocr_no_reorg_runs_clean(

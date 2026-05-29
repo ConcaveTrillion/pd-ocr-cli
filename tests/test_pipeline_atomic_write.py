@@ -90,7 +90,7 @@ def test_atomic_write_text_failure_preserves_prior_file(tmp_path, monkeypatch):
         real_write(fd, b"PARTIAL")
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.write", boom)
 
     with pytest.raises(OSError):
         atomic_write_text(target, "NEW CONTENT")
@@ -114,7 +114,7 @@ def test_atomic_write_text_failure_with_no_prior_file_leaves_no_partial(tmp_path
         real_write(fd, b"PARTIAL")
         raise RuntimeError("simulated SIGKILL between truncate and full flush")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.write", boom)
 
     with pytest.raises(RuntimeError):
         atomic_write_text(target, "NEW CONTENT")
@@ -136,7 +136,7 @@ def test_atomic_write_text_failure_with_no_tmp_created_swallows_unlink(tmp_path,
     def boom(*args, **kwargs):
         raise RuntimeError("blew up before any byte hit disk")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.open", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.open", boom)
     with pytest.raises(RuntimeError, match="blew up"):
         atomic_write_text(target, "x")
     assert list(tmp_path.iterdir()) == []
@@ -148,7 +148,7 @@ def test_atomic_write_bytes_failure_with_no_tmp_created_swallows_unlink(tmp_path
     def boom(*args, **kwargs):
         raise RuntimeError("blew up before any byte hit disk")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.open", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.open", boom)
     with pytest.raises(RuntimeError, match="blew up"):
         atomic_write_bytes(target, b"x")
     assert list(tmp_path.iterdir()) == []
@@ -165,7 +165,7 @@ def test_atomic_write_bytes_roundtrip_and_failure(tmp_path, monkeypatch):
         real_write(fd, b"PARTIAL")
         raise OSError("disk full")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", boom)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.write", boom)
 
     with pytest.raises(OSError):
         atomic_write_bytes(target, b"\xff\xff")
@@ -195,7 +195,7 @@ def test_atomic_write_text_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch):
         fsynced_fds.append(fd)
         return real_fsync(fd)
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.fsync", tracking_fsync)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.fsync", tracking_fsync)
 
     atomic_write_text(target, "durable\n")
 
@@ -217,7 +217,7 @@ def test_atomic_write_bytes_fsyncs_temp_fd_and_parent_dir(tmp_path, monkeypatch)
         fsync_calls.append(fd)
         return real_fsync(fd)
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.fsync", tracking_fsync)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.fsync", tracking_fsync)
 
     atomic_write_bytes(target, b"\xde\xad\xbe\xef")
 
@@ -241,7 +241,7 @@ def test_atomic_write_swallows_filenotfound_on_cleanup(tmp_path, monkeypatch):
                 entry.unlink()
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.write", vanishing_write)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.write", vanishing_write)
 
     with pytest.raises(OSError, match="No space left"):
         atomic_write_text(target, "x")
@@ -254,20 +254,17 @@ def test_atomic_write_parent_dir_fsync_skipped_on_windows(tmp_path, monkeypatch)
     (Windows can't open a directory for fsync). Only the temp fd is
     fsynced there; NTFS journals the rename itself.
     """
-    target = tmp_path / "page.txt"
+    from pdomain_ocr_cli import _artifacts
 
-    fsync_calls: list[int] = []
-    real_fsync = os.fsync
+    open_calls: list[object] = []
 
-    def tracking_fsync(fd):
-        fsync_calls.append(fd)
-        return real_fsync(fd)
+    def tracking_open(*args, **kwargs):
+        open_calls.append((args, kwargs))
+        raise AssertionError("Windows branch should not open parent directories")
 
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.fsync", tracking_fsync)
-    monkeypatch.setattr("pdomain_ocr_cli._pipeline.os.name", "nt")
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.open", tracking_open)
+    monkeypatch.setattr("pdomain_ocr_cli._artifacts.os.name", "nt")
 
-    atomic_write_text(target, "x")
+    _artifacts._fsync_parent_dir(tmp_path / "page.txt")
 
-    # Only the temp fd fsync — no parent-dir fsync on the Windows branch.
-    assert len(fsync_calls) == 1, fsync_calls
-    assert target.read_text(encoding="utf-8") == "x"
+    assert open_calls == []

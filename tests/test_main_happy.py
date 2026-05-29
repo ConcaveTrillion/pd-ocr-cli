@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import json
 import threading
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -48,7 +48,13 @@ def test_main_save_json_writes_sidecar(mock_heavy_deps, run_main, single_image):
     )
 
     assert (out / "page.txt").exists()
-    assert (out / "page.json").exists()
+    payload = json.loads((out / "page.json").read_text(encoding="utf-8"))
+    assert set(payload) == {"source_lib", "source_identifier", "source_path", "pages"}
+    assert payload["source_lib"] == "pdomain_book_tools"
+    assert payload["source_identifier"] == "page.png"
+    assert payload["source_path"] == str(img)
+    assert isinstance(payload["pages"], list)
+    assert len(payload["pages"]) == 1
 
 
 def test_main_save_reorganize_diagnostics_writes_all_six_outputs(
@@ -407,14 +413,7 @@ def test_main_extract_illustrations_writes_crops(
     fake_cv2 = MagicMock()
     fake_cv2.imread = MagicMock(return_value=FakeArray(100))
 
-    def _fake_imwrite(path, _crop):
-        # The atomic-write path (B18) writes to a sibling tmp file then
-        # ``os.replace`` onto the canonical name, so the mock must
-        # actually create the file the rename will move.
-        Path(path).write_bytes(b"\x00")
-        return True
-
-    fake_cv2.imwrite = MagicMock(side_effect=_fake_imwrite)
+    fake_cv2.imencode = MagicMock(return_value=(True, b"\x00"))
     monkeypatch.setattr(
         ocr_to_txt,
         "_load_illustration_deps",
@@ -431,14 +430,8 @@ def test_main_extract_illustrations_writes_crops(
         str(img),
     )
 
-    # The empty-crop region was skipped; only one imwrite call ran.
-    assert fake_cv2.imwrite.call_count == 1
-    # ``imwrite`` is called against the sibling atomic-tmp path; after
-    # ``os.replace`` the final crop lands at ``i_page_01.jpg`` in the
-    # output dir. (B18.)
-    tmp_call_path = fake_cv2.imwrite.call_args[0][0]
-    assert tmp_call_path.endswith(".jpg")
-    assert ".i_page_01.tmp" in tmp_call_path
+    # The empty-crop region was skipped; only one encode call ran.
+    assert fake_cv2.imencode.call_count == 1
     assert (out / "i_page_01.jpg").exists()
 
 

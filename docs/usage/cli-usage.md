@@ -206,6 +206,15 @@ warning to stderr — independent of any flag. The warning includes:
 This is intentionally always-on so quiet figure-noise drops don't slip
 past unnoticed. There is no quiet flag — file an issue if you need one.
 
+## JSON Contract
+
+When `--save-json` is enabled, each sidecar uses the same document
+envelope shape as `pdomain-book-tools`. Downstream tools can rely on the
+top-level keys `source_lib`, `source_identifier`, `source_path`, and
+`pages`. `source_identifier` is the input filename, `source_path` is the
+input path seen by the CLI, and `pages` contains exactly one page for
+each image sidecar.
+
 ## Misc
 
 ```sh

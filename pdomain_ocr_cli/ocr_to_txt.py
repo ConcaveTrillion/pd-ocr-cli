@@ -68,7 +68,6 @@ subsequent runs.
 """
 
 import argparse
-import contextlib
 import importlib
 import math
 import os
@@ -81,6 +80,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from pdomain_ocr_cli._artifacts import (
+    atomic_write_bytes,
+    atomic_write_json_document,
+    atomic_write_text,
+)
 from pdomain_ocr_cli._batch_plan import (
     BatchPlanError,
     build_batch_plan,
@@ -102,7 +106,6 @@ from pdomain_ocr_cli._hf_models import (
 )
 from pdomain_ocr_cli._pipeline import (
     apply_text_normalizations,
-    atomic_write_text,
     clear_layout_debug_env,
     diagnostic_output_paths,
     format_drops_warning,
@@ -190,10 +193,14 @@ class _Cv2ImageLike(Protocol):
     def __getitem__(self, key: tuple[slice, slice]) -> "_Cv2ImageLike": ...
 
 
+class _BytesConvertible(Protocol):
+    def __bytes__(self) -> bytes: ...
+
+
 class _Cv2Like(Protocol):
     def imread(self, path: str) -> _Cv2ImageLike | None: ...
 
-    def imwrite(self, path: str, image: _Cv2ImageLike) -> bool: ...
+    def imencode(self, ext: str, image: _Cv2ImageLike) -> tuple[bool, _BytesConvertible]: ...
 
 
 _ValidateWordPreservation = Callable[[list[object], list[object]], list[str]]
@@ -1118,14 +1125,7 @@ def main() -> None:
                     doc = _SinglePageDoc(
                         page, source_identifier=img_path.name, source_path=img_path
                     )
-                    json_tmp = json_path.with_name(f".{json_path.name}.tmp")
-                    try:
-                        doc.to_json_file(json_tmp)
-                    except BaseException:
-                        with contextlib.suppress(FileNotFoundError):
-                            json_tmp.unlink()
-                        raise
-                    os.replace(json_tmp, json_path)
+                    atomic_write_json_document(json_path, doc)
                     extra_paths.append(str(json_path))
                 if policy.want_diagnostic_export:
                     diag_paths = diagnostic_output_paths(json_path, out_path)
@@ -1173,23 +1173,14 @@ def main() -> None:
                             if crop.size == 0:
                                 continue
                             crop_path = illustration_crop_path(dest_dir, img_path.stem, crop_idx)
-                            # Atomic crop write: pick a sibling tmp that
-                            # preserves the suffix so ``cv2.imwrite`` still
-                            # selects the JPEG encoder, then ``os.replace``
-                            # onto the canonical path. (Code-review B18.)
-                            crop_tmp = crop_path.with_name(
-                                f".{crop_path.stem}.tmp{crop_path.suffix}"
-                            )
-                            ok = cv2_module.imwrite(str(crop_tmp), crop)
+                            ok, encoded = cv2_module.imencode(".jpg", crop)
                             if not ok:
-                                with contextlib.suppress(FileNotFoundError):
-                                    crop_tmp.unlink()
                                 print(  # noqa: T201  # CLI output
-                                    f"WARNING: cv2.imwrite failed for {crop_path}",
+                                    f"WARNING: cv2.imencode failed for {crop_path}",
                                     file=sys.stderr,
                                 )
                                 continue
-                            os.replace(crop_tmp, crop_path)
+                            atomic_write_bytes(crop_path, bytes(encoded))
                             extra_paths.append(str(crop_path))
 
                 # B19: ``.txt`` is written *last* so a failure in any prior

@@ -101,14 +101,14 @@ def test_main_save_json_failure_with_no_tmp_swallows_unlink_error(
 
 
 # ---------------------------------------------------------------------------
-# Illustration imwrite cleanup
+# Illustration encode cleanup
 # ---------------------------------------------------------------------------
 
 
-def test_main_extract_illustrations_imwrite_returns_false_no_tmp_swallows_unlink(
+def test_main_extract_illustrations_imencode_returns_false_no_tmp_swallows_unlink(
     mock_heavy_deps, monkeypatch, run_main, single_image, capsys
 ):
-    """``cv2.imwrite`` returns False but never created the tmp file:
+    """``cv2.imencode`` returns False without bytes:
     the defensive cleanup must swallow ``FileNotFoundError`` and warn
     rather than crashing the batch.
     """
@@ -126,8 +126,7 @@ def test_main_extract_illustrations_imwrite_returns_false_no_tmp_swallows_unlink
 
     fake_cv2 = MagicMock()
     fake_cv2.imread = MagicMock(return_value=FakeArray(100))
-    # Returns False without ever touching disk.
-    fake_cv2.imwrite = MagicMock(return_value=False)
+    fake_cv2.imencode = MagicMock(return_value=(False, b""))
     monkeypatch.setattr(ocr_to_txt, "_load_illustration_deps", lambda: (fake_cv2, {"figure"}))
 
     run_main(
@@ -141,14 +140,14 @@ def test_main_extract_illustrations_imwrite_returns_false_no_tmp_swallows_unlink
     )
     assert (out / "page.txt").exists()
     assert not (out / "i_page_01.jpg").exists()
-    assert "cv2.imwrite failed" in capsys.readouterr().err
+    assert "cv2.imencode failed" in capsys.readouterr().err
 
 
-def test_main_extract_illustrations_imwrite_failure_skips_and_cleans_tmp(
+def test_main_extract_illustrations_crop_atomic_write_failure_skips_and_cleans_tmp(
     mock_heavy_deps, monkeypatch, run_main, single_image, capsys
 ):
-    """When ``cv2.imwrite`` returns False for a crop, the atomic-write
-    branch must remove any sibling tmp it created and emit a warning,
+    """When atomic crop write fails, the atomic-write branch must remove
+    any sibling tmp it created and emit an error,
     not crash the batch and not leave the canonical crop on disk.
     (B18 atomic-write invariant for illustration crops.)
     """
@@ -166,32 +165,32 @@ def test_main_extract_illustrations_imwrite_failure_skips_and_cleans_tmp(
 
     fake_cv2 = MagicMock()
     fake_cv2.imread = MagicMock(return_value=FakeArray(100))
-
-    def _imwrite_returns_false(path, _crop):
-        # Touch the tmp so we can verify cleanup actually unlinks it.
-        Path(path).write_bytes(b"\x00")
-        return False
-
-    fake_cv2.imwrite = MagicMock(side_effect=_imwrite_returns_false)
+    fake_cv2.imencode = MagicMock(return_value=(True, b"\x00"))
     monkeypatch.setattr(ocr_to_txt, "_load_illustration_deps", lambda: (fake_cv2, {"figure"}))
-
-    run_main(
-        "--no-update-check",
-        "--layout-model",
-        "pp-doclayout-plus-l",
-        "--extract-illustrations",
-        "-o",
-        str(out),
-        str(img),
+    monkeypatch.setattr(
+        ocr_to_txt,
+        "atomic_write_bytes",
+        MagicMock(side_effect=OSError("disk full")),
     )
 
-    # The .txt still landed (atomic txt write succeeded).
-    assert (out / "page.txt").exists()
-    # The crop did not — and the tmp was unlinked.
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "pp-doclayout-plus-l",
+            "--extract-illustrations",
+            "-o",
+            str(out),
+            str(img),
+        )
+
+    assert exc_info.value.code == 1
+    assert not (out / "page.txt").exists()
+    # The crop did not land.
     assert not (out / "i_page_01.jpg").exists()
     assert not list(out.glob(".i_page_01*.tmp*"))
     err = capsys.readouterr().err
-    assert "cv2.imwrite failed" in err
+    assert "disk full" in err
 
 
 # ---------------------------------------------------------------------------
