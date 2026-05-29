@@ -60,13 +60,17 @@ when a GPU is (or isn't) worth it.
 curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh
 ```
 
-**Windows (PowerShell):** *(untested — feedback welcome)*
+**Windows (PowerShell):**
 
 ```powershell
 irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex
 ```
 
-Both scripts detect NVIDIA CUDA automatically and select the correct PyTorch build.
+Both scripts install the wheel from the latest GitHub Release, pass the
+self-hosted `pdomain-index-pip` package index, and detect NVIDIA CUDA
+automatically to select the matching PyTorch build. Set
+`PD_OCR_INSTALL_PYTHON` before running the script to override the
+installer Python version; the default is `3.13`.
 
 ---
 
@@ -247,6 +251,8 @@ time to upgrade or to switch between CPU and GPU. They:
 - Install [uv](https://docs.astral.sh/uv/) if it isn't already on PATH.
 - Resolve the latest non-prerelease GitHub Release via the GitHub API
   (or `gh` if authenticated) and download the published `.whl` asset.
+- Use Python 3.13 by default for the uv tool environment. Override with
+  `PD_OCR_INSTALL_PYTHON` if you need another supported Python version.
 - Detect NVIDIA CUDA via `nvidia-smi`, pick the matching `cuXXX` PyTorch
   wheel index, and — when CUDA ≥ 12.4 — add `--with 'pdomain-book-tools[gpu]'`
   for CuPy + opencv-cuda.

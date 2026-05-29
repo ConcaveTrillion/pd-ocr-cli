@@ -37,10 +37,7 @@ def test_get_book_tools_extras_empty_below_124():
 
 
 def test_get_cuda_version_env_override():
-    # Get-CudaVersion emits a Write-Host line ("Using CUDA_VERSION override: 12.6")
-    # followed by the return value on its own line — both are in stdout.
-    out = _pwsh("$env:CUDA_VERSION='12.6'; Get-CudaVersion").stdout
-    assert "12.6" in out
+    assert _pwsh("$env:CUDA_VERSION='12.6'; Get-CudaVersion").stdout.strip() == "12.6"
 
 
 def test_get_cuda_version_parses_smi_q_output():
