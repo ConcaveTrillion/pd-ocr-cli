@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow installer-test coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run local-test local-test-slow \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
@@ -122,6 +122,10 @@ test: ## Run the pytest suite (skips @pytest.mark.slow integration tests)
 test-slow: ## Run the full pytest suite including slow integration tests (downloads pinned model on first run)
 	@echo "🧪 Running tests (including slow)..."
 	uv run pytest tests/ -v --run-slow
+
+installer-test: ## Run real installer contract tests with fake uv/curl/gh/network commands
+	@echo "🧪 Running installer contract tests..."
+	PYTEST_ADDOPTS=--no-cov uv run pytest tests/test_install_sh.py tests/test_install_ps1.py tests/test_install_ps1_cuda.py -v
 
 coverage: ## Run fast tests with coverage + HTML report; fails if total drops below COV_FAIL_UNDER (default 100)
 	@echo "🧪 Running tests with coverage (threshold: $(COV_FAIL_UNDER)%)..."
