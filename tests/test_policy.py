@@ -74,6 +74,13 @@ def test_policy_centralizes_reorg_dependent_flags() -> None:
     assert policy.layout_debug_announced is True
 
 
+def test_policy_suppresses_layout_debug_when_layout_disabled() -> None:
+    policy = build_run_policy(_args(layout_debug=True, layout_model="none"))
+
+    assert policy.layout_needed is False
+    assert policy.layout_debug_announced is False
+
+
 def test_policy_emits_current_noop_warnings() -> None:
     policy = build_run_policy(
         _args(

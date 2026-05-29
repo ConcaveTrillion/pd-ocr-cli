@@ -152,7 +152,7 @@ def test_main_silent_no_op_warns(
 
 
 def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
-    mock_heavy_deps, run_main, single_image, capsys
+    mock_heavy_deps, run_main, single_image, capsys, tmp_path
 ):
     """B9: ``--no-reorg --layout-debug`` is a silent no-op.
 
@@ -164,11 +164,15 @@ def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
     """
     mock_heavy_deps()
     img, out = single_image
+    debug_dir_file = tmp_path / "not-a-debug-dir"
+    debug_dir_file.write_text("file, not directory", encoding="utf-8")
 
     run_main(
         "--no-update-check",
         "--no-reorg",
         "--layout-debug",
+        "--layout-debug-dir",
+        str(debug_dir_file),
         "-o",
         str(out),
         str(img),
@@ -181,6 +185,7 @@ def test_main_no_reorg_with_layout_debug_warns_and_suppresses_success_path(
     assert "warning" in err.lower()
     # Success line must not falsely advertise a layout-debug artifact.
     assert "layout-debug:" not in captured.out
+    assert debug_dir_file.is_file()
 
 
 def test_main_layout_debug_announces_artifact_on_success_line(

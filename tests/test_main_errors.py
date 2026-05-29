@@ -580,8 +580,6 @@ def test_main_layout_debug_setup_failure_recorded_per_image_not_batch_abort(
     with pytest.raises(SystemExit) as exc_info:
         run_main(
             "--no-update-check",
-            "--layout-model",
-            "none",
             "--layout-debug",
             "--layout-debug-dir",
             str(bogus_debug),

@@ -78,6 +78,6 @@ def build_run_policy(args: RunPolicyArgs) -> RunPolicy:
         validate_reorg=do_reorg and args.validate_reorg,
         drop_layout_words=do_reorg and args.experimental_drop_layout_words,
         emit_illustration_placeholders=not args.no_illustration_placeholders,
-        layout_debug_announced=args.layout_debug and do_reorg,
+        layout_debug_announced=args.layout_debug and do_reorg and layout_configured,
         warnings=tuple(warnings),
     )

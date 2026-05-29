@@ -823,6 +823,12 @@ def main() -> None:
             output_dir=output_dir,
             is_image_file=_IS_IMAGE_FILE,
             batch_pages=args.batch_pages,
+            layout_debug=policy.layout_debug_announced,
+            layout_debug_dir=(
+                Path(args.layout_debug_dir)
+                if policy.layout_debug_announced and args.layout_debug_dir
+                else None
+            ),
         )
     except BatchPlanError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)  # noqa: T201  # CLI output
@@ -992,7 +998,11 @@ def main() -> None:
                 # path; keep it inside the per-image ``try`` so an unwritable
                 # ``--layout-debug-dir`` is recorded as one per-image error
                 # rather than aborting the whole batch.
-                debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+                debug_file = (
+                    setup_layout_debug_env(args, dest_dir, img_path.stem)
+                    if policy.layout_debug_announced
+                    else None
+                )
                 if page is None:
                     # Close the ``Processing X ...`` line (printed with
                     # end=" ") before the warning so subsequent stdout

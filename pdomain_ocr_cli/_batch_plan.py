@@ -118,6 +118,8 @@ def build_batch_plan(
     output_dir: Path | None,
     is_image_file: Callable[[Path], bool],
     batch_pages: int,
+    layout_debug: bool = False,
+    layout_debug_dir: Path | None = None,
 ) -> BatchPlan:
     if batch_pages < 1:
         raise BatchPlanError(f"--batch-pages must be >= 1; got {batch_pages}")
@@ -128,17 +130,22 @@ def build_batch_plan(
 
     mirror_root = compute_mirror_root(inputs, output_dir)
     jobs: list[PageJob] = []
-    seen_outputs: dict[Path, Path] = {}
+    seen_outputs: dict[Path, tuple[Path, Path]] = {}
     collisions: list[str] = []
 
     for image_path in images:
         dest_dir = resolve_dest_dir(image_path, output_dir, mirror_root)
         txt_path, json_path = output_paths_for(image_path, dest_dir)
-        for artifact_path in (txt_path, json_path):
-            previous = seen_outputs.get(artifact_path)
-            if previous is not None and previous.resolve() != image_path.resolve():
-                collisions.append(f"{artifact_path} from {previous} and {image_path}")
-            seen_outputs[artifact_path] = image_path
+        artifact_paths = [txt_path, json_path]
+        if layout_debug:
+            debug_dir = layout_debug_dir if layout_debug_dir is not None else dest_dir
+            artifact_paths.append(debug_dir / f"{image_path.stem}.layout-debug.txt")
+        for artifact_path in artifact_paths:
+            artifact_key = artifact_path.resolve()
+            previous = seen_outputs.get(artifact_key)
+            if previous is not None and previous[1] != image_path.resolve():
+                collisions.append(f"{artifact_path} from {previous[0]} and {image_path}")
+            seen_outputs[artifact_key] = (image_path, image_path.resolve())
         jobs.append(
             PageJob(
                 image_path=image_path,

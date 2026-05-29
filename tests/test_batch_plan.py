@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path
 
 import pytest
 
 from pdomain_ocr_cli._batch_plan import BatchPlanError, build_batch_plan, positive_int
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def _is_image(path: Path) -> bool:
@@ -37,6 +34,73 @@ def test_batch_plan_rejects_flat_output_collisions(tmp_path: Path) -> None:
             output_dir=tmp_path / "out",
             is_image_file=_is_image,
             batch_pages=4,
+        )
+
+
+def test_batch_plan_rejects_layout_debug_collisions(tmp_path: Path) -> None:
+    a = tmp_path / "a" / "page.png"
+    b = tmp_path / "b" / "page.png"
+    a.parent.mkdir()
+    b.parent.mkdir()
+    a.write_bytes(b"png")
+    b.write_bytes(b"png")
+
+    with pytest.raises(BatchPlanError, match="layout-debug"):
+        build_batch_plan(
+            inputs=[str(a), str(b)],
+            recursive=False,
+            output_dir=None,
+            is_image_file=_is_image,
+            batch_pages=4,
+            layout_debug=True,
+            layout_debug_dir=tmp_path / "debug",
+        )
+
+
+def test_batch_plan_rejects_default_layout_debug_artifact_collisions(
+    tmp_path: Path,
+) -> None:
+    a = tmp_path / "a" / "page.png"
+    b = tmp_path / "b" / "page.layout-debug.png"
+    a.parent.mkdir()
+    b.parent.mkdir()
+    a.write_bytes(b"png")
+    b.write_bytes(b"png")
+
+    with pytest.raises(BatchPlanError, match="output path collision"):
+        build_batch_plan(
+            inputs=[str(a), str(b)],
+            recursive=False,
+            output_dir=tmp_path / "out",
+            is_image_file=_is_image,
+            batch_pages=4,
+            layout_debug=True,
+        )
+
+
+def test_batch_plan_rejects_same_artifact_with_different_path_spelling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "run"
+    root.mkdir()
+    a = root / "a" / "page.png"
+    b = root / "b" / "page.layout-debug.png"
+    a.parent.mkdir()
+    b.parent.mkdir()
+    a.write_bytes(b"png")
+    b.write_bytes(b"png")
+    out = root / "out"
+    monkeypatch.chdir(root)
+
+    with pytest.raises(BatchPlanError, match="output path collision"):
+        build_batch_plan(
+            inputs=[str(a), str(b)],
+            recursive=False,
+            output_dir=out,
+            is_image_file=_is_image,
+            batch_pages=4,
+            layout_debug=True,
+            layout_debug_dir=Path("out"),
         )
 
 
