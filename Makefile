@@ -12,7 +12,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow installer-test coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow test-integration test-layout-integration installer-test coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run local-test local-test-slow \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
@@ -122,6 +122,12 @@ test: ## Run the pytest suite (skips @pytest.mark.slow integration tests)
 test-slow: ## Run the full pytest suite including slow integration tests (downloads pinned model on first run)
 	@echo "🧪 Running tests (including slow)..."
 	uv run pytest tests/ -v --run-slow
+
+test-integration: ## Run real OCR integration tests
+	uv run pytest --no-cov tests/test_pipeline_integration.py -v --run-slow
+
+test-layout-integration: ## Run real default-layout integration tests
+	uv run pytest --no-cov tests/test_pipeline_integration.py -v --run-slow -k "default_layout"
 
 installer-test: ## Run real installer contract tests with fake uv/curl/gh/network commands
 	@echo "🧪 Running installer contract tests..."

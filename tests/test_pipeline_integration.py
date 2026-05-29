@@ -121,6 +121,34 @@ def _invoke_main(
     return 0
 
 
+def _invoke_main_default_layout(
+    monkeypatch: pytest.MonkeyPatch,
+    shared_predictor,
+    image: Path,
+    output_dir: Path,
+    *extra_args: str,
+) -> int:
+    """Run ``ocr_to_txt.main()`` without forcing ``--layout-model none``."""
+    monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: shared_predictor)
+    argv = [
+        "pd-ocr",
+        "--no-update-check",
+        "--model-version",
+        PINNED_MODEL_REVISION,
+        "--output-dir",
+        str(output_dir),
+        *extra_args,
+        str(image),
+    ]
+    monkeypatch.setattr(sys, "argv", argv)
+    try:
+        ocr_to_txt.main()
+    except SystemExit as e:
+        code = e.code
+        return int(code) if isinstance(code, int) else 1
+    return 0
+
+
 def test_ocr_title_page_recovers_expected_tokens(
     title_image_path: Path,
     title_expected_text: str,
@@ -189,6 +217,76 @@ def test_ocr_no_reorg_runs_clean(
     # Even without reorganize_page() the engine still recovers the title words.
     assert "french" in normalized
     assert "furniture" in normalized
+
+
+def test_ocr_default_layout_model_runs_successfully(
+    title_image_path: Path, tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
+    rc = _invoke_main_default_layout(monkeypatch, shared_predictor, title_image_path, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 0, captured.out + captured.err
+    assert "Layout model loaded:" in captured.out
+    assert "layout:" in captured.out
+    assert (tmp_path / "title_page_001.txt").exists()
+
+
+def test_ocr_default_layout_debug_writes_report(
+    title_image_path: Path, tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
+    debug_dir = tmp_path / "debug"
+    rc = _invoke_main_default_layout(
+        monkeypatch,
+        shared_predictor,
+        title_image_path,
+        tmp_path,
+        "--layout-debug",
+        "--layout-debug-dir",
+        str(debug_dir),
+    )
+    captured = capsys.readouterr()
+    assert rc == 0, captured.out + captured.err
+    assert "layout-debug:" in captured.out
+    assert (debug_dir / "title_page_001.layout-debug.txt").exists()
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_tokens"),
+    [
+        ("title_page_001.png", ["french", "furniture", "decoration"]),
+        ("two_column_page.png", ["left", "right"]),
+        ("rotated_page.png", ["rotated"]),
+        ("illustrated_page.png", ["illustrated", "figure"]),
+    ],
+)
+def test_ocr_fixture_corpus_recovers_expected_tokens(
+    fixture_name: str,
+    expected_tokens: list[str],
+    tmp_path: Path,
+    shared_predictor,
+    monkeypatch,
+    capsys,
+):
+    image = FIXTURES_DIR / fixture_name
+    if not image.exists():
+        pytest.fail(f"missing required fixture: {image}")
+    rc = _invoke_main(monkeypatch, shared_predictor, image, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 0, captured.out + captured.err
+    text = (tmp_path / image.with_suffix(".txt").name).read_text(encoding="utf-8").lower()
+    for token in expected_tokens:
+        assert token in text
+
+
+def test_ocr_fixture_corpus_blank_page_does_not_crash(
+    tmp_path: Path, shared_predictor, monkeypatch, capsys
+):
+    image = FIXTURES_DIR / "blank_page.png"
+    if not image.exists():
+        pytest.fail(f"missing required fixture: {image}")
+    rc = _invoke_main(monkeypatch, shared_predictor, image, tmp_path)
+    captured = capsys.readouterr()
+    assert rc == 0, captured.out + captured.err
+    assert (tmp_path / "blank_page.txt").exists()
 
 
 def test_ocr_save_reorganize_diagnostics_writes_full_bundle(

@@ -237,6 +237,14 @@ class _LayoutTypesModuleLike(Protocol):
     RegionType: _RegionTypeLike
 
 
+class _DocumentModuleLike(Protocol):
+    Document: object
+
+
+class _DocumentClassLike(Protocol):
+    from_image_ocr_via_doctr: Callable[..., object]
+
+
 class _SinglePageDoc:
     """Minimal document wrapper around a single ``Page``.
 
@@ -421,13 +429,60 @@ def _run_doctr_batch(
         "Callable[..., list[_PageLike | None]]",
         module.run_doctr_batch,  # pyright: ignore[reportAttributeAccessIssue]
     )
-    return fn(
-        images,
-        predictor=predictor,
-        device=device,
-        build_smaller=build_smaller,
-        source_identifiers=source_identifiers,
+    try:
+        return fn(
+            images,
+            predictor=predictor,
+            device=device,
+            build_smaller=build_smaller,
+            source_identifiers=source_identifiers,
+        )
+    except AttributeError as exc:
+        if "from_images_ocr_via_doctr" not in str(exc):
+            raise
+        return _run_doctr_batch_single_image_compat(
+            images,
+            predictor=predictor,
+            source_identifiers=source_identifiers,
+        )
+
+
+def _run_doctr_batch_single_image_compat(
+    images: Sequence[object],
+    *,
+    predictor: object,
+    source_identifiers: Sequence[str] | None,
+) -> list[_PageLike | None]:
+    """Fallback for older pdomain-book-tools without the batch OCR entry point."""
+    if source_identifiers is None:
+        identifiers = [str(i) for i in range(len(images))]
+    else:
+        identifiers = list(source_identifiers)
+        if len(identifiers) != len(images):
+            raise ValueError(
+                f"source_identifiers length ({len(identifiers)}) must match images length ({len(images)})"
+            )
+
+    module = cast(
+        "_DocumentModuleLike",
+        cast("object", importlib.import_module("pdomain_book_tools.ocr.document")),
     )
+    document = cast(
+        "_DocumentClassLike",
+        module.Document,
+    )
+    from_image = document.from_image_ocr_via_doctr
+
+    pages: list[_PageLike | None] = []
+    for image, source_identifier in zip(images, identifiers, strict=True):
+        doc = from_image(
+            image,
+            source_identifier=source_identifier,
+            predictor=predictor,
+        )
+        doc_pages = cast("Sequence[_PageLike]", getattr(doc, "pages", ()))
+        pages.append(doc_pages[0] if doc_pages else None)
+    return pages
 
 
 def _create_runtime_session(det_path: Path, reco_path: Path) -> RuntimeSession[_PageLike]:
