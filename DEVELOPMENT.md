@@ -6,10 +6,12 @@ install / usage docs live in [`README.md`](README.md).
 ## Prerequisites
 
 - [`uv`](https://docs.astral.sh/uv/) (Python package + tool manager)
-- Python ≥ 3.10 (uv will provision one if needed)
+- Python `>=3.11,<3.14` (uv will provision one if needed)
 - `git`
 - For local-dev workflows: `pdomain-book-tools` available as a sibling checkout
   at `../pdomain-book-tools`. `make local-setup` clones it for you.
+- Until `pdomain-ops` is published to `pdomain-index-pip`, this repo also
+  expects a sibling `../pdomain-ops` checkout for local development and CI.
 - Optional: NVIDIA GPU + CUDA Toolkit for GPU-accelerated OCR (see README).
 
 ## Quick start
@@ -69,7 +71,11 @@ If you also want pdomain-book-tools' own venv (to run its tests):
 | `pre-commit-check` | Run pre-commit on all files. |
 | `test` | Run the pytest suite (`tests/`). |
 | `build` | `uv build` — produce sdist + wheel in `dist/`. |
-| `ci` | `setup` → `pre-commit-check` → `test` → `build`. |
+| `wheel-smoke` | Build the wheel, install it into isolated Python 3.11 / 3.12 / 3.13 environments, and run `pd-ocr --version`. Override with `PYTHON_VERSIONS="3.13"` for a focused local run. |
+| `wheel-smoke-one` | Focused wheel smoke for one interpreter. Set `PYTHON_VERSION=3.11`, `3.12`, or `3.13`. |
+| `check-release-deps` | Fail release while runtime dependencies, currently `pdomain-ops`, are path-sourced instead of package-index sourced. |
+| `ci` | `setup` → `pre-commit-check` → `format-check` → `typecheck` → `coverage` → `installer-test` → `wheel-smoke`. |
+| `ci-slow` | Full release-grade CI including slow integration coverage, build, and wheel smoke. |
 | `clean` | Remove caches and `dist/`. |
 | `reset` | `clean` + remove `.venv` + `setup`. |
 | `upgrade-deps` | Upgrade the lockfile and sync the venv. **Refuses when a dev-local venv is detected** — use `upgrade-deps-local` instead (or set `PD_DEV_LOCAL=0` to intentionally clobber). |
@@ -127,10 +133,32 @@ point is `pdomain_ocr_cli.ocr_to_txt:main` (wired via `[project.scripts]`).
 
 ## Releasing
 
-1. Make sure the `pdomain-book-tools` pin in `pyproject.toml` matches the
-   intended release. `make upgrade-pdomain-book-tools` bumps to latest tag.
-2. Run `make ci` to lint + build cleanly.
-3. Tag and push:
+Release is intentionally blocked while any runtime dependency resolves from a
+local path. Today `pdomain-ops` is not published to `pdomain-index-pip`, so
+`make check-release-deps` fails with a clear message. Publish `pdomain-ops` to
+the pdomain package index first, then change `[tool.uv.sources]` so
+`pdomain-ops = { index = "pdomain-index-pip" }`.
+
+While `pdomain-ops` remains path-sourced, `make wheel-smoke` preinstalls the
+local sibling into the temporary smoke-test venv and installs the
+`pdomain-ocr-cli` wheel with dependency resolution disabled. That keeps local
+wheel/console-script validation useful without pretending the release
+dependency graph is publishable. The release workflow runs
+`make check-release-deps` before `make ci-slow` or `uv build`, so this fallback
+cannot publish artifacts.
+
+The GitHub CI workflow also checks out a pinned `pdomain/pdomain-ops` commit and
+links it at `../pdomain-ops` so the path-sourced development graph can resolve
+on a fresh runner. That checkout is intentionally not used by the release
+workflow.
+
+1. Make sure the `pdomain-book-tools` and `pdomain-ops` sources in
+   `pyproject.toml` match the intended release. `make upgrade-pdomain-book-tools`
+   bumps book-tools to the latest tag.
+2. Run `make check-release-deps`; it must pass before any release tag is built.
+3. Run `make ci-slow` to execute the release-required validation. CI also runs
+   the fast matrix on Python 3.11, 3.12, and 3.13.
+4. Tag and push:
 
    ```sh
    make release-minor   # or release-patch / release-major
@@ -139,7 +167,11 @@ point is `pdomain_ocr_cli.ocr_to_txt:main` (wired via `[project.scripts]`).
 
    `release-*` only creates a local tag — it does **not** push.
 
-4. Pushing the tag triggers the release workflow, which builds, attests,
+5. Pushing the tag triggers the release workflow, which runs
+   `make check-release-deps` and `make ci-slow` before building. If either
+   fails, no artifacts are published.
+
+6. When the gate passes, the workflow builds, attests,
    and publishes the wheel as a GitHub Release asset. `install.sh` /
    `install.ps1` resolve the latest non-prerelease GitHub Release and
    download that wheel, so end users get the new release on their next

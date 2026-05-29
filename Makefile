@@ -1,6 +1,10 @@
 AI ?=
 LOG := .ci-ai.log
 
+PYTHON_VERSIONS ?= 3.11 3.12 3.13
+PYTHON_VERSION ?=
+PDOMAIN_INDEX_URL := https://pdomain.github.io/pdomain-index-pip/simple/
+
 ifdef AI
 _goals := $(or $(MAKECMDGOALS),ci)
 .PHONY: $(_goals)
@@ -12,7 +16,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow test-integration test-layout-integration installer-test coverage coverage-slow build clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow test-integration test-layout-integration installer-test coverage coverage-slow build wheel-smoke wheel-smoke-one check-release-deps clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run local-test local-test-slow \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
@@ -147,7 +151,40 @@ build: ## Build the project
 	@echo "🔨 Building project..."
 	uv build
 
-ci: ## Run fast CI pipeline (setup → pre-commit → format-check → typecheck → coverage → installer-test → build); enforces COV_FAIL_UNDER (default 100)
+wheel-smoke: build ## Install built wheel into isolated envs for every supported Python and run console script
+	@for py in $(PYTHON_VERSIONS); do \
+		$(MAKE) --no-print-directory wheel-smoke-one PYTHON_VERSION="$$py"; \
+	done
+
+wheel-smoke-one: build ## Install built wheel for one Python version; set PYTHON_VERSION=3.11/3.12/3.13
+	@test -n "$(PYTHON_VERSION)" || (echo "PYTHON_VERSION is required"; exit 2)
+	@echo "🧪 Wheel smoke: Python $(PYTHON_VERSION)"
+	@tmpdir=$$(mktemp -d); \
+	trap 'rm -rf "$$tmpdir"' EXIT; \
+	uv venv "$$tmpdir/venv" --python "$(PYTHON_VERSION)"; \
+	wheel=$$(ls -t dist/*.whl | head -n 1); \
+	if [ -z "$$wheel" ]; then \
+		echo "No wheel found in dist/"; \
+		exit 1; \
+	fi; \
+	if python3 -c 'import tomllib; p=tomllib.load(open("pyproject.toml","rb")); src=p.get("tool",{}).get("uv",{}).get("sources",{}).get("pdomain-ops",{}); raise SystemExit(0 if "path" in src else 1)'; then \
+		ops_path=$$(python3 -c 'import pathlib, tomllib; p=tomllib.load(open("pyproject.toml","rb")); src=p["tool"]["uv"]["sources"]["pdomain-ops"]; print(pathlib.Path(src["path"]))'); \
+		if [ ! -d "$$ops_path" ]; then \
+			echo "pdomain-ops is path-sourced but $$ops_path is missing; publish it to $(PDOMAIN_INDEX_URL) or provide the sibling checkout."; \
+			exit 1; \
+		fi; \
+		echo "pdomain-ops is path-sourced; preinstalling local sibling for non-release wheel smoke."; \
+		uv pip install --python "$$tmpdir/venv/bin/python" "$$ops_path" --extra-index-url $(PDOMAIN_INDEX_URL); \
+		uv pip install --python "$$tmpdir/venv/bin/python" "$$wheel" --no-deps; \
+	else \
+		uv pip install --python "$$tmpdir/venv/bin/python" "$$wheel" --extra-index-url $(PDOMAIN_INDEX_URL); \
+	fi; \
+	"$$tmpdir/venv/bin/pd-ocr" --version
+
+check-release-deps: ## Fail release while runtime dependencies are path-sourced
+	@python3 -c 'import tomllib; p=tomllib.load(open("pyproject.toml","rb")); src=p.get("tool",{}).get("uv",{}).get("sources",{}).get("pdomain-ops",{}); raise SystemExit("pdomain-ops must not be path-sourced for release") if "path" in src else 0'
+
+ci: ## Run fast CI pipeline (setup → pre-commit → format-check → typecheck → coverage → installer-test → wheel-smoke); enforces COV_FAIL_UNDER (default 100)
 	@echo "🚀 Running fast CI pipeline..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check
@@ -156,6 +193,7 @@ ci: ## Run fast CI pipeline (setup → pre-commit → format-check → typecheck
 	@$(MAKE) --no-print-directory coverage
 	@$(MAKE) --no-print-directory installer-test
 	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory wheel-smoke
 	@echo "✅ CI pipeline complete!"
 
 ci-slow: ## Run full CI pipeline including slow integration tests; enforces COV_FAIL_UNDER_SLOW (default 100)
@@ -164,6 +202,7 @@ ci-slow: ## Run full CI pipeline including slow integration tests; enforces COV_
 	@$(MAKE) --no-print-directory pre-commit-check
 	@$(MAKE) --no-print-directory coverage-slow
 	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory wheel-smoke
 	@echo "✅ Full CI pipeline complete!"
 
 clean: ## Clean up cache and build artifacts

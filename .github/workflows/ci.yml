@@ -11,16 +11,31 @@ permissions:
 
 jobs:
   ci:
-    name: ci
+    name: ci / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
     env:
-      UV_PYTHON: "3.13"
+      UV_PYTHON: ${{ matrix.python-version }}
       CUDA_VISIBLE_DEVICES: ""
+      CI_UV_VERSION: "0.11.16"
+      PDOMAIN_OPS_REF: "2d01f1d2fee7fbdb2bd5a19e28182e949330cfd3"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v4
+          persist-credentials: false
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:
-          version: latest
-      - run: make ci
+          repository: pdomain/pdomain-ops
+          ref: ${{ env.PDOMAIN_OPS_REF }}
+          path: pdomain-ops
+          persist-credentials: false
+      - name: Link pdomain-ops path dependency
+        run: ln -sfn "$PWD/pdomain-ops" ../pdomain-ops
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          version: ${{ env.CI_UV_VERSION }}
+      - run: make ci PYTHON_VERSIONS="${{ matrix.python-version }}"

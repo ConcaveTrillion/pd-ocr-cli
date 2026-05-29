@@ -30,6 +30,10 @@ The first time you run it, it downloads the models it needs
 sign-up. For specifics on what the tool downloads and from where, see
 [Technical details](#technical-details) at the bottom.
 
+Supported Python versions for the package are `>=3.11,<3.14`. The
+installer defaults to Python 3.13 for the managed `uv tool`
+environment, but the wheel is tested on Python 3.11, 3.12, and 3.13.
+
 ---
 
 ## GPU acceleration (optional)
@@ -352,8 +356,10 @@ Rough disk + memory budget for the NVIDIA path:
 
 Working on `pdomain-ocr-cli` itself? See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the full
 developer guide — covers `make setup`, the editable side-by-side workflow with
-`pdomain-book-tools` (`make local-setup`, `make run-local ARGS="…"`), the project
-layout, and the release process.
+`pdomain-book-tools` / `pdomain-ops` (`make local-setup`,
+`make run-local ARGS="…"`), the project layout, and the release process.
+Releases are blocked until all runtime dependencies, including
+`pdomain-ops`, resolve from `pdomain-index-pip` instead of a local path.
 
 Quick start:
 

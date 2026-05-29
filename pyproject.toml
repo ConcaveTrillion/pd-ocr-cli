@@ -56,8 +56,10 @@ explicit = true
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
-# pdomain-ops is not yet published to pdomain-index-pip. Until it is, resolve
-# it from the workspace sibling (path is relative to this pyproject = repo root).
+# pdomain-ops is not yet published to pdomain-index-pip. Until it is, local
+# development resolves it from the workspace sibling (path is relative to this
+# pyproject = repo root). Release is intentionally blocked by
+# `make check-release-deps` while this source remains path-based.
 # TODO(release): once pdomain-ops ships to pdomain-index-pip, replace this with
 #   pdomain-ops = { index = "pdomain-index-pip" }
 # to match book-tools and rely on local-dev mode for the editable overlay.
