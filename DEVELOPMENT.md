@@ -121,11 +121,17 @@ curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install
 
 ```text
 pdomain_ocr_cli/
-├── ocr_to_txt.py        # CLI entrypoint + main() + parse_args()
-├── _hf_download.py      # generic hf_hub_download wrapper (sidecar opt-in)
-├── _hf_models.py        # OCR + layout model resolution / prefetch / descriptors
-├── _text_normalize.py   # curly-quote and em-dash post-processing
-└── _update_check.py     # background GitHub-tag upgrade-notice check
+├── ocr_to_txt.py         # CLI parser and high-level orchestration
+├── _policy.py            # effective flag policy and no-op warnings
+├── _batch_plan.py        # image expansion, output planning, collision checks
+├── _runtime.py           # predictor/session setup and batch runtime errors
+├── _artifacts.py         # atomic page artifact writes and transactions
+├── _model_security.py    # model trust-boundary warnings
+├── _startup_notices.py   # update-check and GPU-nudge startup behavior
+├── _hf_download.py       # generic hf_hub_download wrapper (sidecar opt-in)
+├── _hf_models.py         # OCR + layout model resolution / prefetch / descriptors
+├── _text_normalize.py    # curly-quote and em-dash post-processing
+└── _update_check.py      # background GitHub-tag upgrade-notice check
 ```
 
 Files prefixed with `_` are package-internal. The single public entry

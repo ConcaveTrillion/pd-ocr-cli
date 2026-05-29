@@ -74,7 +74,9 @@ Both scripts install the wheel from the latest GitHub Release, pass the
 self-hosted `pdomain-index-pip` package index, and detect NVIDIA CUDA
 automatically to select the matching PyTorch build. Set
 `PD_OCR_INSTALL_PYTHON` before running the script to override the
-installer Python version; the default is `3.13`.
+installer Python version; the default is `3.13`. The PowerShell script is
+self-contained for piped `irm ... | iex` installs; a checked-out helper
+script is only used as a development override.
 
 ---
 

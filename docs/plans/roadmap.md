@@ -17,3 +17,12 @@ the bottom if useful).
 ## Open — developer workflow
 
 _No open items._ (Shipped items moved to `docs/archive/plans/`.)
+
+## Done — 2026-05-29 review remediation
+
+- Added `RunPolicy`, `BatchPlan`, `RuntimeSession`, artifact transaction
+  helpers, model trust warnings, and startup notice seams.
+- Added installer contract tests, real OCR/default-layout slow coverage,
+  workflow static checks, and wheel smoke for Python 3.11, 3.12, and 3.13.
+- Hardened release gating so path-sourced runtime dependencies block release
+  until they resolve from `pdomain-index-pip`.

@@ -19,6 +19,10 @@ The default detector is
 (via `pdomain-book-tools`), Apache-2.0 licensed, ~132 MB downloaded on first
 run.
 
+Plain `--no-reorg` skips both `Page.reorganize_page()` and layout
+detection. The only exception is `--extract-illustrations`, which still
+requires layout regions to discover crop boxes.
+
 ## Flags
 
 | Flag | Purpose |
@@ -71,14 +75,34 @@ caption tagging still line up.
   but can also indicate the confidence threshold filtered everything
   out — try `--layout-confidence 0.3` to verify.
 
+## Artifact lifecycle
+
+Page artifacts are written transactionally. JSON sidecars, diagnostic
+snapshots, layout-debug reports, and illustration crops are written through
+unique temporary files and atomically replaced into place. The final `.txt`
+file is written last, so the presence of `<image>.txt` means that page's
+artifact set completed.
+
+## Test coverage
+
+The slow integration suite exercises the real OCR path, the default
+`pp-doclayout-plus-l` layout path, layout-debug report writing, JSON
+sidecars, corrupt-image handling, and the fixture corpus under
+`tests/fixtures/`. Run it with:
+
+```sh
+make test-integration
+make test-layout-integration
+```
+
 ## Related flags
 
 These aren't layout-specific but interact with the reorganize step that
 consumes layout output:
 
-- `--no-reorg` — skip `reorganize_page()` entirely; emit raw OCR. The
-  layout detector still runs (for `--extract-illustrations`) but its
-  hints aren't applied.
+- `--no-reorg` — skip `reorganize_page()` entirely; emit raw OCR. Layout
+  detection is skipped too unless `--extract-illustrations` needs it for
+  crop discovery.
 - `--save-reorganize-diagnostics` — with `--save-json`, also writes
   `<image>.pure-ocr.json` + `.txt` (literal OCR output) and
   `<image>.post-noise.json` + `.txt` (state after figure-noise removal,
