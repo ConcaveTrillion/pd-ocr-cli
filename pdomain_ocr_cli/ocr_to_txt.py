@@ -79,7 +79,7 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from pdomain_ocr_cli._batch_plan import (
     BatchPlanError,
@@ -114,6 +114,7 @@ from pdomain_ocr_cli._pipeline import (
     write_diagnostic_snapshots,
 )
 from pdomain_ocr_cli._policy import build_run_policy
+from pdomain_ocr_cli._runtime import BatchRuntimeError, DefaultRuntimeSession, RuntimeSession
 from pdomain_ocr_cli._update_check import VERSION as _VERSION
 from pdomain_ocr_cli._update_check import check_for_update as _check_for_update
 
@@ -414,6 +415,17 @@ def _run_doctr_batch(
         device=device,
         build_smaller=build_smaller,
         source_identifiers=source_identifiers,
+    )
+
+
+def _create_runtime_session(det_path: Path, reco_path: Path) -> RuntimeSession[_PageLike]:
+    predictor = _load_predictor(det_path, reco_path)
+    if predictor is None:
+        raise RuntimeError("failed to load models.")
+    return DefaultRuntimeSession(
+        predictor=predictor,
+        device=_pick_device(),
+        runner=_run_doctr_batch,
     )
 
 
@@ -848,27 +860,39 @@ def main() -> None:
     _maybe_print_gpu_nudge()
 
     print("Resolving model files...", flush=True)  # noqa: T201  # CLI output
-    det_path, reco_path = resolve_ocr_models(args)
+    try:
+        det_path, reco_path = resolve_ocr_models(args)
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001  # normalize all resolver failures to CLI stderr
+        print(f"ERROR resolving OCR model files: {exc}", file=sys.stderr)  # noqa: T201
+        sys.exit(1)
 
     layout_repo: str | None = None
     layout_revision: str | None = None
     layout_descriptor = ""
     if policy.layout_needed:
-        layout_repo, layout_revision, layout_descriptor = resolve_layout_source(args)
-        if layout_repo is not None:
-            _ = prefetch_layout_files(layout_repo, layout_revision)
+        try:
+            layout_repo, layout_revision, layout_descriptor = resolve_layout_source(args)
+            if layout_repo is not None:
+                _ = prefetch_layout_files(layout_repo, layout_revision)
+        except SystemExit:
+            raise
+        except Exception as exc:  # noqa: BLE001  # normalize all resolver failures to CLI stderr
+            print(f"ERROR resolving layout model files: {exc}", file=sys.stderr)  # noqa: T201
+            sys.exit(1)
 
     print("Importing deep-learning runtime (PyTorch + DocTR)...", flush=True)  # noqa: T201  # CLI output
     device = _detect_torch_device()
 
     print("Loading OCR models (detection + recognition)...", flush=True)  # noqa: T201  # CLI output
     try:
-        predictor = _load_predictor(det_path, reco_path)
+        runtime_session = _create_runtime_session(det_path, reco_path)
     except ImportError as e:
         print(f"ERROR: pdomain_book_tools not importable: {e}", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
-    if predictor is None:
-        print("ERROR: failed to load models.", file=sys.stderr)  # noqa: T201  # CLI output
+    except RuntimeError as e:
+        print(f"ERROR: {e}", file=sys.stderr)  # noqa: T201  # CLI output
         sys.exit(1)
     print(f"Detection model loaded:   {det_source_descriptor(args, det_path)} (device={device})")  # noqa: T201  # CLI output
     print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")  # noqa: T201  # CLI output
@@ -896,12 +920,8 @@ def main() -> None:
         _load_validate_word_preservation() if policy.validate_reorg else None
     )
 
-    # ``_pick_device`` uses pdomain-ops' GPU detection (CUDA -> MPS -> CPU).
-    # The result is forwarded to ``_run_doctr_batch`` for batch-size sizing.
-    ops_device = _pick_device()
-
     # Lazily OCR images in chunks of ``args.batch_pages``.  Each chunk is
-    # fed to ``_run_doctr_batch`` (which owns batch-size sizing and OOM
+    # fed to the runtime session (which owns batch-size sizing and OOM
     # backoff) and returns one book-tools ``Page`` per image in the chunk.
     # Chunking is interleaved with per-page post-processing (via the inner
     # generator loop) so that a ``KeyboardInterrupt`` during post-processing
@@ -928,7 +948,7 @@ def main() -> None:
     # cv2 + numpy are always present with the doctr/gpu deps that this code path
     # requires.  Import once here (lazy, to avoid pulling heavy GPU libs at
     # module import time) rather than re-importing on every chunk iteration.
-    import cv2  # pyright: ignore[reportMissingImports]  # optional [gpu] dep; always present with doctr
+    import cv2  # optional [gpu] dep; always present with doctr
     import numpy as np
 
     outer_break = False
@@ -943,7 +963,7 @@ def main() -> None:
         # ``_run_doctr_batch`` where it would abort the entire chunk.
 
         survivor_jobs: list[PageJob] = []
-        survivor_arrays: list[Any] = []
+        survivor_arrays: list[object] = []
         survivor_ids: list[str] = []
         for job in chunk:
             img_path = job.image_path
@@ -972,12 +992,18 @@ def main() -> None:
             # Every image in this chunk failed at decode; skip the batch call.
             continue
 
-        chunk_pages = _run_doctr_batch(
-            survivor_arrays,
-            predictor=predictor,
-            device=ops_device,
-            source_identifiers=survivor_ids,
-        )
+        try:
+            chunk_pages = runtime_session.run_batch(
+                survivor_arrays,
+                source_identifiers=survivor_ids,
+            )
+        except BatchRuntimeError as exc:
+            print(  # noqa: T201  # CLI output
+                f"ERROR processing batch {chunk_start // chunk_size + 1}: {exc}",
+                file=sys.stderr,
+            )
+            errors += len(survivor_jobs)
+            continue
         for job, page in zip(survivor_jobs, chunk_pages, strict=True):
             img_path = job.image_path
             print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output

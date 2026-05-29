@@ -15,6 +15,7 @@ import pytest
 from _fakes import FakePage
 
 from pdomain_ocr_cli import ocr_to_txt
+from pdomain_ocr_cli._runtime import DefaultRuntimeSession
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 TITLE_IMAGE = FIXTURES_DIR / "title_page_001.png"
@@ -103,10 +104,8 @@ def mock_heavy_deps(monkeypatch, tmp_path):
         )
         monkeypatch.setattr(ocr_to_txt, "prefetch_layout_files", lambda repo, rev: None)
         monkeypatch.setattr(ocr_to_txt, "_detect_torch_device", lambda: "cpu")
-        monkeypatch.setattr(ocr_to_txt, "_pick_device", lambda: "cpu")
 
         fake_predictor = object()
-        monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: fake_predictor)
         monkeypatch.setattr(
             ocr_to_txt,
             "_load_layout_detector",
@@ -141,7 +140,7 @@ def mock_heavy_deps(monkeypatch, tmp_path):
             clone.diagnostic_noise_dropped_count = template_page.diagnostic_noise_dropped_count
             return clone
 
-        def batch_runner(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+        def batch_runner(images, *, predictor, device, source_identifiers):
             pages = []
             for _ in images:
                 if texts is not None:
@@ -163,7 +162,14 @@ def mock_heavy_deps(monkeypatch, tmp_path):
             )
             return pages
 
-        monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", batch_runner)
+        runtime_session = DefaultRuntimeSession(
+            predictor=fake_predictor,
+            device="cpu",
+            runner=batch_runner,
+        )
+        monkeypatch.setattr(
+            ocr_to_txt, "_create_runtime_session", lambda det, reco: runtime_session
+        )
 
         class _DocsProxy(list):
             def __getitem__(self, idx):  # type: ignore[override]
@@ -176,6 +182,7 @@ def mock_heavy_deps(monkeypatch, tmp_path):
             det_path=fake_det,
             reco_path=fake_reco,
             predictor=fake_predictor,
+            runtime_session=runtime_session,
             page=template,
             captured_pages=captured_pages,
             captured_docs=_DocsProxy(),

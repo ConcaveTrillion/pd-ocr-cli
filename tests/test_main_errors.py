@@ -199,8 +199,69 @@ def test_main_extract_illustrations_imwrite_failure_skips_and_cleans_tmp(
 # ---------------------------------------------------------------------------
 
 
+def test_main_batch_runner_error_reports_chunk_and_exits_1(
+    mock_heavy_deps, run_main, make_images, capsys
+):
+    ns = mock_heavy_deps()
+    imgs = make_images(2)
+    out = imgs[0].parent / "out"
+
+    def boom_batch(images, *, predictor, device, source_identifiers):
+        raise RuntimeError("batch backend exploded")
+
+    ns.runtime_session.runner = boom_batch
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(imgs[0]),
+            str(imgs[1]),
+        )
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "ERROR processing batch" in captured.err
+    assert "batch backend exploded" in captured.err
+    assert "Done (2 error(s))" in captured.out
+    assert not (out / f"{imgs[0].stem}.txt").exists()
+    assert not (out / f"{imgs[1].stem}.txt").exists()
+
+
+def test_main_batch_result_count_mismatch_is_clean_error(
+    mock_heavy_deps, run_main, make_images, capsys
+):
+    ns = mock_heavy_deps()
+    imgs = make_images(2)
+    out = imgs[0].parent / "out"
+
+    def short_batch(images, *, predictor, device, source_identifiers):
+        return [FakePage(text="ONLY ONE")]
+
+    ns.runtime_session.runner = short_batch
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            "-o",
+            str(out),
+            str(imgs[0]),
+            str(imgs[1]),
+        )
+
+    assert exc_info.value.code == 1
+    captured = capsys.readouterr()
+    assert "batch returned 1 page(s) for 2 image(s)" in captured.err
+    assert "Done (2 error(s))" in captured.out
+
+
 def test_main_per_image_exception_terminates_processing_stdout_line(
-    mock_heavy_deps, monkeypatch, run_main, make_images, capsys
+    mock_heavy_deps, run_main, make_images, capsys
 ):
     """B17: when the per-image ``try`` raises (caught by the broad
     ``except Exception``), the ``Processing X ...`` stdout line printed
@@ -213,7 +274,7 @@ def test_main_per_image_exception_terminates_processing_stdout_line(
     The ``page is None`` and ``KeyboardInterrupt`` siblings already do
     this; the broad ``except Exception`` branch did not.
     """
-    mock_heavy_deps()
+    ns = mock_heavy_deps()
     imgs = make_images(2)
     out = imgs[0].parent / "out"
 
@@ -222,7 +283,7 @@ def test_main_per_image_exception_terminates_processing_stdout_line(
     # — the same branch the old per-image factory raise hit.
     call_idx = {"n": 0}
 
-    def _boom_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+    def _boom_batch(images, *, predictor, device, source_identifiers):
         pages = []
         for _ in images:
             idx = call_idx["n"]
@@ -232,7 +293,7 @@ def test_main_per_image_exception_terminates_processing_stdout_line(
             pages.append(p)
         return pages
 
-    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _boom_batch)
+    ns.runtime_session.runner = _boom_batch
 
     with pytest.raises(SystemExit) as exc_info:
         run_main(
@@ -261,20 +322,20 @@ def test_main_per_image_exception_terminates_processing_stdout_line(
 
 
 def test_main_per_image_exception_increments_error_count(
-    mock_heavy_deps, monkeypatch, run_main, single_image, capsys
+    mock_heavy_deps, run_main, single_image, capsys
 ):
-    mock_heavy_deps()
+    ns = mock_heavy_deps()
     img, out = single_image
 
     # Raise during per-page post-processing (reorganize_page is called inside
     # the per-page try/except block), which exercises the same error path as
     # the old per-image factory raise.
-    def _boom_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+    def _boom_batch(images, *, predictor, device, source_identifiers):
         p = FakePage(text="OK")
         p.reorganize_page = MagicMock(side_effect=RuntimeError("synthetic OCR failure"))
         return [p for _ in images]
 
-    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _boom_batch)
+    ns.runtime_session.runner = _boom_batch
 
     with pytest.raises(SystemExit) as exc_info:
         run_main(
@@ -296,15 +357,15 @@ def test_main_per_image_exception_with_debug_prints_traceback(
     mock_heavy_deps, monkeypatch, run_main, single_image, capsys
 ):
     """``PD_OCR_DEBUG=1`` adds a traceback to the per-image error output."""
-    mock_heavy_deps()
+    ns = mock_heavy_deps()
     img, out = single_image
 
-    def _boom_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+    def _boom_batch(images, *, predictor, device, source_identifiers):
         p = FakePage(text="OK")
         p.reorganize_page = MagicMock(side_effect=RuntimeError("synthetic"))
         return [p for _ in images]
 
-    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _boom_batch)
+    ns.runtime_session.runner = _boom_batch
     monkeypatch.setenv("PD_OCR_DEBUG", "1")
 
     with pytest.raises(SystemExit):
@@ -335,7 +396,7 @@ def test_main_pdomain_book_tools_import_error_exits_clean(
     def import_boom(det, reco):
         raise ImportError("pdomain_book_tools wheel missing")
 
-    monkeypatch.setattr(ocr_to_txt, "_load_predictor", import_boom)
+    monkeypatch.setattr(ocr_to_txt, "_create_runtime_session", import_boom)
 
     with pytest.raises(SystemExit) as exc_info:
         run_main(
@@ -355,7 +416,11 @@ def test_main_predictor_returns_none_exits(
 ):
     mock_heavy_deps()
     img, _ = single_image
-    monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: None)
+    monkeypatch.setattr(
+        ocr_to_txt,
+        "_create_runtime_session",
+        lambda det, reco: (_ for _ in ()).throw(RuntimeError("failed to load models.")),
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         run_main(
@@ -367,6 +432,100 @@ def test_main_predictor_returns_none_exits(
     assert exc_info.value.code == 1
     err = capsys.readouterr().err
     assert "failed to load models" in err
+
+
+def test_main_model_resolution_error_exits_clean(
+    mock_heavy_deps, monkeypatch, run_main, single_image, capsys
+):
+    mock_heavy_deps()
+    img, _ = single_image
+
+    def fail_model_resolution(args):
+        raise RuntimeError("model repo unavailable")
+
+    monkeypatch.setattr(ocr_to_txt, "resolve_ocr_models", fail_model_resolution)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            str(img),
+        )
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "ERROR resolving OCR model files" in err
+    assert "model repo unavailable" in err
+
+
+def test_main_model_resolution_system_exit_is_preserved(
+    mock_heavy_deps, monkeypatch, run_main, single_image
+):
+    mock_heavy_deps()
+    img, _ = single_image
+
+    def exit_model_resolution(args):
+        raise SystemExit(7)
+
+    monkeypatch.setattr(ocr_to_txt, "resolve_ocr_models", exit_model_resolution)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "none",
+            str(img),
+        )
+
+    assert exc_info.value.code == 7
+
+
+def test_main_layout_prefetch_error_exits_clean(
+    mock_heavy_deps, monkeypatch, run_main, single_image, capsys
+):
+    mock_heavy_deps()
+    img, _ = single_image
+
+    def fail_prefetch(repo, revision):
+        raise RuntimeError("layout repo unavailable")
+
+    monkeypatch.setattr(ocr_to_txt, "prefetch_layout_files", fail_prefetch)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "pp-doclayout-plus-l",
+            str(img),
+        )
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "ERROR resolving layout model files" in err
+    assert "layout repo unavailable" in err
+
+
+def test_main_layout_resolution_system_exit_is_preserved(
+    mock_heavy_deps, monkeypatch, run_main, single_image
+):
+    mock_heavy_deps()
+    img, _ = single_image
+
+    def exit_layout_resolution(args):
+        raise SystemExit(9)
+
+    monkeypatch.setattr(ocr_to_txt, "resolve_layout_source", exit_layout_resolution)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main(
+            "--no-update-check",
+            "--layout-model",
+            "pp-doclayout-plus-l",
+            str(img),
+        )
+
+    assert exc_info.value.code == 9
 
 
 @pytest.mark.parametrize("exc_cls", [ImportError, ValueError])
@@ -416,22 +575,22 @@ def test_main_no_valid_images_exits_clean(mock_heavy_deps, monkeypatch, run_main
 
 
 def test_main_doc_with_no_pages_warns_increments_errors_and_exits_1(
-    mock_heavy_deps, monkeypatch, run_main, make_images, capsys
+    mock_heavy_deps, run_main, make_images, capsys
 ):
     """B13 regression: ``page is None`` must (1) name the image in the
     warning, (2) increment the per-image error counter so the batch
     exit code reflects the failure, and (3) terminate the
     ``Processing X ...`` line so subsequent stdout doesn't concatenate
     onto it."""
-    mock_heavy_deps()
+    ns = mock_heavy_deps()
     imgs = make_images(2)
     out = imgs[0].parent / "out"
 
     # Return None pages so the per-page ``if page is None`` branch fires.
-    def empty_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+    def empty_batch(images, *, predictor, device, source_identifiers):
         return [None for _ in images]
 
-    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", empty_batch)
+    ns.runtime_session.runner = empty_batch
 
     with pytest.raises(SystemExit) as exc_info:
         run_main(
@@ -481,7 +640,7 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
     """
     import threading
 
-    mock_heavy_deps()
+    ns = mock_heavy_deps()
     imgs = make_images(3)
     out = imgs[0].parent / "out"
 
@@ -492,9 +651,7 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
     call_count = {"n": 0}
     third_seen = {"n": 0}
 
-    def interrupting_batch(
-        images, *, predictor, device, build_smaller=None, source_identifiers=None
-    ):
+    def interrupting_batch(images, *, predictor, device, source_identifiers):
         call_count["n"] += 1
         n = call_count["n"]
         if n == 1:
@@ -507,7 +664,7 @@ def test_main_keyboard_interrupt_mid_batch_emits_summary_and_exits_130(
         third_seen["n"] += 1
         return [FakePage(text="OK")]
 
-    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", interrupting_batch)
+    ns.runtime_session.runner = interrupting_batch
 
     # Track the update-notice thread so we can assert it was joined.
     class _RecordingThread(threading.Thread):
@@ -691,14 +848,12 @@ def test_main_corrupt_image_decode_failure_reports_error_continues_batch(
     assert (out / f"{good.stem}.txt").exists()
 
 
-def test_main_all_images_corrupt_skips_batch_exits_1(
-    mock_heavy_deps, monkeypatch, run_main, tmp_path, capsys
-):
+def test_main_all_images_corrupt_skips_batch_exits_1(mock_heavy_deps, run_main, tmp_path, capsys):
     """When every image in a chunk fails to decode, the batch call must be
     skipped entirely (``if not survivor_arrays: continue``), and the final
     exit code must be 1.
     """
-    mock_heavy_deps()
+    ns = mock_heavy_deps()
 
     # Two corrupt images — long enough to pass the extension gate (16+ bytes)
     # but not valid images, so cv2.imdecode returns None for each.
@@ -712,11 +867,11 @@ def test_main_all_images_corrupt_skips_batch_exits_1(
     # Track whether _run_doctr_batch was ever called — it must NOT be.
     batch_called: list[int] = []
 
-    def _spy_batch(images, *, predictor, device, build_smaller=None, source_identifiers=None):
+    def _spy_batch(images, *, predictor, device, source_identifiers):
         batch_called.append(1)
         return []
 
-    monkeypatch.setattr(ocr_to_txt, "_run_doctr_batch", _spy_batch)
+    ns.runtime_session.runner = _spy_batch
 
     with pytest.raises(SystemExit) as exc_info:
         run_main(
