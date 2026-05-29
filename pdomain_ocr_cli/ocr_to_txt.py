@@ -79,8 +79,16 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from pdomain_ocr_cli._batch_plan import (
+    BatchPlanError,
+    build_batch_plan,
+    positive_int,
+)
+from pdomain_ocr_cli._batch_plan import (
+    collect_images as _collect_images,
+)
 from pdomain_ocr_cli._hf_models import (
     DEFAULT_DET_FILENAME,
     DEFAULT_HF_REPO,
@@ -96,20 +104,21 @@ from pdomain_ocr_cli._pipeline import (
     apply_text_normalizations,
     atomic_write_text,
     clear_layout_debug_env,
-    compute_mirror_root,
     diagnostic_output_paths,
     format_drops_warning,
     format_noise_drop_warning,
     illustration_crop_path,
     iter_crop_regions,
-    output_paths_for,
-    resolve_dest_dir,
     setup_layout_debug_env,
     validate_extract_illustrations,
     write_diagnostic_snapshots,
 )
+from pdomain_ocr_cli._policy import build_run_policy
 from pdomain_ocr_cli._update_check import VERSION as _VERSION
 from pdomain_ocr_cli._update_check import check_for_update as _check_for_update
+
+if TYPE_CHECKING:
+    from pdomain_ocr_cli._batch_plan import PageJob
 
 
 @dataclass
@@ -544,6 +553,13 @@ def _confidence_threshold(s: str) -> float:
     return v
 
 
+def _positive_batch_pages(s: str) -> int:
+    try:
+        return positive_int(s)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def parse_args() -> argparse.Namespace:
     """Parse and return the CLI arguments for ``pd-ocr``."""
     p = argparse.ArgumentParser(
@@ -693,14 +709,14 @@ def parse_args() -> argparse.Namespace:
     )
     _ = p.add_argument(
         "--batch-pages",
-        type=int,
+        type=_positive_batch_pages,
         default=4,
         metavar="N",
         help=(
             "Number of pages to send to the OCR engine in a single batch call. "
             "Higher values improve GPU throughput; lower values reduce peak VRAM "
             "usage. OOM is handled automatically via backoff in pdomain-ops. "
-            "Default: 4."
+            "Must be >= 1. Default: 4."
         ),
     )
     _ = p.add_argument(
@@ -785,37 +801,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
-    """Expand files and directories into a flat list of image paths.
-
-    Deduplicates by resolved absolute path so passing the same image both
-    directly and via a parent directory (or repeating a path on the CLI)
-    OCRs it only once. First-seen order is preserved (B12).
-    """
-    images: list[Path] = []
-    seen: set[Path] = set()
-
-    def _add(path: Path) -> None:
-        key = path.resolve()
-        if key in seen:
-            return
-        seen.add(key)
-        images.append(path)
-
-    for inp in inputs:
-        p = Path(inp)
-        if p.is_file():
-            if _IS_IMAGE_FILE(p):
-                _add(p)
-            else:
-                print(f"WARNING: skipping non-image file: {p}", file=sys.stderr)  # noqa: T201  # CLI output
-        elif p.is_dir():
-            pattern = "**/*" if recursive else "*"
-            for child in sorted(p.glob(pattern)):
-                if child.is_file() and _IS_IMAGE_FILE(child):
-                    _add(child)
-        else:
-            print(f"WARNING: skipping missing path: {p}", file=sys.stderr)  # noqa: T201  # CLI output
-    return images
+    """Expand files and directories into deduplicated image paths."""
+    return _collect_images(inputs, recursive, is_image_file=_IS_IMAGE_FILE)
 
 
 def main() -> None:
@@ -824,50 +811,22 @@ def main() -> None:
     args = _coerce_cli_args(raw_args)
 
     validate_extract_illustrations(args)
-    layout_enabled = args.layout_model != "none"
+    policy = build_run_policy(args)
+    for warning in policy.warnings:
+        print(warning, file=sys.stderr)  # noqa: T201  # CLI output
 
-    # Surface flag combinations that are silent no-ops so users do not chase
-    # missing output (B3 — see docs/review/code-review-2026-05-06.md).
-    if args.no_reorg and args.save_reorganize_diagnostics:
-        print(  # noqa: T201  # CLI output
-            "warning: --save-reorganize-diagnostics has no effect with --no-reorg (diagnostics are produced only when reorganize runs); ignoring.",
-            file=sys.stderr,
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    try:
+        batch_plan = build_batch_plan(
+            inputs=args.inputs,
+            recursive=args.recursive,
+            output_dir=output_dir,
+            is_image_file=_IS_IMAGE_FILE,
+            batch_pages=args.batch_pages,
         )
-    if args.no_reorg and args.validate_reorg:
-        print(  # noqa: T201  # CLI output
-            "warning: --validate-reorg has no effect with --no-reorg (validation compares pre/post reorganize word lists); ignoring.",
-            file=sys.stderr,
-        )
-    if not layout_enabled and args.layout_debug:
-        print(  # noqa: T201  # CLI output
-            "warning: --layout-debug has no effect with --layout-model none (no layout model runs, so no debug artifact is written); ignoring.",
-            file=sys.stderr,
-        )
-    if args.no_reorg and args.layout_debug:
-        print(  # noqa: T201  # CLI output
-            "warning: --layout-debug has no effect with --no-reorg (the debug report is written from inside reorganize_page, which is skipped); ignoring.",
-            file=sys.stderr,
-        )
-    if args.layout_debug_dir and not args.layout_debug:
-        print(  # noqa: T201  # CLI output
-            "warning: --layout-debug-dir has no effect without --layout-debug (the directory is only used when the debug artifact is enabled); ignoring.",
-            file=sys.stderr,
-        )
-    if args.save_reorganize_diagnostics and not args.save_json:
-        print(  # noqa: T201  # CLI output
-            "warning: --save-reorganize-diagnostics has no effect without --save-json (the diagnostic bundle is written alongside the regular .json output, which requires --save-json); ignoring.",
-            file=sys.stderr,
-        )
-    if args.no_reorg and args.experimental_drop_layout_words:
-        print(  # noqa: T201  # CLI output
-            "warning: --experimental-drop-layout-words has no effect with --no-reorg (the drop is applied inside reorganize_page, which is skipped); ignoring.",
-            file=sys.stderr,
-        )
-    if args.no_reorg and args.no_illustration_placeholders:
-        print(  # noqa: T201  # CLI output
-            "warning: --no-illustration-placeholders has no effect with --no-reorg (placeholder emission happens inside reorganize_page, which is skipped); ignoring.",
-            file=sys.stderr,
-        )
+    except BatchPlanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)  # noqa: T201  # CLI output
+        sys.exit(1)
 
     # Fire version check in background — result printed before first blocking work.
     # Suppressed by --no-update-check or PD_OCR_NO_UPDATE_CHECK=1 (offline runs).
@@ -888,12 +847,10 @@ def main() -> None:
     layout_repo: str | None = None
     layout_revision: str | None = None
     layout_descriptor = ""
-    if layout_enabled:
+    if policy.layout_needed:
         layout_repo, layout_revision, layout_descriptor = resolve_layout_source(args)
         if layout_repo is not None:
             _ = prefetch_layout_files(layout_repo, layout_revision)
-
-    output_dir = Path(args.output_dir) if args.output_dir else None
 
     print("Importing deep-learning runtime (PyTorch + DocTR)...", flush=True)  # noqa: T201  # CLI output
     device = _detect_torch_device()
@@ -911,7 +868,7 @@ def main() -> None:
     print(f"Recognition model loaded: {reco_source_descriptor(args, reco_path)} (device={device})")  # noqa: T201  # CLI output
 
     layout_detector = None
-    if layout_enabled:
+    if policy.layout_needed:
         print("Loading layout model...", flush=True)  # noqa: T201  # CLI output
         try:
             layout_detector = _load_layout_detector(args, device)
@@ -919,6 +876,8 @@ def main() -> None:
             print(f"ERROR: {e}", file=sys.stderr)  # noqa: T201  # CLI output
             sys.exit(1)
         print(f"Layout model loaded:      {layout_descriptor} (device={device})")  # noqa: T201  # CLI output
+    elif policy.layout_configured:
+        print("Layout detection skipped (--no-reorg).")  # noqa: T201  # CLI output
     else:
         print("Layout detection disabled (--layout-model none).")  # noqa: T201  # CLI output
 
@@ -927,18 +886,13 @@ def main() -> None:
     if args.extract_illustrations:
         cv2_module, crop_types = _load_illustration_deps()
 
-    validate_word_preservation = _load_validate_word_preservation() if args.validate_reorg else None
+    validate_word_preservation = (
+        _load_validate_word_preservation() if policy.validate_reorg else None
+    )
 
     # ``_pick_device`` uses pdomain-ops' GPU detection (CUDA -> MPS -> CPU).
     # The result is forwarded to ``_run_doctr_batch`` for batch-size sizing.
     ops_device = _pick_device()
-
-    images = collect_images(args.inputs, args.recursive)
-    if not images:
-        print("ERROR: no valid image files found.", file=sys.stderr)  # noqa: T201  # CLI output
-        sys.exit(1)
-
-    mirror_root = compute_mirror_root(args.inputs, output_dir)
 
     # Lazily OCR images in chunks of ``args.batch_pages``.  Each chunk is
     # fed to ``_run_doctr_batch`` (which owns batch-size sizing and OOM
@@ -947,7 +901,7 @@ def main() -> None:
     # generator loop) so that a ``KeyboardInterrupt`` during post-processing
     # stops the pipeline at the current chunk boundary — subsequent chunks
     # are never OCR'd.
-    chunk_size = max(1, args.batch_pages)
+    chunk_size = batch_plan.chunk_size
 
     errors = 0
     processed = 0
@@ -972,19 +926,21 @@ def main() -> None:
     import numpy as np
 
     outer_break = False
-    for chunk_start in range(0, len(images), chunk_size):
+    jobs = batch_plan.jobs
+    for chunk_start in range(0, len(jobs), chunk_size):
         if outer_break:
             break
-        chunk = images[chunk_start : chunk_start + chunk_size]
+        chunk = jobs[chunk_start : chunk_start + chunk_size]
 
         # Decode each image in the chunk individually so that a corrupt image
         # is caught here — as a per-image error — rather than inside
         # ``_run_doctr_batch`` where it would abort the entire chunk.
 
-        survivor_paths: list[Path] = []
+        survivor_jobs: list[PageJob] = []
         survivor_arrays: list[Any] = []
         survivor_ids: list[str] = []
-        for img_path in chunk:
+        for job in chunk:
+            img_path = job.image_path
             try:
                 raw = img_path.read_bytes()
                 arr = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -1002,7 +958,7 @@ def main() -> None:
                 _record_error(img_path, e)
                 errors += 1
                 continue
-            survivor_paths.append(img_path)
+            survivor_jobs.append(job)
             survivor_arrays.append(arr)
             survivor_ids.append(img_path.name)
 
@@ -1016,10 +972,13 @@ def main() -> None:
             device=ops_device,
             source_identifiers=survivor_ids,
         )
-        for img_path, page in zip(survivor_paths, chunk_pages, strict=True):
+        for job, page in zip(survivor_jobs, chunk_pages, strict=True):
+            img_path = job.image_path
             print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
             debug_file = None
-            dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
+            dest_dir = job.dest_dir
+            out_path = job.txt_path
+            json_path = job.json_path
 
             try:
                 # ``dest_dir.mkdir`` operates on a user-supplied path (``-o`` or
@@ -1028,8 +987,6 @@ def main() -> None:
                 # mirror collides with an existing file) is recorded as one
                 # per-image error rather than aborting the whole batch. (B14)
                 dest_dir.mkdir(parents=True, exist_ok=True)
-
-                out_path, json_path = output_paths_for(img_path, dest_dir)
 
                 # ``setup_layout_debug_env`` calls ``mkdir`` on a user-supplied
                 # path; keep it inside the per-image ``try`` so an unwritable
@@ -1061,27 +1018,21 @@ def main() -> None:
                 # ``diagnostic_post_noise_removal`` snapshots, so we no longer
                 # need a manual pre-reorg JSON dump here.
                 reorganize_page = page.reorganize_page
-                do_reorg = not args.no_reorg
-                want_diagnostic_export = (
-                    do_reorg and args.save_json and args.save_reorganize_diagnostics
-                )
                 pre_reorg_words: list[object] = []
-                if do_reorg and args.validate_reorg:
+                if policy.validate_reorg:
                     pre_reorg_words = list(page.words)
 
-                if do_reorg:
-                    drop_layout_words = args.experimental_drop_layout_words
-                    emit_illustration_placeholders = not args.no_illustration_placeholders
+                if policy.do_reorg:
                     if page_layout is not None:
                         reorganize_page(
                             layout=page_layout,
-                            drop_layout_words=drop_layout_words,
-                            emit_illustration_placeholders=emit_illustration_placeholders,
+                            drop_layout_words=policy.drop_layout_words,
+                            emit_illustration_placeholders=policy.emit_illustration_placeholders,
                         )
                     else:
                         reorganize_page(
-                            drop_layout_words=drop_layout_words,
-                            emit_illustration_placeholders=emit_illustration_placeholders,
+                            drop_layout_words=policy.drop_layout_words,
+                            emit_illustration_placeholders=policy.emit_illustration_placeholders,
                         )
 
                     # Always-on noise-drop warning. The library populates
@@ -1099,7 +1050,7 @@ def main() -> None:
                         ):
                             print(line, file=sys.stderr)  # noqa: T201  # CLI output
 
-                    if args.validate_reorg and validate_word_preservation is not None:
+                    if validate_word_preservation is not None:
                         drops = validate_word_preservation(pre_reorg_words, list(page.words))
                         for line in format_drops_warning(drops, img_path.name):
                             print(line, file=sys.stderr)  # noqa: T201  # CLI output
@@ -1140,7 +1091,7 @@ def main() -> None:
                         raise
                     os.replace(json_tmp, json_path)
                     extra_paths.append(str(json_path))
-                if want_diagnostic_export:
+                if policy.want_diagnostic_export:
                     diag_paths = diagnostic_output_paths(json_path, out_path)
                     written, notes = write_diagnostic_snapshots(
                         page,
@@ -1157,7 +1108,7 @@ def main() -> None:
                 # writes the report. With ``--no-reorg`` (or any other reason
                 # ``do_reorg`` is False) the file never materialises, so the
                 # success line must not point at it. (B9)
-                if args.layout_debug and debug_file is not None and do_reorg:
+                if policy.layout_debug_announced and debug_file is not None:
                     extra_paths.append(f"layout-debug: {debug_file}")
 
                 if (
@@ -1240,7 +1191,7 @@ def main() -> None:
         _update_thread.join(timeout=3)
     if interrupted:
         print(  # noqa: T201  # CLI output
-            f"Interrupted after {processed}/{len(images)} image(s); {errors} error(s) so far.",
+            f"Interrupted after {processed}/{len(jobs)} image(s); {errors} error(s) so far.",
             file=sys.stderr,
         )
         sys.exit(130)

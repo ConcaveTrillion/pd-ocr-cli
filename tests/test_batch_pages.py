@@ -9,6 +9,10 @@ These tests verify:
 
 from __future__ import annotations
 
+import pytest
+
+from pdomain_ocr_cli import ocr_to_txt
+
 
 def test_batch_pages_chunking_calls_run_doctr_batch_with_correct_chunk_sizes(
     mock_heavy_deps, run_main, make_images, tmp_path
@@ -133,3 +137,30 @@ def test_batch_pages_default_is_4(mock_heavy_deps, run_main, make_images, tmp_pa
     )
     assert len(ns.batch_calls) == 1
     assert ns.batch_calls[0]["chunk_size"] == 3
+
+
+def test_main_rejects_flat_output_collision_before_model_resolution(
+    monkeypatch, run_main, tmp_path, capsys
+):
+    a = tmp_path / "a" / "page.png"
+    b = tmp_path / "b" / "page.png"
+    a.parent.mkdir()
+    b.parent.mkdir()
+    a.write_bytes(b"not decoded")
+    b.write_bytes(b"not decoded")
+    out = tmp_path / "out"
+
+    monkeypatch.setattr(ocr_to_txt, "_IS_IMAGE_FILE", lambda path: path.suffix == ".png")
+
+    def fail_model_resolution(args):
+        raise AssertionError("model resolution should not run")
+
+    monkeypatch.setattr(ocr_to_txt, "resolve_ocr_models", fail_model_resolution)
+
+    with pytest.raises(SystemExit) as exc_info:
+        run_main("--no-update-check", "-o", str(out), str(a), str(b))
+
+    assert exc_info.value.code == 1
+    err = capsys.readouterr().err
+    assert "output path collision" in err
+    assert str(out / "page.txt") in err

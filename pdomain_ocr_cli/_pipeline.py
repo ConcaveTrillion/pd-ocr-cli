@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
+from pdomain_ocr_cli import _batch_plan
 from pdomain_ocr_cli._text_normalize import (
     normalize_curly_quotes as _normalize_curly_quotes,
 )
@@ -28,7 +29,7 @@ from pdomain_ocr_cli._text_normalize import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Iterator
+    from collections.abc import Callable, Iterable, Iterator
 
 
 class _ExtractIllustrationsArgs(Protocol):
@@ -179,35 +180,17 @@ def validate_extract_illustrations(args: _ExtractIllustrationsArgs) -> None:
 # ---------------------------------------------------------------------------
 
 
-def compute_mirror_root(inputs: Iterable[str], output_dir: Path | None) -> Path | None:
-    """Return the common-prefix directory used for mirroring directory trees.
+def collect_images(
+    inputs: list[str],
+    recursive: bool,
+    *,
+    is_image_file: Callable[[Path], bool],
+) -> list[Path]:
+    return _batch_plan.collect_images(inputs, recursive, is_image_file=is_image_file)
 
-    Returns ``None`` when no input is a directory or when no ``output_dir``
-    is set — in those cases ``resolve_dest_dir`` falls back to either
-    ``output_dir`` directly or each image's parent.
-    """
-    if output_dir is None:
-        return None
-    input_dirs = [Path(i) for i in inputs if Path(i).is_dir()]
-    if not input_dirs:
-        return None
-    resolved = [d.resolve() for d in input_dirs]
-    try:
-        return Path(os.path.commonpath(resolved))
-    except ValueError:
-        # ``os.path.commonpath`` raises ``ValueError`` when the inputs share
-        # no common ancestor — most commonly on Windows when directories live
-        # on different drives (``C:\scans`` and ``D:\more_scans``), but also
-        # for any platform when the resolved paths cannot be reconciled. Fall
-        # back to flat output (``mirror_root=None``) so the batch proceeds
-        # instead of aborting with an unhandled traceback before any image is
-        # processed. ``resolve_dest_dir`` then writes every page directly
-        # under ``output_dir``.
-        print(  # noqa: T201  # CLI output
-            "WARNING: input directories have no common ancestor; writing outputs flat under --output-dir instead of mirroring.",
-            file=sys.stderr,
-        )
-        return None
+
+def compute_mirror_root(inputs: Iterable[str], output_dir: Path | None) -> Path | None:
+    return _batch_plan.compute_mirror_root(list(inputs), output_dir)
 
 
 def resolve_dest_dir(
@@ -215,29 +198,11 @@ def resolve_dest_dir(
     output_dir: Path | None,
     mirror_root: Path | None,
 ) -> Path:
-    """Pick the directory the .txt/.json/.jpg outputs for ``img_path`` go in.
-
-    - When ``output_dir`` and ``mirror_root`` are both set, mirror the input
-      tree relative to ``mirror_root``.
-    - When only ``output_dir`` is set, all outputs go flat under it.
-    - When neither is set, write next to the image (legacy behavior).
-    """
-    if output_dir and mirror_root:
-        try:
-            rel = img_path.resolve().relative_to(mirror_root)
-            return output_dir / rel.parent
-        except ValueError:
-            return output_dir
-    if output_dir:
-        return output_dir
-    return img_path.parent
+    return _batch_plan.resolve_dest_dir(img_path, output_dir, mirror_root)
 
 
 def output_paths_for(img_path: Path, dest_dir: Path) -> tuple[Path, Path]:
-    """Return ``(txt_path, json_path)`` siblings for ``img_path`` under ``dest_dir``."""
-    txt = dest_dir / img_path.with_suffix(".txt").name
-    json_ = dest_dir / img_path.with_suffix(".json").name
-    return txt, json_
+    return _batch_plan.output_paths_for(img_path, dest_dir)
 
 
 def illustration_crop_path(dest_dir: Path, stem: str, idx: int) -> Path:

@@ -15,6 +15,9 @@ pd-ocr page.png
 # Multiple images (any mix of files / directories)
 pd-ocr page1.png page2.png images/
 
+# OCR pages in smaller chunks (must be >= 1; default 4)
+pd-ocr --batch-pages 2 page1.png page2.png page3.png
+
 # All images in a directory (non-recursive)
 pd-ocr images/
 
@@ -115,8 +118,10 @@ files exist next to them, they're picked up automatically.
 
 ## Layout detection
 
-Layout detection runs by default and feeds the reorganize step. See
-[layout-aware-ocr.md](../architecture/layout-aware-ocr.md) for the full picture.
+Layout detection runs by default when reorganize runs, and feeds the
+reorganize step. Plain `--no-reorg` skips layout too; if you also pass
+`--extract-illustrations`, layout still runs so the crops can be found.
+See [layout-aware-ocr.md](../architecture/layout-aware-ocr.md) for the full picture.
 
 ```sh
 # Skip layout detection entirely (faster, lower-quality reorg on
@@ -181,6 +186,10 @@ pd-ocr --validate-reorg page.png
 # regions are NEVER dropped, regardless of this flag.
 pd-ocr --experimental-drop-layout-words page.png   # also: --edl
 ```
+
+Plain `--no-reorg` emits raw OCR and skips layout detection. Combine it
+with `--extract-illustrations` only when you want raw text plus illustration
+crops; in that case layout detection still runs for crop discovery.
 
 ### Always-on noise-drop warning
 
@@ -274,8 +283,9 @@ fatal). The current set:
 | `--recognition PT_FILE` | `-g` | — | Local recognition `.pt`; requires `--detection` too. |
 | `--output-dir DIR` | `-o` | input's dir | Where `.txt` (and `.json`, crops) are written. |
 | `--recursive` | `-r`, `-R` | off | Recurse into subdirectories of input dirs. |
+| `--batch-pages N` | | `4` | Pages per OCR batch. Must be `>= 1`. |
 | `--save-json` | | off | Write the reorganized doc as `<image>.json`. |
-| `--no-reorg` | | off | Skip `reorganize_page()`; emit raw OCR. |
+| `--no-reorg` | | off | Skip `reorganize_page()` and, unless `--extract-illustrations` is set, layout detection; emit raw OCR. |
 | `--save-reorganize-diagnostics` | | off | With `--save-json`: also write the pure-OCR + post-noise diagnostic snapshots as JSON+TXT siblings. Old alias: `--save-pre-reorg-json`. |
 | `--validate-reorg` | | off | Warn if reorganize drops any OCR words. |
 | `--experimental-drop-layout-words` | `--edl` | off | [experimental] Enable drop of figure-internal OCR words during reorganize: Step Layout-2b (lines fully inside figure regions with no body-text overlap) and Step B2 (figure-internal heuristic noise). Footnote / header / footer / abandoned regions are NEVER dropped, regardless of this flag. |

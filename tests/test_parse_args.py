@@ -233,3 +233,12 @@ def test_custom_det_and_reco_filenames():
         args = parse_args()
     assert args.det_filename == "alt/det.pt"
     assert args.reco_filename == "alt/rec.pt"
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "not-an-int"])
+def test_batch_pages_rejects_non_positive_values(bad, capsys):
+    with _argv("--batch-pages", bad, "page.png"), pytest.raises(SystemExit):
+        parse_args()
+
+    err = capsys.readouterr().err
+    assert "positive integer" in err

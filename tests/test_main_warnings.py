@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 from _fakes import FakePage
 
+from pdomain_ocr_cli import ocr_to_txt
+
 # ---------------------------------------------------------------------------
 # Noise-drop warnings
 # ---------------------------------------------------------------------------
@@ -206,3 +208,19 @@ def test_main_layout_debug_announces_artifact_on_success_line(
 
     captured = capsys.readouterr()
     assert "layout-debug:" in captured.out
+
+
+def test_main_plain_no_reorg_skips_default_layout_loading(
+    mock_heavy_deps, monkeypatch, run_main, single_image
+):
+    mock_heavy_deps()
+    img, out = single_image
+
+    def fail_layout_load(args, device):
+        raise AssertionError("layout should not load for plain --no-reorg")
+
+    monkeypatch.setattr(ocr_to_txt, "_load_layout_detector", fail_layout_load)
+
+    run_main("--no-update-check", "--no-reorg", "-o", str(out), str(img))
+
+    assert (out / "page.txt").read_text() == "FAKE OCR TEXT"

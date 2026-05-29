@@ -11,6 +11,7 @@ from _fakes import pipeline_args
 from pdomain_ocr_cli import _pipeline
 from pdomain_ocr_cli._pipeline import (
     clear_layout_debug_env,
+    collect_images,
     compute_mirror_root,
     diagnostic_output_paths,
     illustration_crop_path,
@@ -50,6 +51,19 @@ def test_validate_extract_illustrations_rejects_combo(capsys):
 # ---------------------------------------------------------------------------
 # compute_mirror_root
 # ---------------------------------------------------------------------------
+
+
+def test_pipeline_collect_images_wrapper_delegates(tmp_path):
+    img = tmp_path / "page.png"
+    img.write_bytes(b"not decoded")
+
+    result = collect_images(
+        [str(img)],
+        recursive=False,
+        is_image_file=lambda path: path.suffix == ".png",
+    )
+
+    assert result == [img]
 
 
 def test_compute_mirror_root_none_when_no_output_dir(tmp_path):
