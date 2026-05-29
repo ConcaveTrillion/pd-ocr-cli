@@ -141,13 +141,14 @@ build: ## Build the project
 	@echo "🔨 Building project..."
 	uv build
 
-ci: ## Run fast CI pipeline (setup → pre-commit → format-check → typecheck → coverage → build); enforces COV_FAIL_UNDER (default 100)
+ci: ## Run fast CI pipeline (setup → pre-commit → format-check → typecheck → coverage → installer-test → build); enforces COV_FAIL_UNDER (default 100)
 	@echo "🚀 Running fast CI pipeline..."
 	@$(MAKE) --no-print-directory setup
 	@$(MAKE) --no-print-directory pre-commit-check
 	@$(MAKE) --no-print-directory format-check
 	@$(MAKE) --no-print-directory typecheck
 	@$(MAKE) --no-print-directory coverage
+	@$(MAKE) --no-print-directory installer-test
 	@$(MAKE) --no-print-directory build
 	@echo "✅ CI pipeline complete!"
 

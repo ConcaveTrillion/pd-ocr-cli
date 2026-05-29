@@ -43,6 +43,7 @@ exit 0
 
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}{os.pathsep}{env['PATH']}"
+    env["PD_OCR_INSTALL_PYTHON"] = "3.12"
     result = subprocess.run(
         ["sh", str(REPO / "install.sh")],
         cwd=tmp_path,
@@ -54,6 +55,7 @@ exit 0
 
     assert result.returncode == 0, result.stderr + result.stdout
     args = uv_log.read_text(encoding="utf-8")
+    assert "--python\n3.12" in args
     assert "--extra-index-url" in args
     assert "https://pdomain.github.io/pdomain-index-pip/simple/" in args
     assert "pdomain_ocr_cli-9.9.9-py3-none-any.whl" in args

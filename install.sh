@@ -22,6 +22,7 @@ set -e
 #   curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh
 
 REPO="pdomain/pdomain-ocr-cli"
+PYTHON_VERSION="${PD_OCR_INSTALL_PYTHON:-3.13}"
 
 # Install uv if not already present
 if ! command -v uv >/dev/null 2>&1; then
@@ -155,7 +156,7 @@ fi
 if [ -n "$EXTRA_INDEX" ]; then
     set -- "$@" --extra-index-url "$EXTRA_INDEX"
 fi
-uv tool install --python 3.13 "$@"
+uv tool install --python "$PYTHON_VERSION" "$@"
 
 echo ""
 echo "Done! Run: pd-ocr page.png"
