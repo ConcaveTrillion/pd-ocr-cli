@@ -1,0 +1,158 @@
+diff --git a/pdomain_ocr_cli/ocr_to_txt.py b/pdomain_ocr_cli/ocr_to_txt.py
+index 991a383..60d80c9 100644
+--- a/pdomain_ocr_cli/ocr_to_txt.py
++++ b/pdomain_ocr_cli/ocr_to_txt.py
+@@ -62,6 +62,9 @@ Options
+                              blocks in the reorganized output (caption text is
+                              still preserved). No effect with --no-reorg.
+ --layout-debug[-dir]         Write layout debug text alongside outputs.
++--batch-pages N              Number of pages per OCR batch (default 4). Higher
++                             values improve GPU utilisation; 1 restores
++                             single-image behaviour.
+ 
+ Downloaded models are cached in ~/.cache/huggingface/hub and reused on
+ subsequent runs.
+@@ -137,6 +140,7 @@ class _CliArgs:
+     layout_checkpoint: str | None
+     layout_confidence: float
+     no_update_check: bool
++    batch_pages: int
+     inputs: list[str]
+ 
+ 
+@@ -208,15 +212,25 @@ class _FormatsModuleLike(Protocol):
+ 
+ 
+ class _DoctrSupportModuleLike(Protocol):
+-    get_finetuned_torch_doctr_predictor: Callable[[Path, Path], object]
++    get_finetuned_torch_doctr_predictor: Callable[..., object]
+ 
+ 
+ class _LayoutModuleLike(Protocol):
+     get_detector: Callable[..., _LayoutDetectorLike]
+ 
+ 
++class _BatchDocumentFactoryLike(Protocol):
++    def __call__(
++        self,
++        images: list[Path],
++        source_identifiers: list[str] | None = None,
++        predictor: object | None = None,
++    ) -> _DocumentLike: ...
++
++
+ class _DocumentClassLike(Protocol):
+     from_image_ocr_via_doctr: _DocumentFactoryLike
++    from_images_ocr_via_doctr: _BatchDocumentFactoryLike
+ 
+ 
+ class _DocumentModuleLike(Protocol):
+@@ -273,6 +287,7 @@ def _coerce_cli_args(args: argparse.Namespace) -> _CliArgs:
+         layout_checkpoint=cast("str | None", args.layout_checkpoint),
+         layout_confidence=cast("float", args.layout_confidence),
+         no_update_check=cast("bool", args.no_update_check),
++        batch_pages=cast("int", args.batch_pages),
+         inputs=cast("list[str]", args.inputs),
+     )
+ 
+@@ -304,13 +319,13 @@ def _detect_torch_device() -> str:
+ # ---------------------------------------------------------------------------
+ 
+ 
+-def _load_predictor(det_path: Path, reco_path: Path) -> object:
++def _load_predictor(det_path: Path, reco_path: Path, det_bs: int = 2, reco_bs: int = 128) -> object:
+     """Import doctr support and build the fine-tuned predictor."""
+     module = cast(
+         "_DoctrSupportModuleLike",
+         cast("object", importlib.import_module("pdomain_book_tools.ocr.doctr_support")),
+     )
+-    return module.get_finetuned_torch_doctr_predictor(det_path, reco_path)
++    return module.get_finetuned_torch_doctr_predictor(det_path, reco_path, det_bs=det_bs, reco_bs=reco_bs)
+ 
+ 
+ def _load_layout_detector(args: _CliArgs, device: str) -> _LayoutDetectorLike:
+@@ -337,6 +352,15 @@ def _load_document_factory() -> _DocumentFactoryLike:
+     return module.Document.from_image_ocr_via_doctr
+ 
+ 
++def _load_batch_document_factory() -> _BatchDocumentFactoryLike:
++    """Return the ``Document.from_images_ocr_via_doctr`` callable."""
++    module = cast(
++        "_DocumentModuleLike",
++        cast("object", importlib.import_module("pdomain_book_tools.ocr.document")),
++    )
++    return module.Document.from_images_ocr_via_doctr
++
++
+ def _load_validate_word_preservation() -> _ValidateWordPreservation:
+     """Return the ``validate_word_preservation`` reorganize-checker."""
+     module = cast(
+@@ -715,6 +739,18 @@ def parse_args() -> argparse.Namespace:
+             "Defaults to each image output directory when --layout-debug is enabled."
+         ),
+     )
++    _ = p.add_argument(
++        "--batch-pages",
++        type=int,
++        default=4,
++        metavar="N",
++        help=(
++            "Number of pages to OCR in a single predictor call (default: 4). "
++            "DocTR batches the detection pass across all pages in each chunk, "
++            "improving GPU utilisation on long runs. Set to 1 to restore "
++            "single-image behaviour. Values below 1 are clamped to 1."
++        ),
++    )
+     _ = p.add_argument(
+         "inputs",
+         nargs="+",
+@@ -867,7 +903,7 @@ def main() -> None:
+     if args.extract_illustrations:
+         cv2_module, crop_types = _load_illustration_deps()
+ 
+-    document_factory = _load_document_factory()
++    batch_document_factory = _load_batch_document_factory()
+ 
+     validate_word_preservation = _load_validate_word_preservation() if args.validate_reorg else None
+ 
+@@ -878,10 +914,29 @@ def main() -> None:
+ 
+     mirror_root = compute_mirror_root(args.inputs, output_dir)
+ 
++    chunk_size = max(1, args.batch_pages)
++
++    # Pre-OCR all images in chunks; store (img_path, page_or_None, doc) triples.
++    # Each chunk calls the predictor once so DocTR can batch the detection pass.
++    ocr_results: list[tuple[Path, object | None, object | None]] = []
++    chunk_start = 0
++    while chunk_start < len(images):
++        chunk = images[chunk_start : chunk_start + chunk_size]
++        chunk_start += chunk_size
++        batch_doc = batch_document_factory(
++            chunk,
++            source_identifiers=[p.name for p in chunk],
++            predictor=predictor,
++        )
++        batch_pages = batch_doc.pages
++        for idx, img_path in enumerate(chunk):
++            page = batch_pages[idx] if idx < len(batch_pages) else None
++            ocr_results.append((img_path, page, batch_doc if idx == 0 else None))
++
+     errors = 0
+     processed = 0
+     interrupted = False
+-    for img_path in images:
++    for img_path, page, _batch_doc in ocr_results:
+         print(f"Processing {img_path} ...", end=" ", flush=True)  # noqa: T201  # CLI output
+         debug_file = None
+         dest_dir = resolve_dest_dir(img_path, output_dir, mirror_root)
+@@ -900,9 +955,6 @@ def main() -> None:
+             # path; keep it inside the per-image ``try`` so an unwritable
+             # ``--layout-debug-dir`` is recorded as one per-image error
+             # rather than aborting the whole batch.
+-            debug_file = setup_layout_debug_env(args, dest_dir, img_path.stem)
+-            doc = document_factory(img_path, source_identifier=img_path.name, predictor=predictor)
+-            page = doc.pages[0] if doc.pages else None
+             if page is None:
+                 # Close the ``Processing X ...`` line (printed with
+                 # end=" ") before the warning so subsequent stdout
