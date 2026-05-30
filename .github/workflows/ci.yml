@@ -1,8 +1,6 @@
 name: ci
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
@@ -23,11 +21,11 @@ jobs:
       CI_UV_VERSION: "0.11.16"
       PDOMAIN_OPS_REF: "2d01f1d2fee7fbdb2bd5a19e28182e949330cfd3"
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           repository: pdomain/pdomain-ops
           ref: ${{ env.PDOMAIN_OPS_REF }}

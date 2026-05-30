@@ -26,3 +26,10 @@ _No open items._ (Shipped items moved to `docs/archive/plans/`.)
   workflow static checks, and wheel smoke for Python 3.11, 3.12, and 3.13.
 - Hardened release gating so path-sourced runtime dependencies block release
   until they resolve from `pdomain-index-pip`.
+
+## Note: pdomain-ops path source
+
+After Wave 4 Task 5 (`--batch-pages` / `run_doctr_batch`), `pyproject.toml`
+uses a path-sourced `pdomain-ops` entry in `[tool.uv.sources]` because
+pdomain-ops is not yet published to `pdomain-index-pip`. Once pdomain-ops
+cuts a release, update the source to `{ index = "pdomain-index-pip" }`.

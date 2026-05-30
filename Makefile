@@ -231,7 +231,7 @@ release-major: ## Release: bump major, run ci-slow, tag, push (fires GitHub Rele
 # creates the three-component tag, and pushes main + tag (which fires the
 # GitHub Release workflow at .github/workflows/release.yml).
 # Pass FORCE=1 to skip the repo-state guards (pre-flight still runs).
-# Pass SKIP_PUSH=1 to create the tag locally without pushing (dry-run).
+# Pass SKIP_PUSH=1 to create the tag locally without pushing.
 _do-release:
 	@BUMP=$(or $(BUMP),minor) ./scripts/do-release.sh
 
