@@ -36,10 +36,10 @@ Do not edit `.basedpyright/baseline.json` in worker branches. Regenerate it only
 - Modify: `pdomain_ocr_cli/_hf_models.py`
 - Optional test touch: `tests/test_hf_models_argparse.py`
 
-- [ ] Replace `argparse.Namespace` parameters with narrow protocols for the model-resolution args.
-- [ ] Type the attributes consumed by `resolve_ocr_models`, `det_source_descriptor`, `reco_source_descriptor`, and `resolve_layout_source`.
-- [ ] Contain untyped `pdomain_book_tools.hf` imports at the module boundary with precise aliases or casts.
-- [ ] Verify:
+- [x] Replace `argparse.Namespace` parameters with narrow protocols for the model-resolution args.
+- [x] Type the attributes consumed by `resolve_ocr_models`, `det_source_descriptor`, `reco_source_descriptor`, and `resolve_layout_source`.
+- [x] Contain untyped `pdomain_book_tools.hf` imports at the module boundary with precise aliases or casts.
+- [x] Verify:
 
 ```bash
 uv run basedpyright pdomain_ocr_cli/_hf_models.py --baselinefile /tmp/bpy-hf-empty.json
@@ -56,11 +56,11 @@ uv run ruff check pdomain_ocr_cli/_hf_models.py tests/test_hf_models_argparse.py
 - Modify: `pdomain_ocr_cli/_pipeline.py`
 - Optional test touch: `tests/test_pipeline_helpers.py`, `tests/test_main_mocked.py`
 
-- [ ] Add narrow protocols for layout args, word-like values, diagnostic page snapshots, and crop regions.
-- [ ] Replace explicit `Any` in helper signatures where `object`, `Protocol`, or concrete containers are sufficient.
-- [ ] Assign intentionally ignored `os.environ.pop` results to `_`.
-- [ ] Replace implicit string concatenation in warning/note strings.
-- [ ] Verify:
+- [x] Add narrow protocols for layout args, word-like values, diagnostic page snapshots, and crop regions.
+- [x] Replace explicit `Any` in helper signatures where `object`, `Protocol`, or concrete containers are sufficient.
+- [x] Assign intentionally ignored `os.environ.pop` results to `_`.
+- [x] Replace implicit string concatenation in warning/note strings.
+- [x] Verify:
 
 ```bash
 uv run basedpyright pdomain_ocr_cli/_pipeline.py --baselinefile /tmp/bpy-pipeline-empty.json
@@ -77,11 +77,11 @@ uv run ruff check pdomain_ocr_cli/_pipeline.py tests/test_pipeline_helpers.py te
 - Modify: `pdomain_ocr_cli/_update_check.py`
 - Optional test touch: `tests/test_update_check_bypass.py`, `tests/test_update_check_network.py`, `tests/test_update_check_parsers.py`
 
-- [ ] Treat `json.loads` as `object` and validate the GitHub tags payload before passing it to `_latest_stable_tag`.
-- [ ] Add a small typed boundary for tag dictionaries.
-- [ ] Preserve the existing best-effort network failure behavior.
-- [ ] Replace the implicit notice-string concatenation.
-- [ ] Verify:
+- [x] Treat `json.loads` as `object` and validate the GitHub tags payload before passing it to `_latest_stable_tag`.
+- [x] Add a small typed boundary for tag dictionaries.
+- [x] Preserve the existing best-effort network failure behavior.
+- [x] Replace the implicit notice-string concatenation.
+- [x] Verify:
 
 ```bash
 uv run basedpyright pdomain_ocr_cli/_update_check.py --baselinefile /tmp/bpy-update-empty.json
@@ -98,13 +98,13 @@ uv run ruff check pdomain_ocr_cli/_update_check.py tests/test_update_check_*.py
 - Modify: `pdomain_ocr_cli/ocr_to_txt.py`
 - Optional test touch: `tests/test_parse_args.py`, `tests/test_main_mocked.py`, `tests/test_collect_images.py`, `tests/test_gpu_nudge.py`, `tests/test_torch_device.py`
 
-- [ ] Add narrow protocols for parsed CLI args, predictor/document/page/layout detector/cv2-like dependencies, and crop regions.
-- [ ] Replace loader return `Any` types with typed callable aliases or protocols.
-- [ ] Fix optional import probe diagnostics while preserving import-only behavior.
-- [ ] Assign argparse action return values to `_`.
-- [ ] Replace implicit string concatenation in help and error text.
-- [ ] Type main-loop interactions at external-library boundaries with narrow casts, not broad ignores.
-- [ ] Verify:
+- [x] Add narrow protocols for parsed CLI args, predictor/document/page/layout detector/cv2-like dependencies, and crop regions.
+- [x] Replace loader return `Any` types with typed callable aliases or protocols.
+- [x] Fix optional import probe diagnostics while preserving import-only behavior.
+- [x] Assign argparse action return values to `_`.
+- [x] Replace implicit string concatenation in help and error text.
+- [x] Type main-loop interactions at external-library boundaries with narrow casts, not broad ignores.
+- [x] Verify:
 
 ```bash
 uv run basedpyright pdomain_ocr_cli/ocr_to_txt.py --baselinefile /tmp/bpy-ocr-empty.json
@@ -114,8 +114,8 @@ uv run ruff check pdomain_ocr_cli/ocr_to_txt.py tests/test_parse_args.py tests/t
 
 ## Merge-Back Checklist
 
-- [ ] Review each worker branch diff.
-- [ ] Merge branches into one integration branch.
-- [ ] Run `uv run basedpyright pdomain_ocr_cli --baselinefile /tmp/no-baseline-pdomain-ocr-cli.json` to confirm production warnings are gone.
-- [ ] Regenerate `.basedpyright/baseline.json` once with the final merged state if tests remain included in project-wide type checking.
-- [ ] Run `make test AI=1`, `make lint AI=1`, and finally `make ci AI=1`.
+- [x] Review each worker branch diff.
+- [x] Merge branches into one integration branch.
+- [x] Run `uv run basedpyright pdomain_ocr_cli --baselinefile /tmp/no-baseline-pdomain-ocr-cli.json` to confirm production warnings are gone.
+- [x] Regenerate `.basedpyright/baseline.json` once with the final merged state if tests remain included in project-wide type checking.
+- [x] Run `make test AI=1`, `make lint AI=1`, and finally `make ci AI=1`.
