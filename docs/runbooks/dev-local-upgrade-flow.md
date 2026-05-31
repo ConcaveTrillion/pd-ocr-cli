@@ -84,7 +84,7 @@ this doc captures the contract on the `pdomain-ocr-cli` side.
 - `Makefile` — current `upgrade-deps` recipe (lines ~75–80) and the
   `dev-local` / `check-local-editable` targets it will need to call
   back into.
-- `scripts/check-editable.py` — already does the editable-resolution
+- `scripts/check_editable.py` — already does the editable-resolution
   probe; the implementation can lean on (or extend) it rather than
   re-parsing `uv pip show` from scratch.
 - Workspace-level standardization: same fix landing in `pdomain-book-tools`,

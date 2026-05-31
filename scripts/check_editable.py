@@ -18,7 +18,7 @@ import sys
 import pdomain_book_tools
 
 if len(sys.argv) != 2:
-    print("usage: check-editable.py <expected-peer-path>", file=sys.stderr)  # CLI output
+    print("usage: check_editable.py <expected-peer-path>", file=sys.stderr)  # CLI output
     sys.exit(2)
 
 expected_peer = os.path.realpath(sys.argv[1])
