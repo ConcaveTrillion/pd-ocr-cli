@@ -9,7 +9,7 @@ index 991a383..60d80c9 100644
 +--batch-pages N              Number of pages per OCR batch (default 4). Higher
 +                             values improve GPU utilisation; 1 restores
 +                             single-image behaviour.
- 
+
  Downloaded models are cached in ~/.cache/huggingface/hub and reused on
  subsequent runs.
 @@ -137,6 +140,7 @@ class _CliArgs:
@@ -18,20 +18,20 @@ index 991a383..60d80c9 100644
      no_update_check: bool
 +    batch_pages: int
      inputs: list[str]
- 
- 
+
+
 @@ -208,15 +212,25 @@ class _FormatsModuleLike(Protocol):
- 
- 
+
+
  class _DoctrSupportModuleLike(Protocol):
 -    get_finetuned_torch_doctr_predictor: Callable[[Path, Path], object]
 +    get_finetuned_torch_doctr_predictor: Callable[..., object]
- 
- 
+
+
  class _LayoutModuleLike(Protocol):
      get_detector: Callable[..., _LayoutDetectorLike]
- 
- 
+
+
 +class _BatchDocumentFactoryLike(Protocol):
 +    def __call__(
 +        self,
@@ -44,8 +44,8 @@ index 991a383..60d80c9 100644
  class _DocumentClassLike(Protocol):
      from_image_ocr_via_doctr: _DocumentFactoryLike
 +    from_images_ocr_via_doctr: _BatchDocumentFactoryLike
- 
- 
+
+
  class _DocumentModuleLike(Protocol):
 @@ -273,6 +287,7 @@ def _coerce_cli_args(args: argparse.Namespace) -> _CliArgs:
          layout_checkpoint=cast("str | None", args.layout_checkpoint),
@@ -54,11 +54,11 @@ index 991a383..60d80c9 100644
 +        batch_pages=cast("int", args.batch_pages),
          inputs=cast("list[str]", args.inputs),
      )
- 
+
 @@ -304,13 +319,13 @@ def _detect_torch_device() -> str:
  # ---------------------------------------------------------------------------
- 
- 
+
+
 -def _load_predictor(det_path: Path, reco_path: Path) -> object:
 +def _load_predictor(det_path: Path, reco_path: Path, det_bs: int = 2, reco_bs: int = 128) -> object:
      """Import doctr support and build the fine-tuned predictor."""
@@ -68,13 +68,13 @@ index 991a383..60d80c9 100644
      )
 -    return module.get_finetuned_torch_doctr_predictor(det_path, reco_path)
 +    return module.get_finetuned_torch_doctr_predictor(det_path, reco_path, det_bs=det_bs, reco_bs=reco_bs)
- 
- 
+
+
  def _load_layout_detector(args: _CliArgs, device: str) -> _LayoutDetectorLike:
 @@ -337,6 +352,15 @@ def _load_document_factory() -> _DocumentFactoryLike:
      return module.Document.from_image_ocr_via_doctr
- 
- 
+
+
 +def _load_batch_document_factory() -> _BatchDocumentFactoryLike:
 +    """Return the ``Document.from_images_ocr_via_doctr`` callable."""
 +    module = cast(
@@ -109,16 +109,16 @@ index 991a383..60d80c9 100644
 @@ -867,7 +903,7 @@ def main() -> None:
      if args.extract_illustrations:
          cv2_module, crop_types = _load_illustration_deps()
- 
+
 -    document_factory = _load_document_factory()
 +    batch_document_factory = _load_batch_document_factory()
- 
+
      validate_word_preservation = _load_validate_word_preservation() if args.validate_reorg else None
- 
+
 @@ -878,10 +914,29 @@ def main() -> None:
- 
+
      mirror_root = compute_mirror_root(args.inputs, output_dir)
- 
+
 +    chunk_size = max(1, args.batch_pages)
 +
 +    # Pre-OCR all images in chunks; store (img_path, page_or_None, doc) triples.

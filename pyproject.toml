@@ -14,7 +14,7 @@ license = { text = "Unlicense" }
 requires-python = ">=3.11,<3.14"
 dependencies = [
     "pdomain-book-tools>=0.14.1",
-    "pdomain-ops>=0.3.1",
+    "pdomain-ops>=0.3.0",
     "huggingface_hub>=0.23",
 ]
 
@@ -55,18 +55,11 @@ url = "https://pdomain.github.io/pdomain-index-pip/simple/"
 explicit = true
 
 [tool.uv]
-required-version = "0.11.16"
+required-version = ">=0.11.16"
 
 [tool.uv.sources]
 pdomain-book-tools = { index = "pdomain-index-pip" }
-# pdomain-ops is not yet published to pdomain-index-pip. Until it is, local
-# development resolves it from the workspace sibling (path is relative to this
-# pyproject = repo root). Release is intentionally blocked by
-# `make check-release-deps` while this source remains path-based.
-# TODO(release): once pdomain-ops ships to pdomain-index-pip, replace this with
-#   pdomain-ops = { index = "pdomain-index-pip" }
-# to match book-tools and rely on local-dev mode for the editable overlay.
-pdomain-ops = { path = "../pdomain-ops", editable = true }
+pdomain-ops = { index = "pdomain-index-pip" }
 
 [tool.hatch.version]
 source = "vcs"
