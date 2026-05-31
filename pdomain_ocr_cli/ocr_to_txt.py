@@ -404,7 +404,7 @@ def _pick_device() -> str:
         "object",
         importlib.import_module("pdomain_ops.gpu.device"),
     )
-    fn = cast("Callable[[], str]", module.pick_device)  # pyright: ignore[reportAttributeAccessIssue]
+    fn = cast("Callable[[], str]", module.pick_device)  # pyright: ignore[reportAttributeAccessIssue]  # module loaded via importlib; attrs not visible to type checker
     return fn()
 
 
@@ -427,7 +427,7 @@ def _run_doctr_batch(
     )
     fn = cast(
         "Callable[..., list[_PageLike | None]]",
-        module.run_doctr_batch,  # pyright: ignore[reportAttributeAccessIssue]
+        module.run_doctr_batch,  # pyright: ignore[reportAttributeAccessIssue]  # module loaded via importlib; attrs not visible to type checker
     )
     try:
         return fn(
@@ -978,7 +978,7 @@ def main() -> None:
                 raw = img_path.read_bytes()
                 arr = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_COLOR)
                 if arr is None:
-                    raise ValueError(  # noqa: TRY301
+                    raise ValueError(  # noqa: TRY301  # raise inside try is intentional: outer except unifies all decode failures
                         "cv2.imdecode returned None -- image bytes are not a valid image format"
                     )
             except Exception as e:  # noqa: BLE001  # per-image decode error: catch all, report, continue
