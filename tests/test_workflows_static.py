@@ -21,7 +21,7 @@ def test_release_uses_env_for_ref_name_in_shell() -> None:
     text = (REPO / ".github/workflows/release.yml").read_text(encoding="utf-8")
     run_blocks = [line for line in text.splitlines() if "client_payload[tag]" in line]
     assert all("${{ github.ref_name }}" not in line for line in run_blocks)
-    assert "RELEASE_TAG: ${{ github.ref_name }}" in text
+    assert "RELEASE_TAG: ${{ github.event.inputs.tag }}" in text
 
 
 def test_ci_declares_supported_python_matrix() -> None:

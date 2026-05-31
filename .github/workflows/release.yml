@@ -70,8 +70,10 @@ jobs:
           version: "0.11.16"
       - name: Set up Python
         run: uv python install 3.12
+      - name: Check release dependency sources
+        run: make check-release-deps
       - name: Build release artifacts
-        run: make build
+        run: uv build
 
       - name: List built artifacts
         run: ls -la dist/
