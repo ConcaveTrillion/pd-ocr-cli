@@ -1,7 +1,7 @@
 """Argparse-shaped adapters around :mod:`pdomain_book_tools.hf`.
 
 The canonical model-resolution primitives live in ``pdomain_book_tools.hf`` so
-pdomain-ocr-cli, pd-ocr-labeler, and pdomain-prep-for-pgdp share them. This module keeps
+pdomain-ocr-cli, pdomain-ocr-labeler, and pdomain-prep-for-pgdp share them. This module keeps
 only the argparse-flavoured wrappers that the CLI's ``ocr_to_txt`` driver
 needs — the kwargs-shaped functions in ``pdomain_book_tools.hf`` are the right
 target for non-CLI callers.
@@ -44,10 +44,10 @@ class _PdBookToolsHfModule(Protocol):
     def resolve_ocr_models(
         self,
         *,
-        repo: str = "CT2534/pd-ocr-models",
+        repo: str = "pdomain/pdomain-ocr-models",
         revision: str | None = None,
-        det_filename: str = "detection/pd-all-detection-model-finetuned.pt",
-        reco_filename: str = "recognition/pd-all-recognition-model-finetuned.pt",
+        det_filename: str = "detection/pdomain-all-detection-model-finetuned.pt",
+        reco_filename: str = "recognition/pdomain-all-recognition-model-finetuned.pt",
         detection_path: Path | None = None,
         recognition_path: Path | None = None,
     ) -> tuple[Path, Path]: ...

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-uv-tool.sh — install pd-ocr as a uv tool, auto-detecting CUDA.
+# install-uv-tool.sh — install pdomain-ocr as a uv tool, auto-detecting CUDA.
 #
 # Mirrors the original inline `install` recipe behavior: detects an NVIDIA
 # GPU + CUDA version via nvidia-smi and adds the matching PyTorch wheel
@@ -26,10 +26,10 @@ else
     echo "💻 No GPU detected — installing CPU-only PyTorch."
 fi
 
-echo "📦 Installing pd-ocr from local source..."
+echo "📦 Installing pdomain-ocr from local source..."
 if [ -n "$EXTRA_INDEX" ]; then
     uv tool install --reinstall . --extra-index-url "$EXTRA_INDEX"
 else
     uv tool install --reinstall .
 fi
-echo "✅ pd-ocr installed. Run: pd-ocr --version"
+echo "✅ pdomain-ocr installed. Run: pdomain-ocr --version"

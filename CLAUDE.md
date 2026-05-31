@@ -2,7 +2,7 @@
 
 CLI tool that turns scanned book pages into clean `.txt` files. Wraps
 `pdomain-book-tools` OCR/layout primitives with auto-rotation, layout-aware
-reading-order reconstruction, and a user-facing `pd-ocr` command.
+reading-order reconstruction, and a user-facing `pdomain-ocr` command.
 
 ## Commands
 
@@ -14,10 +14,10 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | `make local-check` | print local-dev mode + per-sibling resolution |
 | `make local-upgrade-deps` | upgrade deps then restore editable siblings (local-mode only) |
 | `make local-install` / `local-uninstall` | `uv tool install` with editable siblings / uninstall |
-| `make local-run` | run `pd-ocr` against local-dev workspace (local-mode only) |
+| `make local-run` | run `pdomain-ocr` against local-dev workspace (local-mode only) |
 | `make local-test` | run fast test suite against editable local-dev siblings (local-mode only) |
 | `make local-test-slow` | run full test suite incl. slow integration tests against editable local-dev siblings (local-mode only) |
-| `make update-pd-deps` | bump pd-* sibling deps to registry latest; leaves diff for review |
+| `make update-pdomain-deps` | bump pd-* sibling deps to registry latest; leaves diff for review |
 | `make test AI=1` | fast suite (`uv run pytest -n auto`; skips `@pytest.mark.slow`) |
 | `make test-slow AI=1` | full suite incl. real-model integration tests |
 | `make lint AI=1` / `make format AI=1` | ruff |
@@ -25,7 +25,7 @@ reading-order reconstruction, and a user-facing `pd-ocr` command.
 | `make ci AI=1` | setup → pre-commit → test → build |
 | `make upgrade-pdomain-book-tools` | bump pin to latest GitHub tag |
 | `make release-{patch,minor,major}` | tag locally; `git push --tags` triggers release workflow |
-| `make refresh-version` | re-derive `pd-ocr --version` after tag changes (hatch-vcs) |
+| `make refresh-version` | re-derive `pdomain-ocr --version` after tag changes (hatch-vcs) |
 
 `AI=1` captures verbose output to `.ci-ai.log`; stdout shows `✅` on pass or
 filtered failure sections on error. Remove `AI=1` only if you need full verbose

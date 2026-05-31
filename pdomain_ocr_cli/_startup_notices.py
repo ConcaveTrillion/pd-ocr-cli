@@ -41,7 +41,7 @@ GPU_NUDGE_CACHE: dict[str, bool] = {}
 
 
 def should_nudge_gpu_install(cache: dict[str, bool] | None = None) -> bool:
-    """Return True when an NVIDIA host looks like a CPU-only pd-ocr install."""
+    """Return True when an NVIDIA host looks like a CPU-only pdomain-ocr install."""
     cache = GPU_NUDGE_CACHE if cache is None else cache
     if "result" in cache:
         return cache["result"]
@@ -90,12 +90,12 @@ def maybe_print_gpu_nudge(
         if should_nudge():
             print(  # noqa: T201  # CLI output
                 (
-                    "pd-ocr: NVIDIA GPU detected but pd-ocr was installed CPU-only.\n"
+                    "pdomain-ocr: NVIDIA GPU detected but pdomain-ocr was installed CPU-only.\n"
                     + "        Re-run the install script to switch to GPU (requires CUDA >= 12.4):\n"
                     + "          curl -sSL https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.sh | sh\n"
                     + "        Set PD_OCR_NO_GPU_NUDGE=1 to silence this message."
                 ),
                 file=sys.stderr,
             )
-    except BaseException:  # noqa: BLE001 S110  # notice helper must never crash pd-ocr
+    except BaseException:  # noqa: BLE001 S110  # notice helper must never crash pdomain-ocr
         pass

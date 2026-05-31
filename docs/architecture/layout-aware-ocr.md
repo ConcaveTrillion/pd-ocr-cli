@@ -1,6 +1,6 @@
 # Layout-aware OCR
 
-`pd-ocr` runs document-layout detection on every page by default. The
+`pdomain-ocr` runs document-layout detection on every page by default. The
 detected regions feed `Page.reorganize_page()` as a hint, which:
 
 - Detects high-confidence running titles and page numbers, role-labels
@@ -40,20 +40,20 @@ requires layout regions to discover crop boxes.
 # Skip layout detection entirely (faster; reorganize falls back to
 # heuristics, which can fold captions into paragraphs and leave page
 # numbers in the body text).
-pd-ocr --layout-model none page.png
+pdomain-ocr --layout-model none page.png
 
 # Crop figure / decoration / table regions to i_<stem>_<n>.jpg files
 # alongside the .txt output.
-pd-ocr --extract-illustrations page.png
+pdomain-ocr --extract-illustrations page.png
 
 # Use a fine-tuned PP-DocLayout checkpoint (path or HF repo).
-pd-ocr --layout-checkpoint ~/my-finetuned-layout/ page.png
+pdomain-ocr --layout-checkpoint ~/my-finetuned-layout/ page.png
 
 # Lower confidence threshold for noisier scans.
-pd-ocr --layout-confidence 0.3 page.png
+pdomain-ocr --layout-confidence 0.3 page.png
 
 # Per-step layout diagnostics for tuning the reorganize pipeline.
-pd-ocr --layout-debug page.png
+pdomain-ocr --layout-debug page.png
 ```
 
 ## Page rotation

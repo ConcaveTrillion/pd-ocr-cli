@@ -31,4 +31,4 @@ Makefile.local
 .ci-ai.log
 
 # local-dev mode marker (written by scripts/local-dev.sh)
-.venv/.pd-local-mode
+.venv/.pdomain-local-mode

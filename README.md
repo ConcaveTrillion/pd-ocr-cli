@@ -3,13 +3,13 @@
 Turn scanned book pages into clean `.txt` files. No setup required —
 just install and point it at an image.
 
-## What pd-ocr does
+## What pdomain-ocr does
 
 Point it at a page scan (or a folder of them) and it writes a `.txt`
 file next to each image. Two things make the output more useful than
 plain OCR:
 
-- **Layout-aware reorganization.** Before reading the words, `pd-ocr`
+- **Layout-aware reorganization.** Before reading the words, `pdomain-ocr`
   looks at the whole page and figures out what each part is — the body
   text, the figures, the captions underneath them, the running title at
   the top, the page number at the bottom, any sidenotes in the margin.
@@ -22,7 +22,7 @@ plain OCR:
   if this happens. More in
   [docs/architecture/layout-aware-ocr.md](docs/architecture/layout-aware-ocr.md).
 - **Auto-rotation.** If a page was scanned sideways or upside down,
-  `pd-ocr` re-runs the OCR at 90° / 180° / 270° and keeps the
+  `pdomain-ocr` re-runs the OCR at 90° / 180° / 270° and keeps the
   orientation that reads best.
 
 The first time you run it, it downloads the models it needs
@@ -38,7 +38,7 @@ environment, but the wheel is tested on Python 3.11, 3.12, and 3.13.
 
 ## GPU acceleration (optional)
 
-`pd-ocr` works fine on CPU. Add an NVIDIA GPU and it goes faster — worth
+`pdomain-ocr` works fine on CPU. Add an NVIDIA GPU and it goes faster — worth
 it when you're running through a whole book rather than one page.
 
 > ⚠️ **Heads up — disk space.** The NVIDIA path pulls in the CUDA
@@ -84,27 +84,27 @@ script is only used as a development override.
 
 ```sh
 # OCR a single image (output written alongside as page.txt)
-pd-ocr page.png
+pdomain-ocr page.png
 
 # Multiple images
-pd-ocr page1.png page2.png page3.png
+pdomain-ocr page1.png page2.png page3.png
 
 # Process all images in a directory
-pd-ocr images/
+pdomain-ocr images/
 
 # Process a directory tree recursively, mirroring structure into output/
-pd-ocr -r images/ -o output/
+pdomain-ocr -r images/ -o output/
 
 # Also save the reorganized OCR document as JSON
-pd-ocr --save-json page.png
+pdomain-ocr --save-json page.png
 
 # Print the installed version
-pd-ocr --version
+pdomain-ocr --version
 ```
 
 Full flag reference — quote / em-dash normalization, model pinning,
 layout-detector options, illustration extraction, debug output — in
-[docs/usage/cli-usage.md](docs/usage/cli-usage.md). `pd-ocr --help` lists everything
+[docs/usage/cli-usage.md](docs/usage/cli-usage.md). `pdomain-ocr --help` lists everything
 authoritatively.
 
 ---
@@ -133,8 +133,8 @@ heavier CuPy stack is skipped (CuPy itself requires CUDA ≥ 12.4).
 
 ### Why am I seeing a "GPU detected but installed CPU-only" message?
 
-On startup, `pd-ocr` does a cheap check: if your host has an NVIDIA GPU
-(`nvidia-smi` on `PATH`, exits 0) but pd-ocr was installed without the
+On startup, `pdomain-ocr` does a cheap check: if your host has an NVIDIA GPU
+(`nvidia-smi` on `PATH`, exits 0) but pdomain-ocr was installed without the
 `[gpu]` extra (CuPy isn't importable), it prints a one-line nudge to
 stderr suggesting the reinstall command. The probe is fail-soft — any
 error is swallowed and the OCR run proceeds normally.
@@ -209,7 +209,7 @@ To also remove the cached models, check your `HF_HOME` environment variable for 
 ```sh
 echo $HF_HOME   # custom location if set
 # Default location:
-rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
+rm -rf ~/.cache/huggingface/hub/models--pdomain--pdomain-ocr-models
 ```
 
 ---
@@ -230,12 +230,12 @@ rm -rf ~/.cache/huggingface/hub/models--CT2534--pd-ocr-models
 
 ### Network calls the tool makes
 
-`pd-ocr` does not collect telemetry or call home with usage data. It
+`pdomain-ocr` does not collect telemetry or call home with usage data. It
 makes exactly these outbound requests:
 
 1. **Model downloads** (first run only, then cached):
    - OCR weights from
-     [`CT2534/pd-ocr-models`](https://huggingface.co/CT2534/pd-ocr-models)
+     [`pdomain/pdomain-ocr-models`](https://huggingface.co/pdomain/pdomain-ocr-models)
      on `huggingface.co`.
    - Layout weights from
      [`CT2534/PP-DocLayout_plus-L`](https://huggingface.co/CT2534/PP-DocLayout_plus-L)
@@ -275,7 +275,7 @@ time to upgrade or to switch between CPU and GPU. They:
   pointing at the self-hosted `pdomain-index-pip` (for `pdomain-book-tools`) and at
   PyTorch's CUDA index when applicable.
 
-Once installed, `pd-ocr` itself only does the two outbound requests
+Once installed, `pdomain-ocr` itself only does the two outbound requests
 listed above.
 
 ### Manual install

@@ -145,7 +145,7 @@ inline, each with a trailing rationale.
 **Justification.** Three distinct best-effort boundaries:
 
 - The CuPy GPU probe and the GPU-install nudge helper must never crash
-  `pd-ocr` — a broken native CuPy can even segfault, so the catch is
+  `pdomain-ocr` — a broken native CuPy can even segfault, so the catch is
   intentionally `BaseException` and silent.
 - The update-check is best-effort; any network/parse failure is safe to
   swallow.

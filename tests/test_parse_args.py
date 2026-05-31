@@ -1,7 +1,7 @@
 """Argparse coverage beyond ``test_update_check_bypass``.
 
 Confirms defaults, accepted choices, alias handling, and required-input
-behavior for the ``pd-ocr`` CLI.
+behavior for the ``pdomain-ocr`` CLI.
 """
 
 from unittest.mock import patch
@@ -17,7 +17,7 @@ from pdomain_ocr_cli.ocr_to_txt import parse_args
 
 
 def _argv(*args):
-    return patch("sys.argv", ["pd-ocr", *args])
+    return patch("sys.argv", ["pdomain-ocr", *args])
 
 
 def test_defaults_with_single_input():

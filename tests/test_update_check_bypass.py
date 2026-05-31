@@ -41,13 +41,13 @@ def test_env_truthy_strips_whitespace(monkeypatch):
 
 
 def test_no_update_check_flag_default_false():
-    with patch("sys.argv", ["pd-ocr", "page.png"]):
+    with patch("sys.argv", ["pdomain-ocr", "page.png"]):
         args = parse_args()
     assert args.no_update_check is False
 
 
 def test_no_update_check_flag_set():
-    with patch("sys.argv", ["pd-ocr", "--no-update-check", "page.png"]):
+    with patch("sys.argv", ["pdomain-ocr", "--no-update-check", "page.png"]):
         args = parse_args()
     assert args.no_update_check is True
 
@@ -66,21 +66,21 @@ def _gate_disabled(args, monkeypatch_env):
 
 def test_gate_off_by_default(monkeypatch):
     monkeypatch.delenv("PD_OCR_NO_UPDATE_CHECK", raising=False)
-    with patch("sys.argv", ["pd-ocr", "page.png"]):
+    with patch("sys.argv", ["pdomain-ocr", "page.png"]):
         args = parse_args()
     assert _gate_disabled(args, monkeypatch) is False
 
 
 def test_gate_on_via_flag(monkeypatch):
     monkeypatch.delenv("PD_OCR_NO_UPDATE_CHECK", raising=False)
-    with patch("sys.argv", ["pd-ocr", "--no-update-check", "page.png"]):
+    with patch("sys.argv", ["pdomain-ocr", "--no-update-check", "page.png"]):
         args = parse_args()
     assert _gate_disabled(args, monkeypatch) is True
 
 
 def test_gate_on_via_env_var(monkeypatch):
     monkeypatch.setenv("PD_OCR_NO_UPDATE_CHECK", "1")
-    with patch("sys.argv", ["pd-ocr", "page.png"]):
+    with patch("sys.argv", ["pdomain-ocr", "page.png"]):
         args = parse_args()
     assert _gate_disabled(args, monkeypatch) is True
 
@@ -88,7 +88,7 @@ def test_gate_on_via_env_var(monkeypatch):
 def test_gate_on_via_either(monkeypatch):
     """Flag set + env unset still disables; flag unset + env truthy still disables."""
     monkeypatch.setenv("PD_OCR_NO_UPDATE_CHECK", "yes")
-    with patch("sys.argv", ["pd-ocr", "--no-update-check", "page.png"]):
+    with patch("sys.argv", ["pdomain-ocr", "--no-update-check", "page.png"]):
         args = parse_args()
     assert _gate_disabled(args, monkeypatch) is True
 

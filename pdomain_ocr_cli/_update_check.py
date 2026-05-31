@@ -146,7 +146,7 @@ def check_for_update() -> None:
         is_pre_release = _parse_stable_tag(VERSION) is None
         if latest > current or (is_pre_release and latest == current):
             notice = (
-                f"\nNOTICE: A newer version of pd-ocr is available "
+                f"\nNOTICE: A newer version of pdomain-ocr is available "
                 f"({latest_tag_name}, you have {VERSION}).\n"
                 f"  To upgrade, run:\n"
                 f"    curl -sSL {_INSTALL_URL} | sh\n"

@@ -3,7 +3,7 @@
 The nudge fires on hosts that have an NVIDIA GPU (``nvidia-smi`` present
 and exiting 0) but were installed CPU-only (CuPy not importable). It is
 opt-out via ``PD_OCR_NO_GPU_NUDGE=1`` and must NEVER raise — a bug in a
-printing helper must not break ``pd-ocr`` itself.
+printing helper must not break ``pdomain-ocr`` itself.
 """
 
 from __future__ import annotations
@@ -226,7 +226,7 @@ def test_maybe_print_silent_when_not_nudging(monkeypatch, capsys):
 
 
 def test_maybe_print_swallows_helper_exceptions(monkeypatch, capsys):
-    """A bug in ``_should_nudge_gpu_install`` must not break ``pd-ocr``."""
+    """A bug in ``_should_nudge_gpu_install`` must not break ``pdomain-ocr``."""
 
     def _broken():
         raise RuntimeError("nudge helper bug")

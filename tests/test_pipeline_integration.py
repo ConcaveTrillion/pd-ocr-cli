@@ -97,11 +97,11 @@ def _invoke_main(
     Replaces ``_load_predictor`` so the session-scoped predictor is
     reused — every other code path (argparse, layout resolution, the
     per-image loop, exit-code logic) runs unmocked, exactly as in a
-    real ``pd-ocr`` invocation.
+    real ``pdomain-ocr`` invocation.
     """
     monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: shared_predictor)
     argv = [
-        "pd-ocr",
+        "pdomain-ocr",
         "--no-update-check",
         "--model-version",
         PINNED_MODEL_REVISION,
@@ -131,7 +131,7 @@ def _invoke_main_default_layout(
     """Run ``ocr_to_txt.main()`` without forcing ``--layout-model none``."""
     monkeypatch.setattr(ocr_to_txt, "_load_predictor", lambda det, reco: shared_predictor)
     argv = [
-        "pd-ocr",
+        "pdomain-ocr",
         "--no-update-check",
         "--model-version",
         PINNED_MODEL_REVISION,
@@ -170,7 +170,7 @@ def test_ocr_title_page_recovers_expected_tokens(
     """
     rc = _invoke_main(monkeypatch, shared_predictor, title_image_path, tmp_path)
     captured = capsys.readouterr()
-    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
+    assert rc == 0, f"pdomain-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
 
     out_txt = tmp_path / "title_page_001.txt"
     assert out_txt.exists(), f"expected output file missing: {out_txt}"
@@ -193,7 +193,7 @@ def test_ocr_save_json_writes_sidecar(
     """``--save-json`` produces a non-empty .json sidecar next to the .txt."""
     rc = _invoke_main(monkeypatch, shared_predictor, title_image_path, tmp_path, "--save-json")
     captured = capsys.readouterr()
-    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
+    assert rc == 0, f"pdomain-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
 
     out_json = tmp_path / "title_page_001.json"
     assert out_json.exists(), f"expected JSON sidecar missing: {out_json}"
@@ -210,7 +210,7 @@ def test_ocr_no_reorg_runs_clean(
     """``--no-reorg`` should also produce a usable .txt with the page tokens."""
     rc = _invoke_main(monkeypatch, shared_predictor, title_image_path, tmp_path, "--no-reorg")
     captured = capsys.readouterr()
-    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
+    assert rc == 0, f"pdomain-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
     out_txt = tmp_path / "title_page_001.txt"
     assert out_txt.exists()
     normalized = _normalize_for_match(out_txt.read_text(encoding="utf-8"))
@@ -310,7 +310,7 @@ def test_ocr_save_reorganize_diagnostics_writes_full_bundle(
         "--validate-reorg",
     )
     captured = capsys.readouterr()
-    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
+    assert rc == 0, f"pdomain-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
     txt = tmp_path / "title_page_001.txt"
     json_ = tmp_path / "title_page_001.json"
     pure_ocr_json = tmp_path / "title_page_001.pure-ocr.json"
@@ -344,7 +344,7 @@ def test_ocr_save_pre_reorg_json_alias_still_runs(
         "--save-pre-reorg-json",
     )
     captured = capsys.readouterr()
-    assert rc == 0, f"pd-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
+    assert rc == 0, f"pdomain-ocr exited {rc}\nstdout:\n{captured.out}\nstderr:\n{captured.err}"
     assert (tmp_path / "title_page_001.json").exists()
     assert (tmp_path / "title_page_001.pure-ocr.json").exists()
     assert (tmp_path / "title_page_001.post-noise.json").exists()
@@ -353,7 +353,7 @@ def test_ocr_save_pre_reorg_json_alias_still_runs(
 def test_ocr_no_valid_images_exits_with_error(
     tmp_path: Path, shared_predictor, monkeypatch, capsys
 ):
-    """A non-image input alone yields no work to do — pd-ocr exits 1."""
+    """A non-image input alone yields no work to do — pdomain-ocr exits 1."""
     bogus = tmp_path / "notes.txt"
     bogus.write_text("not an image", encoding="utf-8")
     rc = _invoke_main(monkeypatch, shared_predictor, bogus, tmp_path)

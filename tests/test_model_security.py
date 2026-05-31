@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from pdomain_ocr_cli._hf_models import DEFAULT_HF_REPO
 from pdomain_ocr_cli._model_security import model_security_warnings
 
 
 def _args(**overrides: object) -> SimpleNamespace:
     values = {
-        "hf_repo": "CT2534/pd-ocr-models",
+        "hf_repo": DEFAULT_HF_REPO,
         "model_version": None,
         "detection": None,
         "recognition": None,

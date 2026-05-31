@@ -4,25 +4,25 @@ Usage
 -----
 Install and run (models download automatically):
     uv tool install git+https://github.com/pdomain/pdomain-ocr-cli
-    pd-ocr page.png
+    pdomain-ocr page.png
 
 Run directly without installing:
-    uvx --from git+https://github.com/pdomain/pdomain-ocr-cli pd-ocr page.png
+    uvx --from git+https://github.com/pdomain/pdomain-ocr-cli pdomain-ocr page.png
 
 Multiple images:
-    pd-ocr page1.png page2.png page3.png
+    pdomain-ocr page1.png page2.png page3.png
 
 Process a whole directory:
-    pd-ocr images/
+    pdomain-ocr images/
 
 Process a directory tree recursively:
-    pd-ocr --recursive images/ -o output/
+    pdomain-ocr --recursive images/ -o output/
 
 Write output to a specific directory (mirrors input structure for directories):
-    pd-ocr -o output/ page.png
+    pdomain-ocr -o output/ page.png
 
 Also save the reorganized OCR document as JSON alongside the .txt:
-    pd-ocr --save-json page.png
+    pdomain-ocr --save-json page.png
 
 Options
 -------
@@ -526,9 +526,9 @@ def _should_nudge_gpu_install() -> bool:
     1. ``PD_OCR_NO_GPU_NUDGE=1`` short-circuits to False (user opt-out).
     2. If ``cupy`` imports cleanly, the GPU stack is already wired up — no nudge.
     3. Otherwise, check whether ``nvidia-smi`` exists AND exits 0 within 2s.
-       If yes, the host has a GPU but pd-ocr was installed CPU-only → nudge.
+       If yes, the host has a GPU but pdomain-ocr was installed CPU-only → nudge.
     4. Any unexpected error in the probe path swallows silently and returns
-       False — a printing-helper bug must never break ``pd-ocr`` itself.
+       False — a printing-helper bug must never break ``pdomain-ocr`` itself.
 
     The result is cached for the life of the process (see ``_GPU_NUDGE_CACHE``)
     so that callers invoking ``main()`` more than once (e.g. in a test loop)
@@ -577,7 +577,7 @@ def _positive_batch_pages(s: str) -> int:
 
 
 def parse_args() -> argparse.Namespace:
-    """Parse and return the CLI arguments for ``pd-ocr``."""
+    """Parse and return the CLI arguments for ``pdomain-ocr``."""
     p = argparse.ArgumentParser(
         description="OCR images to .txt using fine-tuned detection + recognition models."
     )
@@ -822,7 +822,7 @@ def collect_images(inputs: list[str], recursive: bool) -> list[Path]:
 
 
 def main() -> None:
-    """Entry point for the ``pd-ocr`` CLI command."""
+    """Entry point for the ``pdomain-ocr`` CLI command."""
     raw_args = parse_args()
     args = _coerce_cli_args(raw_args)
 
@@ -859,7 +859,7 @@ def main() -> None:
     )
 
     # One-line nudge for users who have an NVIDIA GPU but installed
-    # pd-ocr without the [gpu] extra — surfaces the opt-in path so the
+    # pdomain-ocr without the [gpu] extra — surfaces the opt-in path so the
     # GPU isn't silently left on the table. Suppressible via
     # PD_OCR_NO_GPU_NUDGE=1. The probe itself is bullet-proof: any
     # error (missing nvidia-smi, hung subprocess, broken CuPy) is

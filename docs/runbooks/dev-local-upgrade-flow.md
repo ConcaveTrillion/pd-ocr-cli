@@ -19,7 +19,7 @@ A `dev-local` venv is materially different from the canonical one:
 `uv sync` doesn't know any of that; it resolves against `pyproject.toml`
 and `uv.lock` and rewrites the venv to match. The user loses their
 in-tree editable, the GPU extras, and any non-pinned `doctr`. The
-breakage is silent — the next `pd-ocr` invocation just quietly runs
+breakage is silent — the next `pdomain-ocr` invocation just quietly runs
 against the canonical pin.
 
 This same trap is being fixed in lockstep across every `pd-*` repo;
@@ -43,7 +43,7 @@ this doc captures the contract on the `pdomain-ocr-cli` side.
       to `.venv/` so `make remove-venv` / `make reset` clear it
       automatically. (Fallback for environments where step 1 is
       ambiguous, e.g. uv version skew.)
-   3. **Env var `PD_DEV_LOCAL=1`** opt-in. Last resort — useful for
+   3. **Env var `PDOMAIN_DEV_LOCAL=1`** opt-in. Last resort — useful for
       CI matrix jobs that want to force dev-local semantics without
       touching the venv first.
 
@@ -60,7 +60,7 @@ this doc captures the contract on the `pdomain-ocr-cli` side.
    ⚠️  Detected dev-local venv (pdomain-book-tools editable at ../pdomain-book-tools).
        Running `uv sync` here would revert the venv to the canonical baseline.
        Use:  make upgrade-deps-local   (lock + sync + restore dev-local)
-       Or:   PD_DEV_LOCAL=0 make upgrade-deps   (canonical mode, intentional clobber)
+       Or:   PDOMAIN_DEV_LOCAL=0 make upgrade-deps   (canonical mode, intentional clobber)
    ```
 
 4. **Canonical-mode behavior unchanged** from the current `upgrade-deps`
@@ -88,4 +88,4 @@ this doc captures the contract on the `pdomain-ocr-cli` side.
   probe; the implementation can lean on (or extend) it rather than
   re-parsing `uv pip show` from scratch.
 - Workspace-level standardization: same fix landing in `pdomain-book-tools`,
-  `pd-ocr-labeler`, `pd-ocr-trainer`, etc.
+  `pdomain-ocr-labeler`, `pdomain-ocr-trainer`, etc.

@@ -44,7 +44,7 @@ def run_main(monkeypatch):
     """Invoke ocr_to_txt.main() with the given argv (after the prog name)."""
 
     def _run(*argv: str) -> None:
-        monkeypatch.setattr(sys, "argv", ["pd-ocr", *argv])
+        monkeypatch.setattr(sys, "argv", ["pdomain-ocr", *argv])
         ocr_to_txt.main()
 
     return _run

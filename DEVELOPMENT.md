@@ -28,7 +28,7 @@ make setup
 
 This syncs the dev deps from `pyproject.toml`, including `pdomain-book-tools`
 at the pinned git tag, and installs pre-commit hooks. You can now run
-`uv run pd-ocr ...` without installing globally.
+`uv run pdomain-ocr ...` without installing globally.
 
 ### B. Editing pdomain-ocr-cli **and** pdomain-book-tools side-by-side
 
@@ -63,22 +63,22 @@ If you also want pdomain-book-tools' own venv (to run its tests):
 | Target | Purpose |
 | --- | --- |
 | `setup` | Install dev deps + pre-commit hooks (uses pinned `pdomain-book-tools` tag). |
-| `refresh-version` | Force-reinstall the editable package so `pd-ocr --version` re-derives from current git state (hatch-vcs bakes the version at install time, not at runtime — run this after `git pull` / new local tags). |
-| `install` | Install `pd-ocr` as a `uv tool` from local source, auto-detecting CUDA. |
-| `uninstall` | Remove the installed `pd-ocr` uv tool. |
+| `refresh-version` | Force-reinstall the editable package so `pdomain-ocr --version` re-derives from current git state (hatch-vcs bakes the version at install time, not at runtime — run this after `git pull` / new local tags). |
+| `install` | Install `pdomain-ocr` as a `uv tool` from local source, auto-detecting CUDA. |
+| `uninstall` | Remove the installed `pdomain-ocr` uv tool. |
 | `lint` | Run ruff (with auto-fix). |
 | `format` | Run ruff format, then lint. |
 | `pre-commit-check` | Run pre-commit on all files. |
 | `test` | Run the pytest suite (`tests/`). |
 | `build` | `uv build` — produce sdist + wheel in `dist/`. |
-| `wheel-smoke` | Build the wheel, install it into isolated Python 3.11 / 3.12 / 3.13 environments, and run `pd-ocr --version`. Override with `PYTHON_VERSIONS="3.13"` for a focused local run. |
+| `wheel-smoke` | Build the wheel, install it into isolated Python 3.11 / 3.12 / 3.13 environments, and run `pdomain-ocr --version`. Override with `PYTHON_VERSIONS="3.13"` for a focused local run. |
 | `wheel-smoke-one` | Focused wheel smoke for one interpreter. Set `PYTHON_VERSION=3.11`, `3.12`, or `3.13`. |
 | `check-release-deps` | Fail release while runtime dependencies, currently `pdomain-ops`, are path-sourced instead of package-index sourced. |
 | `ci` | `setup` → `pre-commit-check` → `format-check` → `typecheck` → `coverage` → `installer-test` → `wheel-smoke`. |
 | `ci-slow` | Full release-grade CI including slow integration coverage, build, and wheel smoke. |
 | `clean` | Remove caches and `dist/`. |
 | `reset` | `clean` + remove `.venv` + `setup`. |
-| `upgrade-deps` | Upgrade the lockfile and sync the venv. **Refuses when a dev-local venv is detected** — use `upgrade-deps-local` instead (or set `PD_DEV_LOCAL=0` to intentionally clobber). |
+| `upgrade-deps` | Upgrade the lockfile and sync the venv. **Refuses when a dev-local venv is detected** — use `upgrade-deps-local` instead (or set `PDOMAIN_DEV_LOCAL=0` to intentionally clobber). |
 | `upgrade-deps-local` | Upgrade the lockfile, sync to canonical baseline, then restore the dev-local editable install — all in one shot. |
 | `upgrade-pdomain-book-tools` | Bump the `pdomain-book-tools` pin to the latest GitHub tag. |
 | `release-{patch,minor,major}` | Tag a new release locally (push with `git push --tags`). |
@@ -94,10 +94,10 @@ install).
 | --- | --- |
 | `local-setup` | Clone the sibling if missing, then run `dev-local`. The one-stop entrypoint. |
 | `dev-local` | Install `pdomain-book-tools` from `../pdomain-book-tools` as editable into this venv. |
-| `install-local` | Install `pd-ocr` as a `uv tool` with **both** repos editable — `pd-ocr` on your PATH tracks live edits in either tree. |
+| `install-local` | Install `pdomain-ocr` as a `uv tool` with **both** repos editable — `pdomain-ocr` on your PATH tracks live edits in either tree. |
 | `uninstall-local` | Remove the `uv tool` install. |
 | `check-local-editable` | Verify `pdomain_book_tools` imports resolve to `../pdomain-book-tools` (not the cached tag). |
-| `run-local` | Run `pd-ocr` against the editable workspace. Pass args via `ARGS="…"`. |
+| `run-local` | Run `pdomain-ocr` against the editable workspace. Pass args via `ARGS="…"`. |
 | `python-local` | Run `python` against the editable workspace. Pass args via `ARGS="…"`. |
 
 Examples:
@@ -107,7 +107,7 @@ make run-local ARGS='page.png --layout-debug'
 make python-local ARGS='-c "import pdomain_book_tools; print(pdomain_book_tools.__file__)"'
 ```
 
-After `install-local`, just run `pd-ocr page.png` — the global tool
+After `install-local`, just run `pdomain-ocr page.png` — the global tool
 points at both editable trees.
 
 To revert to the published version:

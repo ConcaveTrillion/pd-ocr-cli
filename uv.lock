@@ -1455,7 +1455,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pdomain-book-tools", specifier = ">=0.14.1", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-book-tools", specifier = ">=0.15.1", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "pdomain-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "pdomain-ops", specifier = ">=0.4.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
 ]
@@ -1492,6 +1492,34 @@ dependencies = [
 sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.4.0/pdomain_ops-0.4.0.tar.gz", hash = "sha256:2a203d28234a041e01b359890d710868262b0fcaf4a22a94db1af21b70177e34" }
 wheels = [
     { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.4.0/pdomain_ops-0.4.0-py3-none-any.whl", hash = "sha256:4c130f8a691166da9b8e82e6917a9a791646a665f5bb3a053764e623006bb369" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.110" },
+    { name = "filelock", specifier = ">=3.13" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "modal", marker = "extra == 'modal'", specifier = ">=0.66" },
+    { name = "pdomain-book-tools", specifier = ">=0.15.1", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "platformdirs", specifier = ">=4.2" },
+    { name = "pydantic", specifier = ">=2.5" },
+    { name = "tomli", specifier = ">=2.0" },
+    { name = "tomli-w", specifier = ">=1.0" },
+    { name = "uvicorn", specifier = ">=0.30" },
+]
+provides-extras = ["modal"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "basedpyright", specifier = ">=1.39.4" },
+    { name = "gitlint", specifier = ">=0.19.1" },
+    { name = "httpx", specifier = ">=0.27" },
+    { name = "pre-commit", specifier = ">=4.2.0" },
+    { name = "pytest", specifier = ">=8.3" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+    { name = "pytest-cov", specifier = ">=6.2.1" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "ruff", specifier = ">=0.15.13" },
 ]
 
 [[package]]

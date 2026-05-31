@@ -1,36 +1,36 @@
 # Full usage options
 
-This page covers every `pd-ocr` flag, grouped by what you'd use it for.
+This page covers every `pdomain-ocr` flag, grouped by what you'd use it for.
 For the friendly walkthrough, see the [README](../../README.md). For
 layout-detector specifics (the bulk of the layout flags below), see
-[layout-aware-ocr.md](../architecture/layout-aware-ocr.md). `pd-ocr --help` is always
+[layout-aware-ocr.md](../architecture/layout-aware-ocr.md). `pdomain-ocr --help` is always
 authoritative.
 
 ## Inputs and outputs
 
 ```sh
 # Single image — output written alongside as page.txt
-pd-ocr page.png
+pdomain-ocr page.png
 
 # Multiple images (any mix of files / directories)
-pd-ocr page1.png page2.png images/
+pdomain-ocr page1.png page2.png images/
 
 # OCR pages in smaller chunks (must be >= 1; default 4)
-pd-ocr --batch-pages 2 page1.png page2.png page3.png
+pdomain-ocr --batch-pages 2 page1.png page2.png page3.png
 
 # All images in a directory (non-recursive)
-pd-ocr images/
+pdomain-ocr images/
 
 # Recurse into subdirectories
-pd-ocr --recursive images/        # also: -r, -R
+pdomain-ocr --recursive images/        # also: -r, -R
 
 # Write outputs into a specific directory.
 # When inputs include directories, structure is mirrored under -o.
-pd-ocr -o output/ page.png
-pd-ocr -r images/ -o output/      # output/ mirrors images/'s tree
+pdomain-ocr -o output/ page.png
+pdomain-ocr -r images/ -o output/      # output/ mirrors images/'s tree
 
 # Also save the reorganized OCR document as JSON next to the .txt
-pd-ocr --save-json page.png
+pdomain-ocr --save-json page.png
 ```
 
 Recognized image suffixes: `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`,
@@ -41,10 +41,10 @@ warning.
 
 ```sh
 # Curly → straight quotes ('hi' "hi" → 'hi' "hi")
-pd-ocr --straight-quotes page.png        # also: -sq
+pdomain-ocr --straight-quotes page.png        # also: -sq
 
 # Em dash → ASCII double hyphen (— → --)
-pd-ocr --em-dash-to-double-hyphen page.png   # also: -ed
+pdomain-ocr --em-dash-to-double-hyphen page.png   # also: -ed
 ```
 
 `--straight-quotes` covers the eight common curly variants
@@ -69,11 +69,11 @@ type. The user picks per run.
 
 ```sh
 # Default — preserve OCR glyphs exactly as recognized.
-pd-ocr page.png
+pdomain-ocr page.png
 
 # Map the standard glyph set (long-s, f-ligatures, st-ligature, …) to
 # their ASCII equivalents before the .txt is written.
-pd-ocr --normalize-output ascii page.png
+pdomain-ocr --normalize-output ascii page.png
 ```
 
 Flag shape: `--normalize-output {none|ascii|...}`, default `none`.
@@ -84,7 +84,7 @@ profiles (e.g. a `gaelic` profile that also handles dotted consonants).
 `pdomain-book-tools` as `pdomain_book_tools.text.normalize` (to be added). The
 CLI is a thin pass-through that runs the normalizer between
 reorganize and disk write. This keeps the same map reusable from
-`pd-ocr-labeler` (page-scope action) and `pdomain-prep-for-pgdp` (export
+`pdomain-ocr-labeler` (page-scope action) and `pdomain-prep-for-pgdp` (export
 step) without duplication.
 
 **Cross-refs.** Mirrors decision D-025 in
@@ -92,25 +92,25 @@ step) without duplication.
 
 ## Model selection
 
-By default, `pd-ocr` downloads fine-tuned weights from
-`CT2534/pd-ocr-models` on Hugging Face the first time it runs, tracking
+By default, `pdomain-ocr` downloads fine-tuned weights from
+`pdomain/pdomain-ocr-models` on Hugging Face the first time it runs, tracking
 the latest revision of that repo. Pass `--model-version <tag>` to pin to
 a specific release.
 
 ```sh
 # Pin to a specific model version (HF Hub revision / tag)
-pd-ocr --model-version v1.2.0 page.png
+pdomain-ocr --model-version v1.2.0 page.png
 
 # Use a different HF Hub repo
-pd-ocr --hf-repo myorg/my-ocr-models page.png
+pdomain-ocr --hf-repo myorg/my-ocr-models page.png
 
 # Override the filenames within the repo
-pd-ocr --det-filename detection/custom.pt \
+pdomain-ocr --det-filename detection/custom.pt \
        --reco-filename recognition/custom.pt page.png
 
 # Use local .pt files instead of downloading.
 # Both flags must be provided together.
-pd-ocr -d ./detection.pt -g ./recognition.pt page.png
+pdomain-ocr -d ./detection.pt -g ./recognition.pt page.png
 ```
 
 Local `.pt` files are loaded as-is. If sibling `.arch` / `.vocab`
@@ -135,28 +135,28 @@ See [layout-aware-ocr.md](../architecture/layout-aware-ocr.md) for the full pict
 ```sh
 # Skip layout detection entirely (faster, lower-quality reorg on
 # pages with figures, captions, marginalia, etc.)
-pd-ocr --layout-model none page.png
+pdomain-ocr --layout-model none page.png
 
 # Switch to the rule-based contour heuristic
-pd-ocr --layout-model contour page.png
+pdomain-ocr --layout-model contour page.png
 
 # Use a fine-tuned PP-DocLayout checkpoint (path or HF repo)
-pd-ocr --layout-checkpoint ~/my-finetuned-layout/ page.png
+pdomain-ocr --layout-checkpoint ~/my-finetuned-layout/ page.png
 
 # Tighten / loosen the confidence threshold (0..1, default 0.5).
 # Values outside [0, 1] (and `nan` / `inf`) are rejected at parse time.
-pd-ocr --layout-confidence 0.3 page.png
+pdomain-ocr --layout-confidence 0.3 page.png
 
 # Crop figure / decoration / table regions to i_<stem>_<n>.jpg
-pd-ocr --extract-illustrations page.png
+pdomain-ocr --extract-illustrations page.png
 
 # Suppress empty figure / decoration / table placeholder blocks in the
 # reorganized .txt (caption text is still preserved)
-pd-ocr --no-illustration-placeholders page.png
+pdomain-ocr --no-illustration-placeholders page.png
 
 # Per-step layout debug text (see layout-aware-ocr.md)
-pd-ocr --layout-debug page.png
-pd-ocr --layout-debug --layout-debug-dir debug/ page.png
+pdomain-ocr --layout-debug page.png
+pdomain-ocr --layout-debug --layout-debug-dir debug/ page.png
 ```
 
 `--extract-illustrations` requires a layout model — combining it with
@@ -170,7 +170,7 @@ it, or audit it.
 
 ```sh
 # Skip reorganize entirely — emit raw OCR
-pd-ocr --no-reorg page.png
+pdomain-ocr --no-reorg page.png
 
 # With --save-json: also write the full diagnostic bundle alongside
 # the regular .txt/.json — six files per page in total:
@@ -181,10 +181,10 @@ pd-ocr --no-reorg page.png
 #                                                 removal, before reorg)
 # Useful for auditing what reorganize preserved, dropped, or rearranged.
 # The old name --save-pre-reorg-json is still accepted as a back-compat alias.
-pd-ocr --save-json --save-reorganize-diagnostics page.png
+pdomain-ocr --save-json --save-reorganize-diagnostics page.png
 
 # Warn (don't fail) if reorganize drops any words
-pd-ocr --validate-reorg page.png
+pdomain-ocr --validate-reorg page.png
 
 # [experimental] Enable drop of figure-internal OCR words during
 # reorganize. Two steps are gated by this flag:
@@ -193,7 +193,7 @@ pd-ocr --validate-reorg page.png
 #   * Step B2 — figure-internal heuristic noise.
 # Default keeps all words. Footnote / header / footer / abandoned
 # regions are NEVER dropped, regardless of this flag.
-pd-ocr --experimental-drop-layout-words page.png   # also: --edl
+pdomain-ocr --experimental-drop-layout-words page.png   # also: --edl
 ```
 
 Plain `--no-reorg` emits raw OCR and skips layout detection. Combine it
@@ -228,15 +228,15 @@ each image sidecar.
 
 ```sh
 # Print the installed version
-pd-ocr --version
+pdomain-ocr --version
 
 # Skip the background GitHub-tag check (offline runs, locked-down
 # networks, or just to silence the upgrade notice).
 # Can also be set persistently: export PD_OCR_NO_UPDATE_CHECK=1
-pd-ocr --no-update-check page.png
+pdomain-ocr --no-update-check page.png
 
 # Built-in help — authoritative listing of every flag
-pd-ocr --help
+pdomain-ocr --help
 ```
 
 ## Installer behavior
@@ -267,7 +267,7 @@ manually.
 
 ### Conflicting flags / no-op combinations
 
-When you pass a flag combination that can't take effect, `pd-ocr` emits a
+When you pass a flag combination that can't take effect, `pdomain-ocr` emits a
 `warning:` to stderr and proceeds (the redundant flag is ignored, not
 fatal). The current set:
 
@@ -293,10 +293,10 @@ fatal). The current set:
 
 | Flag | Short | Default | Purpose |
 | --- | --- | --- | --- |
-| `--hf-repo REPO_ID` | | `CT2534/pd-ocr-models` | HF Hub repo for OCR models. |
+| `--hf-repo REPO_ID` | | `pdomain/pdomain-ocr-models` | HF Hub repo for OCR models. |
 | `--model-version TAG` | | latest | HF revision / tag. |
-| `--det-filename PATH` | | `detection/pd-all-detection-model-finetuned.pt` | Detection-model path within the HF repo. |
-| `--reco-filename PATH` | | `recognition/pd-all-recognition-model-finetuned.pt` | Recognition-model path within the HF repo. |
+| `--det-filename PATH` | | `detection/pdomain-all-detection-model-finetuned.pt` | Detection-model path within the HF repo. |
+| `--reco-filename PATH` | | `recognition/pdomain-all-recognition-model-finetuned.pt` | Recognition-model path within the HF repo. |
 | `--detection PT_FILE` | `-d` | — | Local detection `.pt`; requires `--recognition` too. |
 | `--recognition PT_FILE` | `-g` | — | Local recognition `.pt`; requires `--detection` too. |
 | `--output-dir DIR` | `-o` | input's dir | Where `.txt` (and `.json`, crops) are written. |

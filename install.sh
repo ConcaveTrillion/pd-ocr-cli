@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-# Install pd-ocr as a standalone tool using uv.
+# Install pdomain-ocr as a standalone tool using uv.
 #
 # Pulls the wheel from the latest non-prerelease GitHub Release of
 # pdomain/pdomain-ocr-cli and installs it via `uv tool install`. Uses
@@ -141,7 +141,7 @@ if ! curl -sSfL \
     exit 1
 fi
 
-echo "Installing pd-ocr ${RELEASE_TAG:-} from $(basename "$WHEEL_FILE")..."
+echo "Installing pdomain-ocr ${RELEASE_TAG:-} from $(basename "$WHEEL_FILE")..."
 # Build the install command incrementally so we only emit flags when relevant.
 # POSIX sh has no arrays — use `set --` to manage args.
 #
@@ -159,6 +159,6 @@ fi
 uv tool install --python "$PYTHON_VERSION" "$@"
 
 echo ""
-echo "Done! Run: pd-ocr page.png"
-echo "If 'pd-ocr' is not found, add uv's tool bin to your PATH:"
+echo "Done! Run: pdomain-ocr page.png"
+echo "If 'pdomain-ocr' is not found, add uv's tool bin to your PATH:"
 echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""

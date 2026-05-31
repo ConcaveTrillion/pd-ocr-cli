@@ -1,4 +1,4 @@
-# Install pd-ocr as a standalone tool using uv.
+# Install pdomain-ocr as a standalone tool using uv.
 #
 # Usage (run in PowerShell):
 #   irm https://raw.githubusercontent.com/pdomain/pdomain-ocr-cli/main/install.ps1 | iex
@@ -97,7 +97,7 @@ if (Get-Command nvidia-smi -ErrorAction SilentlyContinue) {
     } else {
         Write-Host ""
         Write-Host "WARNING: NVIDIA GPU detected but CUDA version could not be determined."
-        Write-Host "         Installing CPU-only build of pd-ocr."
+        Write-Host "         Installing CPU-only build of pdomain-ocr."
         Write-Host ""
         Write-Host "         To install the GPU build instead, re-run with a manual override:"
         Write-Host "           `$env:CUDA_VERSION = `"12.4`"   # replace with your CUDA version"
@@ -134,7 +134,7 @@ Write-Host "Latest release: $ReleaseTag"
 Write-Host "Wheel asset:    $WheelUrl"
 Write-Host "pdomain-index-pip:       $PdIndexUrl"
 
-$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pd-ocr-install-" + [guid]::NewGuid().ToString("N"))
+$TempDir = Join-Path ([System.IO.Path]::GetTempPath()) ("pdomain-ocr-install-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $TempDir | Out-Null
 
 try {
@@ -142,7 +142,7 @@ try {
     Write-Host "Downloading wheel..."
     Invoke-WebRequest -Uri $WheelUrl -OutFile $WheelFile
 
-    Write-Host "Installing pd-ocr $ReleaseTag from $WheelName..."
+    Write-Host "Installing pdomain-ocr $ReleaseTag from $WheelName..."
     $UvArgs = @("tool", "install", "--python", $PythonVersion, "--reinstall", $WheelFile, "--extra-index-url", $PdIndexUrl)
     if ($BookToolsExtras) {
         $UvArgs += @("--with", "pdomain-book-tools$BookToolsExtras")
@@ -156,6 +156,6 @@ try {
 }
 
 Write-Host ""
-Write-Host "Done! Run: pd-ocr page.png"
-Write-Host "If 'pd-ocr' is not found, ensure uv's tool bin is on your PATH."
+Write-Host "Done! Run: pdomain-ocr page.png"
+Write-Host "If 'pdomain-ocr' is not found, ensure uv's tool bin is on your PATH."
 Write-Host "  uv tool update-shell"

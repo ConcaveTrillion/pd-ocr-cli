@@ -16,7 +16,7 @@ $(_goals):
 
 else
 
-.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow test-integration test-layout-integration installer-test coverage coverage-slow build wheel-smoke wheel-smoke-one check-release-deps clean ci ci-slow upgrade-pdomain-book-tools update-pd-deps release-patch release-minor release-major _do-release help \
+.PHONY: setup refresh-version install uninstall reset remove-venv upgrade-deps lint format format-check pre-commit-check typecheck test test-slow test-integration test-layout-integration installer-test coverage coverage-slow build wheel-smoke wheel-smoke-one check-release-deps clean ci ci-slow upgrade-pdomain-book-tools update-pdomain-deps release-patch release-minor release-major _do-release help \
         local-setup local-dev local-check local-upgrade-deps local-install local-uninstall local-run local-test local-test-slow \
         dev-local install-local uninstall-local check-local-editable upgrade-deps-local run-local
 
@@ -40,19 +40,19 @@ setup: ## Set up development environment (sync deps + pre-commit hooks + refresh
 	@$(MAKE) --no-print-directory refresh-version
 	@echo "✅ Setup complete!"
 
-refresh-version: ## Force hatch-vcs to re-derive `pd-ocr --version` from current git state (~1s)
+refresh-version: ## Force hatch-vcs to re-derive `pdomain-ocr --version` from current git state (~1s)
 	@echo "🔄 Reinstalling pdomain-ocr-cli so hatch-vcs picks up the current HEAD / tags..."
 	@UV_LINK_MODE=copy uv pip install -e . --reinstall-package pdomain-ocr-cli
 	@echo "✅ Version now reports as:"
-	@uv run pd-ocr --version
+	@uv run pdomain-ocr --version
 
-install: ## Install pd-ocr as a uv tool from the local source (auto-detects CUDA)
+install: ## Install pdomain-ocr as a uv tool from the local source (auto-detects CUDA)
 	@./scripts/install-uv-tool.sh
 
-uninstall: ## Remove the installed pd-ocr uv tool
-	@echo "🗑️  Uninstalling pd-ocr..."
+uninstall: ## Remove the installed pdomain-ocr uv tool
+	@echo "🗑️  Uninstalling pdomain-ocr..."
 	uv tool uninstall pdomain-ocr-cli || true
-	@echo "✅ pd-ocr uninstalled."
+	@echo "✅ pdomain-ocr uninstalled."
 
 remove-venv: ## Remove the virtual environment
 	@echo "🗑️  Removing existing virtual environment..."
@@ -72,7 +72,7 @@ reset: ## Rebuild virtual environment (keeps UV cache)
 # Intentionally POSIX sh compatible (no bash-isms).
 define _is_local_dev
 	( uv pip show pdomain-book-tools 2>/dev/null | grep -q "^Editable project location:" ) \
-	|| [ -f .venv/.pd-local-mode ]
+	|| [ -f .venv/.pdomain-local-mode ]
 endef
 
 upgrade-deps: ## Upgrade dependencies and sync (refuses in local-dev mode; use local-upgrade-deps instead)
@@ -90,12 +90,12 @@ upgrade-deps: ## Upgrade dependencies and sync (refuses in local-dev mode; use l
 	uv sync --group dev
 	@echo "Dependencies upgraded and environment synced!"
 
-update-pd-deps: ## Bump sibling pd-* deps to registry latest; leaves diff staged
-	@./scripts/update-pd-deps.sh
+update-pdomain-deps: ## Bump sibling pd-* deps to registry latest; leaves diff staged
+	@./scripts/update-pdomain-deps.sh
 
-upgrade-pdomain-book-tools: ## Deprecated: use 'make update-pd-deps' instead
-	@echo "⚠️  upgrade-pdomain-book-tools is deprecated; use 'make update-pd-deps' instead."
-	@$(MAKE) --no-print-directory update-pd-deps
+upgrade-pdomain-book-tools: ## Deprecated: use 'make update-pdomain-deps' instead
+	@echo "⚠️  upgrade-pdomain-book-tools is deprecated; use 'make update-pdomain-deps' instead."
+	@$(MAKE) --no-print-directory update-pdomain-deps
 
 lint: ## Run ruff linting and import sorting
 	@echo "🔍 Running linting checks..."
@@ -179,7 +179,7 @@ wheel-smoke-one: build ## Install built wheel for one Python version; set PYTHON
 	else \
 		uv pip install --python "$$tmpdir/venv/bin/python" "$$wheel" --extra-index-url $(PDOMAIN_INDEX_URL); \
 	fi; \
-	"$$tmpdir/venv/bin/pd-ocr" --version
+	"$$tmpdir/venv/bin/pdomain-ocr" --version
 
 check-release-deps: ## Fail release while runtime dependencies are path-sourced
 	@python3 -c 'import tomllib; p=tomllib.load(open("pyproject.toml","rb")); src=p.get("tool",{}).get("uv",{}).get("sources",{}).get("pdomain-ops",{}); raise SystemExit("pdomain-ops must not be path-sourced for release") if "path" in src else 0'

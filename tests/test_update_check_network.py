@@ -99,7 +99,7 @@ def test_prints_notice_when_newer_version_available(monkeypatch, capsys):
     with patch("urllib.request.urlopen", _fake_urlopen(payload)):
         _update_check.check_for_update()
     err = capsys.readouterr().err
-    assert "newer version of pd-ocr is available" in err
+    assert "newer version of pdomain-ocr is available" in err
     assert "v1.2.3" in err  # latest tag
     assert "0.5.0" in err  # current version
     assert "curl -sSL" in err  # upgrade command included
