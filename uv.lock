@@ -1457,7 +1457,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "pdomain-book-tools", specifier = ">=0.14.1", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "pdomain-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
-    { name = "pdomain-ops", specifier = ">=0.3.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-ops", specifier = ">=0.4.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
 ]
 provides-extras = ["gpu"]
 
@@ -1476,7 +1476,7 @@ dev = [
 
 [[package]]
 name = "pdomain-ops"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "fastapi" },
@@ -1489,9 +1489,9 @@ dependencies = [
     { name = "tomli-w" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.3.0/pdomain_ops-0.3.0.tar.gz", hash = "sha256:9f4a933a11f818d68824fe0d4af51cf6bbbe69acc2d0083c4ae17b8b63b81580" }
+sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.4.0/pdomain_ops-0.4.0.tar.gz", hash = "sha256:2a203d28234a041e01b359890d710868262b0fcaf4a22a94db1af21b70177e34" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.3.0/pdomain_ops-0.3.0-py3-none-any.whl", hash = "sha256:f4217f11cd441d8ac7e37127a3e633ea809e05a61c6f90628e2b729ae7c59897" },
+    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.4.0/pdomain_ops-0.4.0-py3-none-any.whl", hash = "sha256:4c130f8a691166da9b8e82e6917a9a791646a665f5bb3a053764e623006bb369" },
 ]
 
 [[package]]
