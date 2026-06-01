@@ -200,6 +200,10 @@ filterwarnings = [
     # Python 3.13. This is triggered transitively by doctr on import. Ignore
     # until defusedxml cuts a Python-3.13-compatible release (>=0.8).
     "ignore:defusedxml.cElementTree is deprecated:DeprecationWarning:defusedxml",
+    # hf_xet emits a DeprecationWarning during model download on the GH runner
+    # (fresh cache). The parens in "download_files()" must be escaped in the
+    # regex -- bare () is an empty group that would NOT match the literal text.
+    'ignore:hf_xet\.download_files\(\) is deprecated:DeprecationWarning:hf_xet',
 ]
 
 [tool.coverage.run]
