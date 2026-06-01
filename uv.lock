@@ -1402,7 +1402,7 @@ wheels = [
 
 [[package]]
 name = "pdomain-book-tools"
-version = "0.17.1"
+version = "0.18.0"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "huggingface-hub" },
@@ -1426,9 +1426,9 @@ dependencies = [
     { name = "torchvision" },
     { name = "transformers" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.17.1/pdomain_book_tools-0.17.1.tar.gz", hash = "sha256:974f0a6d007ef95bc323335233e77f674d58f87dbb280ecd19e340b59fe01182" }
+sdist = { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.18.0/pdomain_book_tools-0.18.0.tar.gz", hash = "sha256:b61e254f6eb8f9102c89f03c7a81be38a2f0b7a010c4058c2f876169bf7bd281" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.17.1/pdomain_book_tools-0.17.1-py3-none-any.whl", hash = "sha256:b3cb5fbf64d965ed729ffeb481cdf89458cb61fae6f8d8646aeef70649d1d6c0" },
+    { url = "https://github.com/pdomain/pdomain-book-tools/releases/download/v0.18.0/pdomain_book_tools-0.18.0-py3-none-any.whl", hash = "sha256:b806fe39d95de0e175a3bce7b981679bf94c21000eb989cd12798805dd46d7dc" },
 ]
 
 [package.optional-dependencies]
@@ -1467,9 +1467,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
-    { name = "pdomain-book-tools", specifier = ">=0.17.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-book-tools", specifier = ">=0.18.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
     { name = "pdomain-book-tools", extras = ["gpu"], marker = "extra == 'gpu'", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
-    { name = "pdomain-ops", specifier = ">=0.7.0", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
+    { name = "pdomain-ops", specifier = ">=0.7.2", index = "https://pdomain.github.io/pdomain-index-pip/simple/" },
 ]
 provides-extras = ["gpu"]
 
@@ -1488,7 +1488,7 @@ dev = [
 
 [[package]]
 name = "pdomain-ops"
-version = "0.7.0"
+version = "0.7.2"
 source = { registry = "https://pdomain.github.io/pdomain-index-pip/simple/" }
 dependencies = [
     { name = "eventsourcing" },
@@ -1502,9 +1502,9 @@ dependencies = [
     { name = "tomli-w" },
     { name = "uvicorn" },
 ]
-sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.7.0/pdomain_ops-0.7.0.tar.gz", hash = "sha256:bdc382cef02a2990c2538faf9455f7ac0ab0be071794008b76f44e41eb6a6eed" }
+sdist = { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.7.2/pdomain_ops-0.7.2.tar.gz", hash = "sha256:a9f4b7c23db2852b2c3256a4011c8520367295623dfd00ecbae3313bb0df8a37" }
 wheels = [
-    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.7.0/pdomain_ops-0.7.0-py3-none-any.whl", hash = "sha256:5ee21c7b0afb0a6347b6867f2edeb282eacd38b3f2cfafcc7c6aa79f45899fe2" },
+    { url = "https://github.com/pdomain/pdomain-ops/releases/download/v0.7.2/pdomain_ops-0.7.2-py3-none-any.whl", hash = "sha256:2279f8c996a755fab5b71db2b39b7f3c1d46462b962a52d085dcf12b94618062" },
 ]
 
 [[package]]

@@ -27,6 +27,14 @@ _No open items._ (Shipped items moved to `docs/archive/plans/`.)
 - Hardened release gating so path-sourced runtime dependencies block release
   until they resolve from `pdomain-index-pip`.
 
+## Done — 2026-06-01 book-tools 0.18 / pdomain-ops 0.7.2 + HF model v0.7
+
+- Bumped `pdomain-book-tools` floor to `>=0.18.0`; batch OCR now auto-rotates,
+  correcting `rotated_page` fixture without any fixture modification.
+- Bumped `pdomain-ops` floor to `>=0.7.2`; both resolve from `pdomain-index-pip`.
+- Pinned integration-test HF model to `v0.7` (post-pdomain rename, `pdomain-`-prefixed files).
+- All 15 slow integration tests pass, including `rotated_page` LEGITIMATELY.
+
 ## Done — 2026-06-01 book-tools 0.17 / pdomain-ops 0.7 compatibility
 
 - Bumped `pdomain-book-tools` floor to `>=0.17.0` and `pdomain-ops` floor to `>=0.7.0`; both resolve from `pdomain-index-pip`.
