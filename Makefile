@@ -30,13 +30,14 @@ help: ## Show this help message
 	@echo "Available commands:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-setup: ## Set up development environment (sync deps + pre-commit hooks + refresh version)
+setup: ## Set up development environment (sync deps + pre-commit hooks if applicable + refresh version)
 	@echo "📦 Installing dependencies..."
 	uv sync --group dev
 	@echo "🔧 Ensuring PowerShell (pwsh) is available for install-script tests..."
 	@./scripts/ensure-pwsh.sh
 	@echo "🪝 Setting up pre-commit hooks..."
-	@[ -f .git/hooks/pre-commit ] || uv run pre-commit install
+	# Skip when core.hooksPath is set (e.g. hookify) or .git is a file (worktree — no hooks dir).
+	@[ -f .git/hooks/pre-commit ] || [ -n "$$(git config --get core.hooksPath 2>/dev/null)" ] || [ -f .git ] || uv run pre-commit install
 	@$(MAKE) --no-print-directory refresh-version
 	@echo "✅ Setup complete!"
 
