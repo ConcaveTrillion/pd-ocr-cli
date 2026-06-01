@@ -27,9 +27,9 @@ _No open items._ (Shipped items moved to `docs/archive/plans/`.)
 - Hardened release gating so path-sourced runtime dependencies block release
   until they resolve from `pdomain-index-pip`.
 
-## Note: pdomain-ops path source
+## Done — 2026-06-01 book-tools 0.17 / pdomain-ops 0.7 compatibility
 
-After Wave 4 Task 5 (`--batch-pages` / `run_doctr_batch`), `pyproject.toml`
-uses a path-sourced `pdomain-ops` entry in `[tool.uv.sources]` because
-pdomain-ops is not yet published to `pdomain-index-pip`. Once pdomain-ops
-cuts a release, update the source to `{ index = "pdomain-index-pip" }`.
+- Bumped `pdomain-book-tools` floor to `>=0.17.0` and `pdomain-ops` floor to `>=0.7.0`; both resolve from `pdomain-index-pip`.
+- Adopted `from_image_ocr_via_doctr` tuple return (`tuple[Document, int]`) in
+  `_run_doctr_batch_single_image_compat`; added `_SingleImageDocResultLike` protocol.
+- Dropped the stale "pdomain-ops path source" note (ops is now in the index).
