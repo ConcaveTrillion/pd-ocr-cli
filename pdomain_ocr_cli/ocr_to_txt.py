@@ -241,8 +241,14 @@ class _DocumentModuleLike(Protocol):
     Document: object
 
 
+class _SingleImageDocResultLike(Protocol):
+    """Minimal surface of the Document returned by from_image_ocr_via_doctr."""
+
+    pages: Sequence[_PageLike]
+
+
 class _DocumentClassLike(Protocol):
-    from_image_ocr_via_doctr: Callable[..., object]
+    from_image_ocr_via_doctr: Callable[..., tuple[_SingleImageDocResultLike, int]]
 
 
 class _SinglePageDoc:
@@ -453,7 +459,11 @@ def _run_doctr_batch_single_image_compat(
     predictor: object,
     source_identifiers: Sequence[str] | None,
 ) -> list[_PageLike | None]:
-    """Fallback for older pdomain-book-tools without the batch OCR entry point."""
+    """Single-image fallback path when the batch OCR entry point is unavailable.
+
+    Uses per-image ``Document.from_image_ocr_via_doctr``; book-tools 0.17+ returns
+    a ``tuple[Document, int]`` (document, rotation_degrees) -- rotation is discarded.
+    """
     if source_identifiers is None:
         identifiers = [str(i) for i in range(len(images))]
     else:
@@ -475,12 +485,12 @@ def _run_doctr_batch_single_image_compat(
 
     pages: list[_PageLike | None] = []
     for image, source_identifier in zip(images, identifiers, strict=True):
-        doc = from_image(
+        doc_result, _rotation = from_image(
             image,
             source_identifier=source_identifier,
             predictor=predictor,
         )
-        doc_pages = cast("Sequence[_PageLike]", getattr(doc, "pages", ()))
+        doc_pages = doc_result.pages
         pages.append(doc_pages[0] if doc_pages else None)
     return pages
 

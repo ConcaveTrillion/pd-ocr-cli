@@ -89,7 +89,7 @@ def test_doctr_batch_single_image_compat_uses_default_identifiers(monkeypatch) -
         def from_image_ocr_via_doctr(image, *, source_identifier, predictor):
             calls.append((image, source_identifier, predictor))
             page = page_a if source_identifier == "0" else page_b
-            return SimpleNamespace(pages=[page])
+            return (SimpleNamespace(pages=[page]), 0)
 
     monkeypatch.setattr(
         ocr_to_txt.importlib,
@@ -114,8 +114,8 @@ def test_doctr_batch_single_image_compat_handles_empty_page_docs(monkeypatch) ->
         @staticmethod
         def from_image_ocr_via_doctr(image, *, source_identifier, predictor):
             if source_identifier == "empty.png":
-                return SimpleNamespace(pages=[])
-            return SimpleNamespace(pages=[page])
+                return (SimpleNamespace(pages=[]), 0)
+            return (SimpleNamespace(pages=[page]), 0)
 
     monkeypatch.setattr(
         ocr_to_txt.importlib,
@@ -139,3 +139,35 @@ def test_doctr_batch_single_image_compat_rejects_identifier_mismatch() -> None:
             predictor="predictor",
             source_identifiers=["only-one.png"],
         )
+
+
+def test_doctr_batch_single_image_compat_unpacks_0_17_tuple_return(monkeypatch) -> None:
+    """book-tools 0.17 from_image_ocr_via_doctr returns (Document, int).
+
+    The compat shim must unpack the tuple; it must NOT try to read .pages on
+    the whole tuple (which would raise AttributeError and fall into the wrong
+    branch).
+    """
+    page_a = SimpleNamespace(text="A")
+    page_b = SimpleNamespace(text="B")
+
+    class FakeDocument:
+        @staticmethod
+        def from_image_ocr_via_doctr(image, *, source_identifier, predictor):
+            page = page_a if source_identifier == "0" else page_b
+            # 0.17 API: returns (Document, rotation_degrees)
+            return (SimpleNamespace(pages=[page]), 90)
+
+    monkeypatch.setattr(
+        ocr_to_txt.importlib,
+        "import_module",
+        lambda name: SimpleNamespace(Document=FakeDocument),
+    )
+
+    result = ocr_to_txt._run_doctr_batch_single_image_compat(
+        ["img-a", "img-b"],
+        predictor="predictor",
+        source_identifiers=None,
+    )
+
+    assert result == [page_a, page_b]
